@@ -291,3 +291,28 @@ button.primary,button.secondary,button.danger,.mini,.chip,.tabs button,.side-lin
 }
 @media(max-width:1250px) and (min-width:980px){.usage-kpi-grid-7{grid-template-columns:repeat(4,1fr)}.material-stock-main{grid-template-columns:minmax(220px,1fr) minmax(125px,.45fr)}.material-facts{grid-column:1/-1}.overview-grid{grid-template-columns:minmax(0,1.35fr) minmax(270px,.75fr)!important}}
 @media(max-width:800px){.stock-choice-card,.lazy-filter-card{grid-template-columns:1fr}.usage-kpi-grid-7{grid-template-columns:repeat(2,1fr)}}
+
+
+/* v1.3.6 — iOS/Android QR scanner and mobile table cards */
+.scanner-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}.scanner-head h3{margin:0}.scanner-head p{margin:5px 0 0;color:var(--muted);font-size:.8rem}.scanner-head .icon-button{font-size:1.7rem;line-height:1}
+.scan-status{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);padding:7px 12px;border-radius:999px;background:rgba(0,0,0,.68);color:#fff;font-size:.76rem;font-weight:650;white-space:nowrap}.scanner-manual{margin-top:12px}
+.material-code{display:none!important}.table-name-link small,.owner-material-row>button:first-child small{display:none!important}
+
+@media(max-width:699px){
+  .table-wrap{overflow:visible!important;max-height:none!important;border:0!important;background:transparent!important}
+  table.data-table[data-mobile-cards="1"]{display:block;width:100%;min-width:0!important;border:0;background:transparent}
+  table.data-table[data-mobile-cards="1"] thead{display:none}
+  table.data-table[data-mobile-cards="1"] tbody{display:grid;gap:10px;width:100%}
+  table.data-table[data-mobile-cards="1"] tr{display:block;width:100%;border:1px solid var(--line);border-radius:15px;background:#fff;overflow:hidden;box-shadow:0 3px 12px rgba(22,52,48,.035)}
+  table.data-table[data-mobile-cards="1"] td{display:grid!important;grid-template-columns:minmax(88px,34%) minmax(0,1fr);align-items:start;gap:10px;width:100%!important;min-width:0!important;padding:10px 12px!important;border:0!important;border-bottom:1px solid #edf2f0!important;white-space:normal!important;overflow-wrap:anywhere;text-align:left!important}
+  table.data-table[data-mobile-cards="1"] td:last-child{border-bottom:0!important}
+  table.data-table[data-mobile-cards="1"] td::before{content:attr(data-label);color:var(--muted);font-size:.72rem;font-weight:650;line-height:1.45}
+  table.data-table[data-mobile-cards="1"] td[colspan]{display:block!important;text-align:center!important}
+  table.data-table[data-mobile-cards="1"] td[colspan]::before{display:none}
+  table.data-table[data-mobile-cards="1"] .code-pill{display:inline-block;max-width:100%;white-space:normal;overflow-wrap:anywhere}
+  table.data-table[data-mobile-cards="1"] button{max-width:100%}
+  .history-card{overflow:visible}.history-card .table-wrap{max-height:none!important}
+  .owner-detail-head{padding-right:36px}.owner-material-row{padding:13px}.owner-material-row>button:first-child span{font-size:.92rem;line-height:1.45}
+  .material-stock-card{padding-top:16px}.material-ident{gap:9px}.material-title-link{font-size:1rem}
+  .scan-video-wrap{aspect-ratio:3/4;max-height:68vh}.scan-frame{inset:23% 12%}
+}

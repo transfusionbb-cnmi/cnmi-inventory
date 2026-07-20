@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.3.5';
+const APP_VERSION = '1.3.6';
 const C = window.APP_CONFIG || {};
 const configured = C.SUPABASE_URL && !C.SUPABASE_URL.includes('YOUR-PROJECT') && C.SUPABASE_ANON_KEY && !C.SUPABASE_ANON_KEY.includes('YOUR-ANON');
 let sb = null;
@@ -33,6 +33,54 @@ const icon = (name, cls = 'icon') => `<svg class="${cls}" aria-hidden="true"><us
 const isAdminAccount = () => profile?.role === 'admin';
 const isAdminMode = () => isAdminAccount() && actingMode === 'admin';
 
+
+let responsiveTableQueued = false;
+function enhanceResponsiveTables(root = document) {
+  root.querySelectorAll?.('table.data-table').forEach(table => {
+    const headers = [...table.querySelectorAll('thead th')].map(th => th.textContent.trim());
+    table.querySelectorAll('tbody tr').forEach(row => {
+      [...row.children].forEach((cell, index) => {
+        if (cell.tagName === 'TD' && !cell.hasAttribute('data-label')) {
+          cell.setAttribute('data-label', headers[index] || '');
+        }
+      });
+    });
+    table.dataset.mobileCards = '1';
+  });
+}
+function queueResponsiveTables(root = document) {
+  if (responsiveTableQueued) return;
+  responsiveTableQueued = true;
+  requestAnimationFrame(() => {
+    responsiveTableQueued = false;
+    enhanceResponsiveTables(root);
+  });
+}
+
+let qrDecoderPromise = null;
+function ensureQrDecoder() {
+  if (typeof window.jsQR === 'function') return Promise.resolve(true);
+  if (qrDecoderPromise) return qrDecoderPromise;
+  qrDecoderPromise = new Promise(resolve => {
+    const existing = document.querySelector('script[data-jsqr-loader]');
+    if (existing) {
+      existing.addEventListener('load', () => resolve(typeof window.jsQR === 'function'), {once:true});
+      existing.addEventListener('error', () => resolve(false), {once:true});
+      setTimeout(() => resolve(typeof window.jsQR === 'function'), 8000);
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
+    script.async = true;
+    script.dataset.jsqrLoader = '1';
+    script.onload = () => resolve(typeof window.jsQR === 'function');
+    script.onerror = () => resolve(false);
+    document.head.appendChild(script);
+    setTimeout(() => resolve(typeof window.jsQR === 'function'), 8000);
+  });
+  return qrDecoderPromise;
+}
+
 function toast(msg, bad = false) {
   const t = $('#toast');
   t.textContent = msg;
@@ -45,6 +93,7 @@ function toast(msg, bad = false) {
 function openModal(html) {
   stopScanner();
   $('#modalBody').innerHTML = html;
+  queueResponsiveTables($('#modalBody'));
   $('#modal').classList.remove('hidden');
   $('#modal').setAttribute('aria-hidden', 'false');
 }
@@ -212,6 +261,9 @@ async function init() {
   $('#registerBtn').addEventListener('click', register);
   $('#logoutBtn').addEventListener('click', logout);
   document.addEventListener('click', globalClick);
+  const tableObserver = new MutationObserver(() => queueResponsiveTables(document));
+  tableObserver.observe(page, {childList:true, subtree:true});
+  tableObserver.observe($('#modalBody'), {childList:true, subtree:true});
   window.addEventListener('beforeunload', stopScanner);
 
   if (!configured) {
@@ -425,6 +477,7 @@ async function navigate(r, options = {}) {
     else if (r === 'help') renderHelp();
     else if (r === 'admin') await renderAdmin();
     else await renderHome();
+    queueResponsiveTables(page);
     try { history.replaceState({}, '', `${location.pathname}${location.search}#${r}`); } catch (_) {}
     window.scrollTo({top:0, behavior:'smooth'});
   } catch (e) {
@@ -548,7 +601,7 @@ async function renderHome() {
     ${prog ? `<section class="card weekly-summary"><div class="weekly-ring" style="--pct:${Number(prog.percent_complete || 0)}"><div><strong>${prog.checked_items}/${prog.total_items}</strong><span>${prog.percent_complete}%</span></div></div><div><h3>ตรวจสต๊อกวันศุกร์ ${d(prog.week_friday)}</h3><p class="muted">${prog.status === 'COMPLETED' ? 'ปิดรอบแล้ว' : `ยังเหลือ ${prog.pending_items ?? (prog.total_items-prog.checked_items)} Lot`}</p><button class="mini" data-route="weekly">ดูรายการตรวจทั้งหมด ${icon('arrow')}</button></div></section>` : ''}
   `;
 
-  const productHtml = `<div class="table-wrap quiet-table"><table class="data-table"><thead><tr><th>รายการสินค้า</th><th>คงเหลือ</th><th>ขั้นต่ำ</th><th>ผู้ดูแล</th><th>สถานะ</th><th></th></tr></thead><tbody>${productRows.map(x => `<tr><td><button class="table-name-link" data-material-detail="${esc(x.material_code)}"><span>${esc(x.material_name)}</span><small>${esc(x.material_code)}</small></button></td><td><span class="table-number">${qty(x.total_balance)}</span> ${esc(x.unit)}</td><td>${qty(x.min_qty)}</td><td><button class="owner-inline-link" data-owner-detail="${esc(x.responsible_email || 'unassigned')}">${esc(x.responsible_name || 'ยังไม่กำหนด')}</button></td><td>${Number(x.expired_pending_lots || 0) ? '<span class="badge danger">มี Lot หมดอายุ</span>' : Number(x.total_balance || 0) <= 0 ? '<span class="badge danger">หมด</span>' : Number(x.total_balance || 0) <= Number(x.min_qty || 0) ? '<span class="badge warn">ต่ำกว่าขั้นต่ำ</span>' : '<span class="badge ok">คงเหลือ</span>'}</td><td><button class="icon-mini" title="วิเคราะห์การใช้" data-material-usage="${esc(x.material_code)}">${icon('chart')}</button></td></tr>`).join('') || '<tr><td colspan="6">ไม่มีข้อมูล</td></tr>'}</tbody></table></div>`;
+  const productHtml = `<div class="table-wrap quiet-table"><table class="data-table"><thead><tr><th>รายการสินค้า</th><th>คงเหลือ</th><th>ขั้นต่ำ</th><th>ผู้ดูแล</th><th>สถานะ</th><th></th></tr></thead><tbody>${productRows.map(x => `<tr><td><button class="table-name-link" data-material-detail="${esc(x.material_code)}"><span>${esc(x.material_name)}</span></button></td><td><span class="table-number">${qty(x.total_balance)}</span> ${esc(x.unit)}</td><td>${qty(x.min_qty)}</td><td><button class="owner-inline-link" data-owner-detail="${esc(x.responsible_email || 'unassigned')}">${esc(x.responsible_name || 'ยังไม่กำหนด')}</button></td><td>${Number(x.expired_pending_lots || 0) ? '<span class="badge danger">มี Lot หมดอายุ</span>' : Number(x.total_balance || 0) <= 0 ? '<span class="badge danger">หมด</span>' : Number(x.total_balance || 0) <= Number(x.min_qty || 0) ? '<span class="badge warn">ต่ำกว่าขั้นต่ำ</span>' : '<span class="badge ok">คงเหลือ</span>'}</td><td><button class="icon-mini" title="วิเคราะห์การใช้" data-material-usage="${esc(x.material_code)}">${icon('chart')}</button></td></tr>`).join('') || '<tr><td colspan="6">ไม่มีข้อมูล</td></tr>'}</tbody></table></div>`;
   const ownerHtml = `<div class="owner-summary-grid">${ownerGroups.map(g => `<button class="owner-box owner-box-button" type="button" data-owner-detail="${esc(g.responsible_email || 'unassigned')}"><span class="owner-avatar">${esc((g.responsible_name || '?').trim().charAt(0))}</span><span class="owner-box-copy"><strong>${esc(g.responsible_name)}</strong><small>${esc(g.responsible_email || 'ยังไม่กำหนด')}</small><span class="owner-stats"><span>ดูแล ${g.materials} รายการ</span><span>ต่ำกว่าขั้นต่ำ ${g.low_count}</span><span>สินค้าหมด ${g.out_count}</span><span class="danger-text">หมดอายุรอนำออก ${g.expired_count}</span></span><em>กดเพื่อดูรายการที่ดูแล ${icon('arrow')}</em></span></button>`).join('') || '<div class="empty">ไม่มีข้อมูลผู้ดูแล</div>'}</div>`;
   const pane = $('#homeOverviewPane');
   const setMode = mode => {
@@ -564,7 +617,7 @@ async function renderHome() {
 
 function lotCard(l) {
   const aliases = pgArray(l.legacy_lot_keys);
-  return `<div class="card lot-card ${isExpired(l) ? 'expired-card' : ''}"><div class="lot-main"><div class="lot-code">${icon('qr')} ${esc(lotKey(l))}</div><div class="lot-title">${esc(l.material_name)}</div><div class="lot-meta">${esc(l.material_code)} · Lot ${esc(l.lot_no)} · EXP ${d(l.expiry_date)}</div><div class="lot-meta">ผู้ดูแล: ${esc(l.responsible_name || '-')}</div>${aliases.length ? `<div class="legacy-note">สติ๊กเกอร์รหัสเดิมยังใช้ได้: ${aliases.map(esc).join(', ')}</div>` : ''}<div style="margin-top:8px">${statusBadge(l)}</div><div class="actions">${!isExpired(l) ? `<button class="mini" data-print="${esc(l.lot_id)}">${icon('print')} พิมพ์ QR</button>${Number(l.balance) > 0 ? `<button class="mini ghost" data-issue-lot="${esc(l.lot_id)}">${icon('minus')} นำออก</button>` : ''}` : `<button class="mini danger" data-route="weekly">${icon('check')} ยืนยันนำออกในตรวจวันศุกร์</button>`}</div></div><div class="qty-wrap"><div class="qty">${qty(l.balance)}</div><div class="muted small">${esc(l.unit)}</div></div></div>`;
+  return `<div class="card lot-card ${isExpired(l) ? 'expired-card' : ''}"><div class="lot-main"><div class="lot-code">${icon('qr')} ${esc(lotKey(l))}</div><div class="lot-title">${esc(l.material_name)}</div><div class="lot-meta">Lot ${esc(l.lot_no)} · EXP ${d(l.expiry_date)}</div><div class="lot-meta">ผู้ดูแล: ${esc(l.responsible_name || '-')}</div>${aliases.length ? `<div class="legacy-note">สติ๊กเกอร์รหัสเดิมยังใช้ได้: ${aliases.map(esc).join(', ')}</div>` : ''}<div style="margin-top:8px">${statusBadge(l)}</div><div class="actions">${!isExpired(l) ? `<button class="mini" data-print="${esc(l.lot_id)}">${icon('print')} พิมพ์ QR</button>${Number(l.balance) > 0 ? `<button class="mini ghost" data-issue-lot="${esc(l.lot_id)}">${icon('minus')} นำออก</button>` : ''}` : `<button class="mini danger" data-route="weekly">${icon('check')} ยืนยันนำออกในตรวจวันศุกร์</button>`}</div></div><div class="qty-wrap"><div class="qty">${qty(l.balance)}</div><div class="muted small">${esc(l.unit)}</div></div></div>`;
 }
 
 function lotTableRows(lots) {
@@ -619,7 +672,7 @@ function materialStockCard(g) {
   const ownerKey = g.responsible_email || 'unassigned';
   return `<article class="material-stock-card status-${st.key}">
     <div class="material-stock-main">
-      <div class="material-ident"><span class="material-code">${esc(g.material_code)}</span><button class="material-title-link" type="button" data-material-detail="${esc(g.material_code)}">${esc(g.material_name)}</button><button class="owner-inline-link" type="button" data-owner-detail="${esc(ownerKey)}">${icon('user')} ${esc(g.responsible_name || 'ยังไม่กำหนด')}</button></div>
+      <div class="material-ident"><button class="material-title-link" type="button" data-material-detail="${esc(g.material_code)}">${esc(g.material_name)}</button><button class="owner-inline-link" type="button" data-owner-detail="${esc(ownerKey)}">${icon('user')} ${esc(g.responsible_name || 'ยังไม่กำหนด')}</button></div>
       <div class="material-balance"><span>คงเหลือรวม</span><div><strong>${qty(g.total_balance)}</strong><small>${esc(g.unit)}</small></div><div class="level-track" title="เทียบกับขั้นต่ำ ${qty(g.min_qty)}"><i style="width:${ratio}%"></i></div><small>ขั้นต่ำ ${qty(g.min_qty)} ${esc(g.unit)}</small></div>
       <div class="material-facts"><div><span>Lot ที่ใช้งาน</span><strong>${g.active_lots}</strong></div><div><span>หมดอายุใกล้สุด</span><strong>${g.nearest_expiry ? d(g.nearest_expiry) : '-'}</strong></div><div><span>สถานะ</span><em class="badge ${st.badge}">${st.label}</em></div></div>
     </div>
@@ -648,7 +701,7 @@ async function openMaterialStockDetail(code) {
     if (!g) return toast('ไม่พบสินค้านี้', true);
     const st = materialGroupStatus(g);
     const rows = [...g.lots].sort((a,b) => (isExpired(b)-isExpired(a)) || String(a.expiry_date || '9999').localeCompare(String(b.expiry_date || '9999')));
-    openModal(`<div class="detail-modal-head"><span class="material-code">${esc(g.material_code)}</span><div><h3>${esc(g.material_name)}</h3><p>${esc(g.responsible_name || 'ยังไม่กำหนด')} · ขั้นต่ำ ${qty(g.min_qty)} ${esc(g.unit)}</p></div></div><div class="detail-kpis"><div><span>คงเหลือรวม</span><strong>${qty(g.total_balance)}</strong><small>${esc(g.unit)}</small></div><div><span>Lot ที่ใช้งาน</span><strong>${g.active_lots}</strong><small>Lot</small></div><div><span>สถานะ</span><em class="badge ${st.badge}">${st.label}</em></div></div><div class="actions"><button class="primary" data-material-usage="${esc(g.material_code)}">${icon('chart')} วิเคราะห์การใช้</button><button class="secondary modal-close">ปิด</button></div><div class="section-title compact"><div><h3>รายการ Lot</h3><p class="muted small">โหลดเฉพาะ Lot ของสินค้าที่เลือก</p></div></div><div class="table-wrap"><table class="data-table"><thead><tr><th>Lot / QR</th><th>คงเหลือ</th><th>EXP</th><th>สถานะ</th><th></th></tr></thead><tbody>${lotTableRows(rows) || '<tr><td colspan="5" class="empty">ไม่มี Lot ที่มียอดคงเหลือ</td></tr>'}</tbody></table></div>`);
+    openModal(`<div class="detail-modal-head"><div><h3>${esc(g.material_name)}</h3><p>${esc(g.responsible_name || 'ยังไม่กำหนด')} · ขั้นต่ำ ${qty(g.min_qty)} ${esc(g.unit)}</p></div></div><div class="detail-kpis"><div><span>คงเหลือรวม</span><strong>${qty(g.total_balance)}</strong><small>${esc(g.unit)}</small></div><div><span>Lot ที่ใช้งาน</span><strong>${g.active_lots}</strong><small>Lot</small></div><div><span>สถานะ</span><em class="badge ${st.badge}">${st.label}</em></div></div><div class="actions"><button class="primary" data-material-usage="${esc(g.material_code)}">${icon('chart')} วิเคราะห์การใช้</button><button class="secondary modal-close">ปิด</button></div><div class="section-title compact"><div><h3>รายการ Lot</h3><p class="muted small">โหลดเฉพาะ Lot ของสินค้าที่เลือก</p></div></div><div class="table-wrap"><table class="data-table"><thead><tr><th>Lot / QR</th><th>คงเหลือ</th><th>EXP</th><th>สถานะ</th><th></th></tr></thead><tbody>${lotTableRows(rows) || '<tr><td colspan="5" class="empty">ไม่มี Lot ที่มียอดคงเหลือ</td></tr>'}</tbody></table></div>`);
   } catch (e) { toast(errMsg(e), true); }
 }
 
@@ -668,7 +721,7 @@ async function openOwnerDetail(ownerKey) {
     const low = groups.filter(g => g.total_balance > 0 && g.total_balance <= g.min_qty).length;
     const out = groups.filter(g => g.total_balance <= 0).length;
     const expired = groups.reduce((s,g) => s + g.expired_pending_lots,0);
-    openModal(`<div class="owner-detail-head"><span class="owner-avatar large">${esc(name.trim().charAt(0) || '?')}</span><div><h3>${esc(name)}</h3><p>${unassigned ? 'ยังไม่ได้กำหนดผู้ดูแล' : esc(ownerKey)}</p></div></div><div class="detail-kpis four"><div><span>ดูแลทั้งหมด</span><strong>${groups.length}</strong><small>รายการ</small></div><div><span>ต่ำกว่าขั้นต่ำ</span><strong>${low}</strong><small>รายการ</small></div><div><span>สินค้าหมด</span><strong>${out}</strong><small>รายการ</small></div><div><span>หมดอายุรอนำออก</span><strong>${expired}</strong><small>Lot</small></div></div><div class="owner-material-list">${groups.map(g => { const st=materialGroupStatus(g); return `<div class="owner-material-row"><button data-material-detail="${esc(g.material_code)}"><span>${esc(g.material_name)}</span><small>${esc(g.material_code)}</small></button><div><span class="table-number">${qty(g.total_balance)}</span> ${esc(g.unit)}<em class="badge ${st.badge}">${st.label}</em></div><button class="icon-mini" title="วิเคราะห์การใช้" data-material-usage="${esc(g.material_code)}">${icon('chart')}</button></div>`; }).join('') || '<div class="empty">ไม่มีรายการที่รับผิดชอบ</div>'}</div>`);
+    openModal(`<div class="owner-detail-head"><span class="owner-avatar large">${esc(name.trim().charAt(0) || '?')}</span><div><h3>${esc(name)}</h3><p>${unassigned ? 'ยังไม่ได้กำหนดผู้ดูแล' : esc(ownerKey)}</p></div></div><div class="detail-kpis four"><div><span>ดูแลทั้งหมด</span><strong>${groups.length}</strong><small>รายการ</small></div><div><span>ต่ำกว่าขั้นต่ำ</span><strong>${low}</strong><small>รายการ</small></div><div><span>สินค้าหมด</span><strong>${out}</strong><small>รายการ</small></div><div><span>หมดอายุรอนำออก</span><strong>${expired}</strong><small>Lot</small></div></div><div class="owner-material-list">${groups.map(g => { const st=materialGroupStatus(g); return `<div class="owner-material-row"><button data-material-detail="${esc(g.material_code)}"><span>${esc(g.material_name)}</span></button><div><span class="table-number">${qty(g.total_balance)}</span> ${esc(g.unit)}<em class="badge ${st.badge}">${st.label}</em></div><button class="icon-mini" title="วิเคราะห์การใช้" data-material-usage="${esc(g.material_code)}">${icon('chart')}</button></div>`; }).join('') || '<div class="empty">ไม่มีรายการที่รับผิดชอบ</div>'}</div>`);
   } catch (e) { toast(errMsg(e), true); }
 }
 
@@ -682,7 +735,7 @@ async function renderStock(initialFilter = 'select') {
   const nearCount = groups.filter(g => g.days_to_nearest !== null && Number(g.days_to_nearest) >= 0 && Number(g.days_to_nearest) <= 30).length;
   const outCount = groups.filter(g => g.total_balance <= 0).length;
   const selectedFilter = initialFilter && initialFilter !== 'select' ? initialFilter : '';
-  page.innerHTML = `<div class="page-head stock-page-head"><div><h2>สต๊อกคงเหลือ</h2><p class="muted small">เลือกสถานะหรือสินค้า ระบบจึงจะแสดงรายการ เพื่อลดการโหลดข้อมูลจำนวนมาก</p></div><button class="mini" data-route="usage">${icon('chart')} วิเคราะห์การใช้</button></div><div class="stock-summary-strip"><div><span>สินค้า</span><strong>${groups.length}</strong><small>รายการ</small></div><div><span>Lot ใช้งาน</span><strong>${activeLots}</strong><small>Lot</small></div><div><span>ต่ำกว่าขั้นต่ำ</span><strong>${lowCount}</strong><small>รายการ</small></div><div><span>สินค้าหมด</span><strong>${outCount}</strong><small>รายการ</small></div><div><span>ใกล้หมดอายุ</span><strong>${nearCount}</strong><small>รายการ</small></div></div><section class="card stock-choice-card"><label>เลือกสถานะ<select id="stockStatusSelect"><option value="">กรุณาเลือกสถานะ</option><option value="all">ทั้งหมด</option><option value="positive">คงเหลือปกติ</option><option value="low">ต่ำกว่าขั้นต่ำ</option><option value="out">สินค้าหมด</option><option value="expiry">ใกล้หมดอายุ</option><option value="expired">หมดอายุรอนำออก</option><option value="negative">ยอดติดลบ</option></select></label><label>หรือเลือกสินค้า<select id="stockMaterialSelect"><option value="">กรุณาเลือกสินค้า</option>${groups.map(g=>`<option value="${esc(g.material_code)}">${esc(g.material_code)} · ${esc(g.material_name)}</option>`).join('')}</select></label></section><div id="materialStockList" class="material-stock-list"></div>`;
+  page.innerHTML = `<div class="page-head stock-page-head"><div><h2>สต๊อกคงเหลือ</h2><p class="muted small">เลือกสถานะหรือสินค้า ระบบจึงจะแสดงรายการ เพื่อลดการโหลดข้อมูลจำนวนมาก</p></div><button class="mini" data-route="usage">${icon('chart')} วิเคราะห์การใช้</button></div><div class="stock-summary-strip"><div><span>สินค้า</span><strong>${groups.length}</strong><small>รายการ</small></div><div><span>Lot ใช้งาน</span><strong>${activeLots}</strong><small>Lot</small></div><div><span>ต่ำกว่าขั้นต่ำ</span><strong>${lowCount}</strong><small>รายการ</small></div><div><span>สินค้าหมด</span><strong>${outCount}</strong><small>รายการ</small></div><div><span>ใกล้หมดอายุ</span><strong>${nearCount}</strong><small>รายการ</small></div></div><section class="card stock-choice-card"><label>เลือกสถานะ<select id="stockStatusSelect"><option value="">กรุณาเลือกสถานะ</option><option value="all">ทั้งหมด</option><option value="positive">คงเหลือปกติ</option><option value="low">ต่ำกว่าขั้นต่ำ</option><option value="out">สินค้าหมด</option><option value="expiry">ใกล้หมดอายุ</option><option value="expired">หมดอายุรอนำออก</option><option value="negative">ยอดติดลบ</option></select></label><label>หรือเลือกสินค้า<select id="stockMaterialSelect"><option value="">กรุณาเลือกสินค้า</option>${groups.map(g=>`<option value="${esc(g.material_code)}">${esc(g.material_name)}</option>`).join('')}</select></label></section><div id="materialStockList" class="material-stock-list"></div>`;
   const statusSelect=$('#stockStatusSelect');
   const materialSelect=$('#stockMaterialSelect');
   statusSelect.value=selectedFilter;
@@ -743,14 +796,14 @@ function renderUsageResult(material, rows, fromDate, toDate, summary) {
   const months=monthKeys.slice(-18).map(k=>[k,map.get(k)||{receive:0,issue:0,expired:0}]);
   const max=Math.max(1,...months.flatMap(([,v])=>[v.receive,v.issue,v.expired]));
   const adjustment=rows.filter(x=>!['RECEIVE','ISSUE','EXPIRED'].includes(x.tx_type)).length;
-  return `<div class="usage-summary-head"><div><span class="material-code">${esc(material.code)}</span><h3>${esc(material.name)}</h3><p>${d(fromDate)} – ${d(toDate)} · ${days.toLocaleString('th-TH')} วัน</p></div><button class="mini ghost" data-material-detail="${esc(material.code)}">ดูสต๊อกปัจจุบัน</button></div><div class="usage-kpi-grid usage-kpi-grid-7"><div class="usage-kpi current"><span>คงเหลือปัจจุบัน</span><strong>${qty(summary?.total_balance || 0)}</strong><small>${esc(material.unit || '')}</small></div><div class="usage-kpi receive"><span>นำเข้าช่วงนี้</span><strong>${qty(received)}</strong><small>${esc(material.unit || '')} · ${receiveRows.length} ครั้ง</small></div><div class="usage-kpi issue"><span>นำออก/ใช้ช่วงนี้</span><strong>${qty(used)}</strong><small>${esc(material.unit || '')} · ${issueRows.length} ครั้ง</small></div><div class="usage-kpi expired"><span>หมดอายุช่วงนี้</span><strong>${qty(expired)}</strong><small>${esc(material.unit || '')} · ${expiredRows.length} ครั้ง</small></div><div class="usage-kpi"><span>เฉลี่ยต่อสัปดาห์</span><strong>${qty(avgWeek)}</strong><small>${esc(material.unit || '')}/สัปดาห์</small></div><div class="usage-kpi"><span>เฉลี่ยต่อเดือน</span><strong>${qty(avgMonth)}</strong><small>${esc(material.unit || '')}/เดือน</small></div><div class="usage-kpi"><span>เฉลี่ยต่อปี</span><strong>${qty(avgYear)}</strong><small>${esc(material.unit || '')}/ปี</small></div></div><div class="usage-grid"><section class="card usage-chart-card"><div class="section-title compact"><div><h3>นำเข้า–นำออก–หมดอายุ รายเดือน</h3><p class="muted small">แสดงสูงสุด 18 เดือนล่าสุดในช่วงที่เลือก</p></div><div class="chart-legend"><span class="receive">นำเข้า</span><span class="issue">นำออก</span><span class="expired">หมดอายุ</span></div></div><div class="usage-bars">${months.map(([k,v])=>`<div class="usage-bar-row"><span>${usageMonthLabel(k)}</span><div class="bar-pair"><div class="bar-track"><i class="receive" style="width:${v.receive/max*100}%"></i></div><div class="bar-track"><i class="issue" style="width:${v.issue/max*100}%"></i></div><div class="bar-track"><i class="expired" style="width:${v.expired/max*100}%"></i></div></div><div class="bar-values three"><b>+${qty(v.receive)}</b><b>-${qty(v.issue)}</b><b>หมด ${qty(v.expired)}</b></div></div>`).join('') || '<div class="empty">ไม่มีรายการในช่วงวันที่นี้</div>'}</div></section><section class="card usage-note-card"><h3>วิธีอ่านค่าเฉลี่ย</h3><p>ระบบนับ “การใช้” จากรายการ <b>นำออก (ISSUE)</b> เท่านั้น ส่วนของหมดอายุแสดงแยก ไม่รวมเป็นการใช้จริง</p><dl><div><dt>เฉลี่ย/สัปดาห์</dt><dd>ยอดใช้ ÷ จำนวนวัน × 7</dd></div><div><dt>เฉลี่ย/เดือน</dt><dd>ยอดใช้ ÷ จำนวนวัน × 30.44</dd></div><div><dt>เฉลี่ย/ปี</dt><dd>ยอดใช้ ÷ จำนวนวัน × 365.25</dd></div></dl>${adjustment?`<p class="usage-warning">พบรายการปรับยอด/ชำรุด ${adjustment} รายการ ซึ่งไม่รวมในการคำนวณการใช้</p>`:''}</section></div><section class="card usage-history-card"><div class="section-title compact"><div><h3>ประวัติของสินค้านี้</h3><p class="muted small">${rows.length.toLocaleString('th-TH')} รายการในช่วงที่เลือก</p></div></div><div class="table-wrap"><table class="data-table"><thead><tr><th>วันเวลา</th><th>ประเภท</th><th>Lot</th><th>เปลี่ยนแปลง</th><th>ยอดหลังทำ</th><th>ผู้บันทึก</th></tr></thead><tbody>${rows.slice(0,300).map(x=>`<tr><td>${dt(x.created_at)}</td><td>${x.tx_type==='RECEIVE'?'<span class="badge ok">นำเข้า</span>':x.tx_type==='ISSUE'?'<span class="badge info">นำออก</span>':x.tx_type==='EXPIRED'?'<span class="badge danger">หมดอายุ</span>':`<span class="badge warn">${esc(x.tx_type)}</span>`}</td><td>${esc(x.lot_key)}</td><td class="${x.tx_type==='ISSUE'?'negative-text':x.tx_type==='EXPIRED'?'expired-text':'positive-text'}">${x.tx_type==='RECEIVE'?'+':''}${qty(x.quantity_delta)} ${esc(x.unit)}</td><td>${qty(x.quantity_after)}</td><td>${esc(x.created_by_name || x.created_by_email || 'SYSTEM')}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">ไม่มีข้อมูล</td></tr>'}</tbody></table></div>${rows.length>300?'<p class="field-hint">ตารางแสดง 300 รายการล่าสุด แต่ค่ารวมคำนวณจากข้อมูลทั้งหมด</p>':''}</section>`;
+  return `<div class="usage-summary-head"><div><h3>${esc(material.name)}</h3><p>${d(fromDate)} – ${d(toDate)} · ${days.toLocaleString('th-TH')} วัน</p></div><button class="mini ghost" data-material-detail="${esc(material.code)}">ดูสต๊อกปัจจุบัน</button></div><div class="usage-kpi-grid usage-kpi-grid-7"><div class="usage-kpi current"><span>คงเหลือปัจจุบัน</span><strong>${qty(summary?.total_balance || 0)}</strong><small>${esc(material.unit || '')}</small></div><div class="usage-kpi receive"><span>นำเข้าช่วงนี้</span><strong>${qty(received)}</strong><small>${esc(material.unit || '')} · ${receiveRows.length} ครั้ง</small></div><div class="usage-kpi issue"><span>นำออก/ใช้ช่วงนี้</span><strong>${qty(used)}</strong><small>${esc(material.unit || '')} · ${issueRows.length} ครั้ง</small></div><div class="usage-kpi expired"><span>หมดอายุช่วงนี้</span><strong>${qty(expired)}</strong><small>${esc(material.unit || '')} · ${expiredRows.length} ครั้ง</small></div><div class="usage-kpi"><span>เฉลี่ยต่อสัปดาห์</span><strong>${qty(avgWeek)}</strong><small>${esc(material.unit || '')}/สัปดาห์</small></div><div class="usage-kpi"><span>เฉลี่ยต่อเดือน</span><strong>${qty(avgMonth)}</strong><small>${esc(material.unit || '')}/เดือน</small></div><div class="usage-kpi"><span>เฉลี่ยต่อปี</span><strong>${qty(avgYear)}</strong><small>${esc(material.unit || '')}/ปี</small></div></div><div class="usage-grid"><section class="card usage-chart-card"><div class="section-title compact"><div><h3>นำเข้า–นำออก–หมดอายุ รายเดือน</h3><p class="muted small">แสดงสูงสุด 18 เดือนล่าสุดในช่วงที่เลือก</p></div><div class="chart-legend"><span class="receive">นำเข้า</span><span class="issue">นำออก</span><span class="expired">หมดอายุ</span></div></div><div class="usage-bars">${months.map(([k,v])=>`<div class="usage-bar-row"><span>${usageMonthLabel(k)}</span><div class="bar-pair"><div class="bar-track"><i class="receive" style="width:${v.receive/max*100}%"></i></div><div class="bar-track"><i class="issue" style="width:${v.issue/max*100}%"></i></div><div class="bar-track"><i class="expired" style="width:${v.expired/max*100}%"></i></div></div><div class="bar-values three"><b>+${qty(v.receive)}</b><b>-${qty(v.issue)}</b><b>หมด ${qty(v.expired)}</b></div></div>`).join('') || '<div class="empty">ไม่มีรายการในช่วงวันที่นี้</div>'}</div></section><section class="card usage-note-card"><h3>วิธีอ่านค่าเฉลี่ย</h3><p>ระบบนับ “การใช้” จากรายการ <b>นำออก (ISSUE)</b> เท่านั้น ส่วนของหมดอายุแสดงแยก ไม่รวมเป็นการใช้จริง</p><dl><div><dt>เฉลี่ย/สัปดาห์</dt><dd>ยอดใช้ ÷ จำนวนวัน × 7</dd></div><div><dt>เฉลี่ย/เดือน</dt><dd>ยอดใช้ ÷ จำนวนวัน × 30.44</dd></div><div><dt>เฉลี่ย/ปี</dt><dd>ยอดใช้ ÷ จำนวนวัน × 365.25</dd></div></dl>${adjustment?`<p class="usage-warning">พบรายการปรับยอด/ชำรุด ${adjustment} รายการ ซึ่งไม่รวมในการคำนวณการใช้</p>`:''}</section></div><section class="card usage-history-card"><div class="section-title compact"><div><h3>ประวัติของสินค้านี้</h3><p class="muted small">${rows.length.toLocaleString('th-TH')} รายการในช่วงที่เลือก</p></div></div><div class="table-wrap"><table class="data-table"><thead><tr><th>วันเวลา</th><th>ประเภท</th><th>Lot</th><th>เปลี่ยนแปลง</th><th>ยอดหลังทำ</th><th>ผู้บันทึก</th></tr></thead><tbody>${rows.slice(0,300).map(x=>`<tr><td>${dt(x.created_at)}</td><td>${x.tx_type==='RECEIVE'?'<span class="badge ok">นำเข้า</span>':x.tx_type==='ISSUE'?'<span class="badge info">นำออก</span>':x.tx_type==='EXPIRED'?'<span class="badge danger">หมดอายุ</span>':`<span class="badge warn">${esc(x.tx_type)}</span>`}</td><td>${esc(x.lot_key)}</td><td class="${x.tx_type==='ISSUE'?'negative-text':x.tx_type==='EXPIRED'?'expired-text':'positive-text'}">${x.tx_type==='RECEIVE'?'+':''}${qty(x.quantity_delta)} ${esc(x.unit)}</td><td>${qty(x.quantity_after)}</td><td>${esc(x.created_by_name || x.created_by_email || 'SYSTEM')}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">ไม่มีข้อมูล</td></tr>'}</tbody></table></div>${rows.length>300?'<p class="field-hint">ตารางแสดง 300 รายการล่าสุด แต่ค่ารวมคำนวณจากข้อมูลทั้งหมด</p>':''}</section>`;
 }
 
 async function renderUsage(selectedCode = '') {
   const mats = await loadMaterials();
   const today=new Date(), start=new Date(today); start.setFullYear(start.getFullYear()-1); start.setDate(start.getDate()+1);
   const initial=selectedCode && mats.some(m=>m.code===selectedCode) ? selectedCode : '';
-  page.innerHTML = `<div class="page-head"><div><h2>วิเคราะห์การใช้สินค้า</h2><p class="muted small">เลือกสินค้าและช่วงวันที่ก่อน ระบบจึงจะโหลดประวัติ</p></div></div><form id="usageFilterForm" class="card usage-filter-card"><label>สินค้า<select id="usageMaterial" required><option value="">กรุณาเลือกสินค้า</option>${mats.map(m=>`<option value="${esc(m.code)}" ${m.code===initial?'selected':''}>${esc(m.code)} · ${esc(m.name)}</option>`).join('')}</select></label><div class="form-grid two"><label>ตั้งแต่วันที่<input id="usageFrom" type="date" value="${dateInputValue(start)}" required></label><label>ถึงวันที่<input id="usageTo" type="date" value="${dateInputValue(today)}" required></label></div><div class="usage-filter-actions"><div class="preset-group"><button type="button" data-usage-days="30">30 วัน</button><button type="button" data-usage-days="90">90 วัน</button><button type="button" data-usage-days="365" class="active">1 ปี</button><button type="button" data-usage-all>ทั้งหมด</button></div><button class="primary" type="submit">${icon('chart')} คำนวณ</button></div></form><div id="usageResult"><div class="card select-first-state">${icon('chart')}<div><strong>กรุณาเลือกสินค้า</strong><span>ยังไม่มีการโหลดประวัติ จนกว่าจะเลือกสินค้าและกดคำนวณ</span></div></div></div>`;
+  page.innerHTML = `<div class="page-head"><div><h2>วิเคราะห์การใช้สินค้า</h2><p class="muted small">เลือกสินค้าและช่วงวันที่ก่อน ระบบจึงจะโหลดประวัติ</p></div></div><form id="usageFilterForm" class="card usage-filter-card"><label>สินค้า<select id="usageMaterial" required><option value="">กรุณาเลือกสินค้า</option>${mats.map(m=>`<option value="${esc(m.code)}" ${m.code===initial?'selected':''}>${esc(m.name)}</option>`).join('')}</select></label><div class="form-grid two"><label>ตั้งแต่วันที่<input id="usageFrom" type="date" value="${dateInputValue(start)}" required></label><label>ถึงวันที่<input id="usageTo" type="date" value="${dateInputValue(today)}" required></label></div><div class="usage-filter-actions"><div class="preset-group"><button type="button" data-usage-days="30">30 วัน</button><button type="button" data-usage-days="90">90 วัน</button><button type="button" data-usage-days="365" class="active">1 ปี</button><button type="button" data-usage-all>ทั้งหมด</button></div><button class="primary" type="submit">${icon('chart')} คำนวณ</button></div></form><div id="usageResult"><div class="card select-first-state">${icon('chart')}<div><strong>กรุณาเลือกสินค้า</strong><span>ยังไม่มีการโหลดประวัติ จนกว่าจะเลือกสินค้าและกดคำนวณ</span></div></div></div>`;
   const load = async () => {
     const code=$('#usageMaterial').value, from=$('#usageFrom').value, to=$('#usageTo').value;
     if (!code) return toast('กรุณาเลือกสินค้า',true);
@@ -779,7 +832,7 @@ async function renderUrgent() {
   const low = (summaryRes.data || []).filter(x => Number(x.total_balance || 0) > 0 && Number(x.total_balance || 0) <= Number(x.min_qty || 0));
   const out = (summaryRes.data || []).filter(x => Number(x.total_balance || 0) <= 0);
   updateUrgentBadge(expired.length + low.length + out.length);
-  page.innerHTML = `<div class="page-head"><div><h2>ติดตามเร่งด่วน</h2><p class="muted small">จัดการของหมดอายุและรายการต่ำกว่าขั้นต่ำก่อน</p></div><span class="badge danger">${expired.length + low.length + out.length} รายการ</span></div><section class="urgent-banner"><div>${icon('alert')}<strong>ของหมดอายุจะไม่ถูกตัดยอดเอง</strong><p>ให้ผู้ดูแลยืนยันว่าได้นำออกจากพื้นที่แล้วในเมนูตรวจวันศุกร์ จากนั้นสัปดาห์ถัดไปจะไม่แสดงซ้ำ</p></div><button class="primary" data-route="weekly">ไปตรวจวันศุกร์</button></section><div class="section-title"><h3>หมดอายุ · รอนำออก (${expired.length})</h3></div><div class="list">${expired.map(lotCard).join('') || '<div class="card empty">ไม่มี Lot หมดอายุค้าง</div>'}</div><div class="section-title"><h3>ต่ำกว่าขั้นต่ำ / หมด (${low.length + out.length})</h3></div><div class="table-wrap"><table class="data-table"><thead><tr><th>สินค้า</th><th>คงเหลือ</th><th>ขั้นต่ำ</th><th>ผู้ดูแล</th><th>สถานะ</th></tr></thead><tbody>${[...out,...low].map(x => `<tr><td><strong>${esc(x.material_name)}</strong><div class="muted tiny">${esc(x.material_code)}</div></td><td>${qty(x.total_balance)} ${esc(x.unit)}</td><td>${qty(x.min_qty)}</td><td>${esc(x.responsible_name || '-')}</td><td>${Number(x.total_balance) <= 0 ? '<span class="badge danger">หมด</span>' : '<span class="badge warn">ต่ำกว่าขั้นต่ำ</span>'}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">ไม่มีรายการ</td></tr>'}</tbody></table></div>`;
+  page.innerHTML = `<div class="page-head"><div><h2>ติดตามเร่งด่วน</h2><p class="muted small">จัดการของหมดอายุและรายการต่ำกว่าขั้นต่ำก่อน</p></div><span class="badge danger">${expired.length + low.length + out.length} รายการ</span></div><section class="urgent-banner"><div>${icon('alert')}<strong>ของหมดอายุจะไม่ถูกตัดยอดเอง</strong><p>ให้ผู้ดูแลยืนยันว่าได้นำออกจากพื้นที่แล้วในเมนูตรวจวันศุกร์ จากนั้นสัปดาห์ถัดไปจะไม่แสดงซ้ำ</p></div><button class="primary" data-route="weekly">ไปตรวจวันศุกร์</button></section><div class="section-title"><h3>หมดอายุ · รอนำออก (${expired.length})</h3></div><div class="list">${expired.map(lotCard).join('') || '<div class="card empty">ไม่มี Lot หมดอายุค้าง</div>'}</div><div class="section-title"><h3>ต่ำกว่าขั้นต่ำ / หมด (${low.length + out.length})</h3></div><div class="table-wrap"><table class="data-table"><thead><tr><th>สินค้า</th><th>คงเหลือ</th><th>ขั้นต่ำ</th><th>ผู้ดูแล</th><th>สถานะ</th></tr></thead><tbody>${[...out,...low].map(x => `<tr><td><strong>${esc(x.material_name)}</strong></td><td>${qty(x.total_balance)} ${esc(x.unit)}</td><td>${qty(x.min_qty)}</td><td>${esc(x.responsible_name || '-')}</td><td>${Number(x.total_balance) <= 0 ? '<span class="badge danger">หมด</span>' : '<span class="badge warn">ต่ำกว่าขั้นต่ำ</span>'}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">ไม่มีรายการ</td></tr>'}</tbody></table></div>`;
 }
 
 async function printLabel(lotId) {
@@ -823,7 +876,7 @@ async function loadMaterials() {
 }
 
 function transactionRows(rows) {
-  return (rows || []).map(x => `<tr><td>${dt(x.created_at)}</td><td><strong>${esc(x.material_name)}</strong><div class="muted tiny">${esc(x.canonical_code)}${x.legacy_material_code ? ` · รหัสเดิม ${esc(x.legacy_material_code)}` : ''}</div></td><td><span class="code-pill">${esc(x.lot_key)}</span></td><td>${x.tx_type === 'RECEIVE' ? '+' : ''}${qty(x.quantity_delta)} ${esc(x.unit)}</td><td>${qty(x.quantity_after)}</td><td>${esc(x.created_by_name || x.created_by_email || 'SYSTEM')}</td></tr>`).join('');
+  return (rows || []).map(x => `<tr><td>${dt(x.created_at)}</td><td><strong>${esc(x.material_name)}</strong></td><td><span class="code-pill">${esc(x.lot_key)}</span></td><td>${x.tx_type === 'RECEIVE' ? '+' : ''}${qty(x.quantity_delta)} ${esc(x.unit)}</td><td>${qty(x.quantity_after)}</td><td>${esc(x.created_by_name || x.created_by_email || 'SYSTEM')}</td></tr>`).join('');
 }
 
 async function renderMove(defaultTab = 'receive') {
@@ -841,7 +894,7 @@ async function renderMove(defaultTab = 'receive') {
       ]);
       if (historyRes.error) throw historyRes.error;
       const historyRows=historyRes.data || [];
-      $('#movePane').innerHTML = `<div class="move-layout"><form id="receiveForm" class="card form-card form-grid"><div class="form-title"><span>${icon('plus')}</span><div><h3>บันทึกนำเข้า</h3><p>เพิ่ม Lot ใหม่หรือเพิ่มจำนวนใน Lot เดิม</p></div></div><label>วัสดุ<select id="rMat" required><option value="">กรุณาเลือกวัสดุ</option>${mats.map(m => `<option value="${esc(m.code)}">${esc(m.code)} · ${esc(m.name)}</option>`).join('')}</select></label><div class="form-grid two"><label>Lot<input id="rLot" required autocomplete="off" autocapitalize="characters" maxlength="60" pattern="[A-Za-z0-9]+" placeholder="เช่น 8A145"><small id="lotRule" class="field-hint lot-rule">กรอกเฉพาะตัวเลข 0–9 และ/หรือตัวอักษรภาษาอังกฤษ A–Z เท่านั้น</small></label><label>วันหมดอายุ<input id="rExp" type="date"></label></div><label>จำนวน<input id="rQty" type="number" min="0.01" step="0.01" required inputmode="decimal"></label><p class="field-hint">ระบบจะป้องกันอักษรไทย สระ ช่องว่าง และอักขระพิเศษใน Lot เพื่อไม่ให้ QR ผิด</p><button class="primary" type="submit">${icon('plus')} บันทึกนำเข้า</button></form><section class="card history-card"><div class="section-title compact"><div><h3>ประวัตินำเข้าล่าสุด</h3><p class="muted small">โหลดเฉพาะ 60 รายการล่าสุด</p></div><button class="mini ghost" data-route="reports">ดูรายงาน</button></div><div class="table-wrap"><table class="data-table"><thead><tr><th>วันเวลา</th><th>สินค้า</th><th>Lot</th><th>จำนวน</th><th>ยอดหลังทำ</th><th>ผู้บันทึก</th></tr></thead><tbody>${transactionRows(historyRows.slice(0,30)) || '<tr><td colspan="6" class="empty">ไม่มีรายการ</td></tr>'}</tbody></table></div></section></div>`;
+      $('#movePane').innerHTML = `<div class="move-layout"><form id="receiveForm" class="card form-card form-grid"><div class="form-title"><span>${icon('plus')}</span><div><h3>บันทึกนำเข้า</h3><p>เพิ่ม Lot ใหม่หรือเพิ่มจำนวนใน Lot เดิม</p></div></div><label>วัสดุ<select id="rMat" required><option value="">กรุณาเลือกวัสดุ</option>${mats.map(m => `<option value="${esc(m.code)}">${esc(m.name)}</option>`).join('')}</select></label><div class="form-grid two"><label>Lot<input id="rLot" required autocomplete="off" autocapitalize="characters" maxlength="60" pattern="[A-Za-z0-9]+" placeholder="เช่น 8A145"><small id="lotRule" class="field-hint lot-rule">กรอกเฉพาะตัวเลข 0–9 และ/หรือตัวอักษรภาษาอังกฤษ A–Z เท่านั้น</small></label><label>วันหมดอายุ<input id="rExp" type="date"></label></div><label>จำนวน<input id="rQty" type="number" min="0.01" step="0.01" required inputmode="decimal"></label><p class="field-hint">ระบบจะป้องกันอักษรไทย สระ ช่องว่าง และอักขระพิเศษใน Lot เพื่อไม่ให้ QR ผิด</p><button class="primary" type="submit">${icon('plus')} บันทึกนำเข้า</button></form><section class="card history-card"><div class="section-title compact"><div><h3>ประวัตินำเข้าล่าสุด</h3><p class="muted small">โหลดเฉพาะ 60 รายการล่าสุด</p></div><button class="mini ghost" data-route="reports">ดูรายงาน</button></div><div class="table-wrap"><table class="data-table"><thead><tr><th>วันเวลา</th><th>สินค้า</th><th>Lot</th><th>จำนวน</th><th>ยอดหลังทำ</th><th>ผู้บันทึก</th></tr></thead><tbody>${transactionRows(historyRows.slice(0,30)) || '<tr><td colspan="6" class="empty">ไม่มีรายการ</td></tr>'}</tbody></table></div></section></div>`;
       const lotInput=$('#rLot');
       const validateLot=()=>{
         const value=lotInput.value.trim();
@@ -869,7 +922,7 @@ async function renderMove(defaultTab = 'receive') {
       const select = $('#iLot');
       const showSelected = () => {
         const l = usableLots.find(x => x.lot_id === select.value);
-        $('#selectedLot').innerHTML = l ? `<div class="selected-lot"><div><strong>${esc(l.material_code)} · ${esc(l.material_name)}</strong><small>${esc(lotKey(l))} · EXP ${d(l.expiry_date)}</small></div><span class="badge info">เหลือ ${qty(l.balance)} ${esc(l.unit)}</span></div>` : '';
+        $('#selectedLot').innerHTML = l ? `<div class="selected-lot"><div><strong>${esc(l.material_name)}</strong><small>${esc(lotKey(l))} · EXP ${d(l.expiry_date)}</small></div><span class="badge info">เหลือ ${qty(l.balance)} ${esc(l.unit)}</span></div>` : '';
       };
       select.addEventListener('change', showSelected);
       $('#findIssueCode').addEventListener('click', () => {
@@ -957,7 +1010,7 @@ async function resolveIssueCode(code) {
 function openIssueModal(l) {
   if (!l || Number(l.balance) <= 0) return toast('Lot นี้ไม่มียอดคงเหลือ', true);
   if (isExpired(l)) return toast('Lot นี้หมดอายุแล้ว ให้ยืนยันนำออกจากพื้นที่ในเมนูตรวจวันศุกร์', true);
-  openModal(`<h3>นำออกจาก QR Sticker</h3><div class="selected-lot"><div><strong>${esc(l.material_code)} · ${esc(l.material_name)}</strong><small>${esc(lotKey(l))} · EXP ${d(l.expiry_date)}</small></div><span class="badge info">เหลือ ${qty(l.balance)} ${esc(l.unit)}</span></div><div class="notice">ระบบล็อกให้ตัดออกครั้งละ 1 หน่วยต่อ 1 ครั้ง</div><form id="quickIssueForm" class="form-grid" style="margin-top:15px"><label>หมายเหตุ<textarea id="quickIssueReason" rows="2" placeholder="ระบุเมื่อต้องการ"></textarea></label><button class="primary" type="submit">${icon('minus')} ยืนยันนำออก 1 หน่วย</button></form>`);
+  openModal(`<h3>นำออกจาก QR Sticker</h3><div class="selected-lot"><div><strong>${esc(l.material_name)}</strong><small>${esc(lotKey(l))} · EXP ${d(l.expiry_date)}</small></div><span class="badge info">เหลือ ${qty(l.balance)} ${esc(l.unit)}</span></div><div class="notice">ระบบล็อกให้ตัดออกครั้งละ 1 หน่วยต่อ 1 ครั้ง</div><form id="quickIssueForm" class="form-grid" style="margin-top:15px"><label>หมายเหตุ<textarea id="quickIssueReason" rows="2" placeholder="ระบุเมื่อต้องการ"></textarea></label><button class="primary" type="submit">${icon('minus')} ยืนยันนำออก 1 หน่วย</button></form>`);
   $('#quickIssueForm').addEventListener('submit', async e => {
     e.preventDefault();
     const btn = e.submitter;
@@ -989,36 +1042,85 @@ async function openPendingIssue() {
 }
 
 async function startCameraScanner() {
-  if (!('BarcodeDetector' in window) || !navigator.mediaDevices?.getUserMedia) {
-    openModal(`<h3>สแกน QR บนมือถือ</h3><p>เบราว์เซอร์นี้ยังไม่รองรับกล้องสแกนภายในแอป ให้เปิดกล้องปกติของ iPhone หรือ Android แล้วสแกน QR Sticker</p><form id="manualScanForm" class="form-grid"><label>หรือพิมพ์รหัส QR<input id="manualScanCode" placeholder="เช่น BB020-69020" autocomplete="off"></label><button class="primary" type="submit">ค้นหา Lot</button></form>`);
+  if (!navigator.mediaDevices?.getUserMedia) {
+    openModal(`<h3>อุปกรณ์นี้เปิดกล้องไม่ได้</h3><p>กรุณาเปิดแอปผ่าน Safari หรือ Chrome และตรวจว่าเว็บไซต์ได้รับอนุญาตให้ใช้กล้อง</p><form id="manualScanForm" class="form-grid"><label>พิมพ์รหัส QR<input id="manualScanCode" placeholder="เช่น BB020-69020" autocomplete="off"></label><button class="primary" type="submit">ค้นหา Lot</button></form>`);
     $('#manualScanForm').addEventListener('submit', e => { e.preventDefault(); const code = $('#manualScanCode').value; closeModal(); resolveIssueCode(code); });
     return;
   }
-  openModal(`<h3>สแกน QR Sticker</h3><div class="scan-video-wrap"><video id="scanVideo" autoplay playsinline muted></video><div class="scan-frame"></div></div><p class="muted small">วาง QR ให้อยู่ในกรอบ ระบบรองรับทั้งรหัสใหม่และ Old code เดิม</p>`);
+
+  openModal(`<div class="scanner-head"><div><h3>สแกน QR Sticker</h3><p>หันกล้องหลังไปที่ QR และให้อยู่ภายในกรอบ</p></div><button class="icon-button modal-close" type="button" aria-label="ปิด">×</button></div><div class="scan-video-wrap"><video id="scanVideo" autoplay playsinline muted></video><canvas id="scanCanvas" hidden></canvas><div class="scan-frame"></div><div id="scanStatus" class="scan-status">กำลังเปิดกล้อง…</div></div><p class="muted small">รองรับ QR Sticker เดิมและรหัส Lot เดิม</p><form id="manualScanForm" class="scanner-manual form-grid"><label>หรือพิมพ์รหัส QR<input id="manualScanCode" placeholder="เช่น BB020-69020" autocomplete="off"></label><button class="secondary" type="submit">ค้นหา Lot</button></form>`);
+  $('#manualScanForm').addEventListener('submit', e => { e.preventDefault(); const code = $('#manualScanCode').value; closeModal(); resolveIssueCode(code); });
+
+  const status = $('#scanStatus');
   try {
-    const detector = new BarcodeDetector({formats:['qr_code']});
-    scannerStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}, audio:false});
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{exact:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});
+    } catch (_) {
+      stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});
+    }
+    scannerStream = stream;
     const video = $('#scanVideo');
+    const canvas = $('#scanCanvas');
+    const ctx = canvas.getContext('2d', {willReadFrequently:true});
     video.srcObject = scannerStream;
     await video.play();
+
+    let detector = null;
+    if ('BarcodeDetector' in window) {
+      try { detector = new BarcodeDetector({formats:['qr_code']}); } catch (_) {}
+    }
+    const decoderReady = detector ? true : await ensureQrDecoder();
+    if (!detector && !decoderReady) throw new Error('โหลดตัวอ่าน QR ไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่');
+    status.textContent = 'พร้อมสแกน QR';
+
+    let busy = false;
+    const finish = value => {
+      if (!value) return false;
+      stopScanner();
+      closeModal();
+      resolveIssueCode(value);
+      return true;
+    };
     const scan = async () => {
       if (!scannerStream || $('#modal').classList.contains('hidden')) return;
-      try {
-        const codes = await detector.detect(video);
-        if (codes?.[0]?.rawValue) {
-          const value = codes[0].rawValue;
-          stopScanner();
-          closeModal();
-          resolveIssueCode(value);
-          return;
+      if (!busy && video.readyState >= 2) {
+        busy = true;
+        try {
+          if (detector) {
+            const codes = await detector.detect(video);
+            if (finish(codes?.[0]?.rawValue)) return;
+          } else if (typeof window.jsQR === 'function') {
+            const sourceW = video.videoWidth || 640;
+            const sourceH = video.videoHeight || 480;
+            const scale = Math.min(1, 720 / sourceW);
+            canvas.width = Math.max(320, Math.round(sourceW * scale));
+            canvas.height = Math.max(240, Math.round(sourceH * scale));
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const result = window.jsQR(image.data, image.width, image.height, {inversionAttempts:'attemptBoth'});
+            if (finish(result?.data)) return;
+          }
+        } catch (_) {
+        } finally {
+          busy = false;
         }
-      } catch (_) {}
-      scannerTimer = setTimeout(scan, 280);
+      }
+      scannerTimer = setTimeout(scan, 160);
     };
     scan();
   } catch (e) {
     stopScanner();
-    $('#modalBody').innerHTML = `<h3>เปิดกล้องไม่สำเร็จ</h3><p>${esc(errMsg(e))}</p><p class="muted small">ใช้กล้องปกติของโทรศัพท์สแกน QR Sticker หรือพิมพ์รหัสในหน้าเบิกออกได้</p>`;
+    const name = e?.name || '';
+    const message = name === 'NotAllowedError'
+      ? 'ยังไม่ได้อนุญาตให้ใช้กล้อง กรุณาเปิดการอนุญาตกล้องของ Safari/Chrome แล้วกดลองใหม่'
+      : name === 'NotFoundError'
+        ? 'ไม่พบกล้องบนอุปกรณ์นี้'
+        : name === 'NotReadableError'
+          ? 'กล้องอาจถูกแอปอื่นใช้งานอยู่ กรุณาปิดแอปกล้องแล้วลองใหม่'
+          : errMsg(e);
+    $('#modalBody').innerHTML = `<h3>เปิดกล้องไม่สำเร็จ</h3><p>${esc(message)}</p><form id="manualScanForm" class="form-grid"><label>พิมพ์รหัส QR<input id="manualScanCode" placeholder="เช่น BB020-69020" autocomplete="off"></label><button class="primary" type="submit">ค้นหา Lot</button></form>`;
+    $('#manualScanForm').addEventListener('submit', ev => { ev.preventDefault(); const code = $('#manualScanCode').value; closeModal(); resolveIssueCode(code); });
   }
 }
 
@@ -1042,7 +1144,7 @@ function weeklyItemCard(x) {
   else if (!canHandleItem(x)) action = `<span class="badge">รอ ${esc(x.responsible_name || 'ผู้ดูแล')}</span>`;
   else if (expired) action = `<button class="mini danger" data-expired-remove="${esc(x.item_id)}">ยืนยันนำออก</button>`;
   else action = `<button class="mini" data-check="${esc(x.item_id)}">ตรวจ</button>`;
-  return `<div class="card check-card ${x.checked_at ? (x.result === 'ADJUSTED' ? 'mismatch' : x.result === 'EXPIRED_REMOVED' ? 'expired-done' : 'checked') : expired ? 'expired-card' : ''}"><div class="check-info"><div><strong>${esc(x.material_code)} · ${esc(x.material_name)}</strong><div class="lot-meta">${esc(lotKey(x))} · ระบบ ${qty(x.current_balance)} ${esc(x.unit)} · EXP ${d(x.expiry_date)}</div><div class="lot-meta">ผู้ดูแล: ${esc(x.responsible_name || '-')}</div>${expired ? '<div class="expired-callout">หมดอายุแล้ว: ไม่ต้องนับ ให้ตรวจว่านำออกจากพื้นที่จริงแล้ว</div>' : ''}${x.checked_at ? `<div class="lot-meta">ดำเนินการโดย ${esc(x.checked_by_name || x.checked_by_email)} · ${dt(x.checked_at)}</div>` : ''}</div>${action}</div></div>`;
+  return `<div class="card check-card ${x.checked_at ? (x.result === 'ADJUSTED' ? 'mismatch' : x.result === 'EXPIRED_REMOVED' ? 'expired-done' : 'checked') : expired ? 'expired-card' : ''}"><div class="check-info"><div><strong>${esc(x.material_name)}</strong><div class="lot-meta">${esc(lotKey(x))} · ระบบ ${qty(x.current_balance)} ${esc(x.unit)} · EXP ${d(x.expiry_date)}</div><div class="lot-meta">ผู้ดูแล: ${esc(x.responsible_name || '-')}</div>${expired ? '<div class="expired-callout">หมดอายุแล้ว: ไม่ต้องนับ ให้ตรวจว่านำออกจากพื้นที่จริงแล้ว</div>' : ''}${x.checked_at ? `<div class="lot-meta">ดำเนินการโดย ${esc(x.checked_by_name || x.checked_by_email)} · ${dt(x.checked_at)}</div>` : ''}</div>${action}</div></div>`;
 }
 
 async function renderWeekly() {
@@ -1096,7 +1198,7 @@ function openCheck(id) {
   if (!x) return;
   if (!canHandleItem(x)) return toast('รายการนี้เป็นความรับผิดชอบของ ' + (x.responsible_name || x.responsible_email), true);
   if (isExpired(x)) return openExpiredRemoval(id);
-  openModal(`<h3>${esc(x.material_code)} · ${esc(x.material_name)}</h3><p class="muted">${esc(lotKey(x))} · ยอดปัจจุบัน ${qty(x.current_balance)} ${esc(x.unit)}</p><form id="checkForm" class="form-grid"><label>จำนวนที่พบจริง<input id="actualQty" type="number" min="0" step="0.01" value="${Number(x.current_balance)}" required inputmode="decimal"></label><div id="reasonFields" class="form-grid hidden"><label>เหตุผล<select id="reasonCode"><option value="">เลือกเหตุผล</option><option>นำออกแล้วไม่ได้บันทึก</option><option>รับเข้าหรือนำออกผิดจำนวน</option><option>สูญหายหรือหาไม่พบ</option><option>ชำรุด</option><option>นับครั้งก่อนผิด</option><option>Lot หรือสติ๊กเกอร์ไม่ตรง</option><option>อื่น ๆ</option></select></label><label>รายละเอียด<textarea id="reasonDetail" rows="3"></textarea></label></div><button class="primary" type="submit">บันทึกผลตรวจ</button></form>`);
+  openModal(`<h3>${esc(x.material_name)}</h3><p class="muted">${esc(lotKey(x))} · ยอดปัจจุบัน ${qty(x.current_balance)} ${esc(x.unit)}</p><form id="checkForm" class="form-grid"><label>จำนวนที่พบจริง<input id="actualQty" type="number" min="0" step="0.01" value="${Number(x.current_balance)}" required inputmode="decimal"></label><div id="reasonFields" class="form-grid hidden"><label>เหตุผล<select id="reasonCode"><option value="">เลือกเหตุผล</option><option>นำออกแล้วไม่ได้บันทึก</option><option>รับเข้าหรือนำออกผิดจำนวน</option><option>สูญหายหรือหาไม่พบ</option><option>ชำรุด</option><option>นับครั้งก่อนผิด</option><option>Lot หรือสติ๊กเกอร์ไม่ตรง</option><option>อื่น ๆ</option></select></label><label>รายละเอียด<textarea id="reasonDetail" rows="3"></textarea></label></div><button class="primary" type="submit">บันทึกผลตรวจ</button></form>`);
   const toggle = () => $('#reasonFields').classList.toggle('hidden', Number($('#actualQty').value) === Number(x.current_balance));
   $('#actualQty').addEventListener('input', toggle);
   $('#checkForm').addEventListener('submit', async e => {
@@ -1123,7 +1225,7 @@ function openExpiredRemoval(id) {
   const x = (window._weeklyItems || []).find(i => i.item_id === id);
   if (!x) return;
   if (!canHandleItem(x)) return toast('รายการนี้เป็นความรับผิดชอบของ ' + (x.responsible_name || x.responsible_email), true);
-  openModal(`<h3>ยืนยันนำ Lot หมดอายุออกจากพื้นที่</h3><div class="expired-confirm-card"><strong>${esc(x.material_code)} · ${esc(x.material_name)}</strong><span>${esc(lotKey(x))}</span><span>EXP ${d(x.expiry_date)} · คงเหลือในระบบ ${qty(x.current_balance)} ${esc(x.unit)}</span></div><form id="expiredForm" class="form-grid"><label class="confirm-check"><input id="expiredConfirm" type="checkbox" required><span>ตรวจแล้วว่า Lot นี้ถูกนำออกจากชั้น/ตู้/พื้นที่ใช้งานจริง</span></label><label>หมายเหตุ<textarea id="expiredNote" rows="3" placeholder="เช่น นำไปจุดพักของหมดอายุแล้ว"></textarea></label><p class="notice">เมื่อยืนยัน ระบบจะตัดยอดเป็น 0 ปิด Lot และสัปดาห์หน้าจะไม่ต้องตรวจซ้ำ</p><button class="danger" type="submit">${icon('check')} ยืนยันนำออกจากพื้นที่แล้ว</button></form>`);
+  openModal(`<h3>ยืนยันนำ Lot หมดอายุออกจากพื้นที่</h3><div class="expired-confirm-card"><strong>${esc(x.material_name)}</strong><span>${esc(lotKey(x))}</span><span>EXP ${d(x.expiry_date)} · คงเหลือในระบบ ${qty(x.current_balance)} ${esc(x.unit)}</span></div><form id="expiredForm" class="form-grid"><label class="confirm-check"><input id="expiredConfirm" type="checkbox" required><span>ตรวจแล้วว่า Lot นี้ถูกนำออกจากชั้น/ตู้/พื้นที่ใช้งานจริง</span></label><label>หมายเหตุ<textarea id="expiredNote" rows="3" placeholder="เช่น นำไปจุดพักของหมดอายุแล้ว"></textarea></label><p class="notice">เมื่อยืนยัน ระบบจะตัดยอดเป็น 0 ปิด Lot และสัปดาห์หน้าจะไม่ต้องตรวจซ้ำ</p><button class="danger" type="submit">${icon('check')} ยืนยันนำออกจากพื้นที่แล้ว</button></form>`);
   $('#expiredForm').addEventListener('submit', async e => {
     e.preventDefault();
     if (!$('#expiredConfirm').checked) return toast('กรุณายืนยันว่าได้นำออกจากพื้นที่จริงแล้ว', true);
@@ -1204,7 +1306,7 @@ async function renderReports(defaultTab = '') {
     if (tab === 'stock') {
       const lots=await getLots(true);
       window._reportStock=lots;
-      $('#reportPane').innerHTML = `<div class="report-actions"><span class="muted">แสดง ${lots.length} Lot ที่ยัง Active</span><button class="primary" data-export-report="stock">${icon('download')} ส่งออกสต๊อก CSV</button></div><div class="table-wrap"><table class="data-table"><thead><tr><th>สินค้า</th><th>Lot</th><th>คงเหลือ</th><th>EXP</th><th>ผู้ดูแล</th><th>สถานะ</th></tr></thead><tbody>${lots.map(x => `<tr><td><strong>${esc(x.material_name)}</strong><div class="muted tiny">${esc(x.material_code)}</div></td><td>${esc(lotKey(x))}</td><td>${qty(x.balance)} ${esc(x.unit)}</td><td>${d(x.expiry_date)}</td><td>${esc(x.responsible_name || '-')}</td><td>${statusBadge(x)}</td></tr>`).join('')}</tbody></table></div>`;
+      $('#reportPane').innerHTML = `<div class="report-actions"><span class="muted">แสดง ${lots.length} Lot ที่ยัง Active</span><button class="primary" data-export-report="stock">${icon('download')} ส่งออกสต๊อก CSV</button></div><div class="table-wrap"><table class="data-table"><thead><tr><th>สินค้า</th><th>Lot</th><th>คงเหลือ</th><th>EXP</th><th>ผู้ดูแล</th><th>สถานะ</th></tr></thead><tbody>${lots.map(x => `<tr><td><strong>${esc(x.material_name)}</strong></td><td>${esc(lotKey(x))}</td><td>${qty(x.balance)} ${esc(x.unit)}</td><td>${d(x.expiry_date)}</td><td>${esc(x.responsible_name || '-')}</td><td>${statusBadge(x)}</td></tr>`).join('')}</tbody></table></div>`;
       return;
     }
     const type = tab === 'receive' ? 'RECEIVE' : tab === 'issue' ? 'ISSUE' : 'EXPIRED';
