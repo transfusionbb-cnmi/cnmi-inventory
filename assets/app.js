@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.3.2';
+const APP_VERSION = '1.3.3';
 const C = window.APP_CONFIG || {};
 const configured = C.SUPABASE_URL && !C.SUPABASE_URL.includes('YOUR-PROJECT') && C.SUPABASE_ANON_KEY && !C.SUPABASE_ANON_KEY.includes('YOUR-ANON');
 let sb = null;
@@ -587,19 +587,13 @@ async function printLabel(lotId) {
   try {
     const l = stockCache.find(x => x.lot_id === lotId) || (await getLots(true)).find(x => x.lot_id === lotId);
     if (!l) { popup.close(); return toast('ไม่พบ Lot', true); }
-    const appBase = C.PUBLIC_URL || `${location.origin}${location.pathname.replace(/[^/]*$/, '')}`;
-    const issueUrl = new URL(appBase, location.href);
-    issueUrl.searchParams.set('issue', lotKey(l));
     const params = new URLSearchParams({
       code:l.material_code,
       name:l.label_name || l.material_name,
       lot:l.lot_no,
       exp:l.expiry_date ? d(l.expiry_date) : 'ไม่ระบุ',
       key:lotKey(l),
-      qty:qty(l.balance),
-      unit:l.unit || '',
-      owner:l.responsible_name || '-',
-      qr:issueUrl.toString(),
+      qr:lotKey(l),
       auto:'1'
     });
     const labelUrl = new URL('label.html', location.href);
@@ -644,7 +638,7 @@ async function renderMove(defaultTab = 'receive') {
       $('#receiveForm').addEventListener('submit', receive);
     } else {
       const usableLots = lots.filter(l => Number(l.balance) > 0 && !isExpired(l));
-      $('#movePane').innerHTML = `<div class="move-layout"><div><div class="card scan-card"><div class="scan-icon">${icon('qr')}</div><div><h3>สแกน QR Sticker</h3><p>รองรับทั้งรหัสหลักใหม่และสติ๊กเกอร์ Old code ที่ติดอยู่เดิม</p></div><button class="secondary scan-action" type="button" data-camera-scan>${icon('camera')} เปิดกล้องสแกน</button></div><form id="issueForm" class="card form-card form-grid" style="margin-top:12px"><label>รหัส QR / รหัสล็อต<div class="toolbar" style="margin:0"><input id="issueCode" autocomplete="off" placeholder="เช่น BB020-69020"><button type="button" class="mini" id="findIssueCode">ค้นหา</button></div></label><label>เลือก Lot<select id="iLot" required><option value="">เลือก Lot</option>${usableLots.map(l => `<option value="${esc(l.lot_id)}">${esc(lotKey(l))} · ${esc(l.material_name)} · เหลือ ${qty(l.balance)} ${esc(l.unit)}</option>`).join('')}</select></label><div id="selectedLot"></div><label>จำนวน<input id="iQty" type="number" min="0.01" step="0.01" value="1" required inputmode="decimal"></label><label>หมายเหตุ<textarea id="iReason" rows="2" placeholder="ระบุเมื่อต้องการ"></textarea></label><button class="primary" type="submit">${icon('minus')} ยืนยันนำออก</button></form></div><section class="card history-card"><div class="section-title compact"><div><h3>ประวัตินำออก</h3><p class="muted small">รวมรายการจาก Excel เดิม</p></div><button class="mini ghost" data-route="reports">ดูทั้งหมด</button></div><div class="table-wrap"><table class="data-table"><thead><tr><th>วันเวลา</th><th>สินค้า</th><th>Lot</th><th>จำนวน</th><th>ยอดหลังทำ</th><th>ผู้บันทึก</th></tr></thead><tbody>${transactionRows(historyRows.slice(0,30)) || '<tr><td colspan="6" class="empty">ไม่มีรายการ</td></tr>'}</tbody></table></div></section></div>`;
+      $('#movePane').innerHTML = `<div class="move-layout"><div><div class="card scan-card"><div class="scan-icon">${icon('qr')}</div><div><h3>สแกน QR Sticker</h3><p>รองรับทั้งรหัสหลักใหม่และสติ๊กเกอร์ Old code ที่ติดอยู่เดิม · สแกน 1 ครั้ง = ตัดออก 1 หน่วย</p></div><button class="secondary scan-action" type="button" data-camera-scan>${icon('camera')} เปิดกล้องสแกน</button></div><form id="issueForm" class="card form-card form-grid" style="margin-top:12px"><label>รหัส QR / รหัสล็อต<div class="toolbar" style="margin:0"><input id="issueCode" autocomplete="off" placeholder="เช่น BB020-69020"><button type="button" class="mini" id="findIssueCode">ค้นหา</button></div></label><label>เลือก Lot<select id="iLot" required><option value="">เลือก Lot</option>${usableLots.map(l => `<option value="${esc(l.lot_id)}">${esc(lotKey(l))} · ${esc(l.material_name)} · เหลือ ${qty(l.balance)} ${esc(l.unit)}</option>`).join('')}</select></label><div id="selectedLot"></div><div class="notice">ระบบล็อกให้ตัดออกครั้งละ 1 หน่วยต่อ 1 ครั้ง ไม่ต้องกรอกจำนวน</div><label>หมายเหตุ<textarea id="iReason" rows="2" placeholder="ระบุเมื่อต้องการ"></textarea></label><button class="primary" type="submit">${icon('minus')} ยืนยันนำออก 1 หน่วย</button></form></div><section class="card history-card"><div class="section-title compact"><div><h3>ประวัตินำออก</h3><p class="muted small">รวมรายการจาก Excel เดิม</p></div><button class="mini ghost" data-route="reports">ดูทั้งหมด</button></div><div class="table-wrap"><table class="data-table"><thead><tr><th>วันเวลา</th><th>สินค้า</th><th>Lot</th><th>จำนวน</th><th>ยอดหลังทำ</th><th>ผู้บันทึก</th></tr></thead><tbody>${transactionRows(historyRows.slice(0,30)) || '<tr><td colspan="6" class="empty">ไม่มีรายการ</td></tr>'}</tbody></table></div></section></div>`;
       const select = $('#iLot');
       const showSelected = () => {
         const l = usableLots.find(x => x.lot_id === select.value);
@@ -656,7 +650,7 @@ async function renderMove(defaultTab = 'receive') {
         if (!l) return toast('ไม่พบ QR Code นี้ หรือ Lot ถูกนำออกหมด/หมดอายุแล้ว', true);
         select.value = l.lot_id;
         showSelected();
-        $('#iQty').focus();
+        $('#iReason').focus();
       });
       $('#issueCode').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('#findIssueCode').click(); } });
       $('#issueForm').addEventListener('submit', issue);
@@ -691,13 +685,13 @@ async function issue(e) {
   btn.disabled = true;
   const {error} = await sb.rpc('fn_issue_stock', {
     p_lot_id:$('#iLot').value,
-    p_quantity:Number($('#iQty').value),
+    p_quantity:1,
     p_reason_detail:$('#iReason').value.trim() || null
   });
   btn.disabled = false;
   if (error) return toast(errMsg(error), true);
   stockCache = [];
-  toast('บันทึกนำออกแล้ว');
+  toast('บันทึกนำออก 1 หน่วยแล้ว');
   navigate('move', {tab:'issue'});
 }
 
@@ -729,21 +723,21 @@ async function resolveIssueCode(code) {
 function openIssueModal(l) {
   if (!l || Number(l.balance) <= 0) return toast('Lot นี้ไม่มียอดคงเหลือ', true);
   if (isExpired(l)) return toast('Lot นี้หมดอายุแล้ว ให้ยืนยันนำออกจากพื้นที่ในเมนูตรวจวันศุกร์', true);
-  openModal(`<h3>นำออกจาก QR Sticker</h3><div class="selected-lot"><div><strong>${esc(l.material_code)} · ${esc(l.material_name)}</strong><small>${esc(lotKey(l))} · EXP ${d(l.expiry_date)}</small></div><span class="badge info">เหลือ ${qty(l.balance)} ${esc(l.unit)}</span></div><form id="quickIssueForm" class="form-grid" style="margin-top:15px"><label>จำนวน<input id="quickIssueQty" type="number" min="0.01" max="${Number(l.balance)}" step="0.01" value="1" required inputmode="decimal"></label><label>หมายเหตุ<textarea id="quickIssueReason" rows="2" placeholder="ระบุเมื่อต้องการ"></textarea></label><button class="primary" type="submit">${icon('minus')} ยืนยันนำออก</button></form>`);
+  openModal(`<h3>นำออกจาก QR Sticker</h3><div class="selected-lot"><div><strong>${esc(l.material_code)} · ${esc(l.material_name)}</strong><small>${esc(lotKey(l))} · EXP ${d(l.expiry_date)}</small></div><span class="badge info">เหลือ ${qty(l.balance)} ${esc(l.unit)}</span></div><div class="notice">ระบบล็อกให้ตัดออกครั้งละ 1 หน่วยต่อ 1 ครั้ง</div><form id="quickIssueForm" class="form-grid" style="margin-top:15px"><label>หมายเหตุ<textarea id="quickIssueReason" rows="2" placeholder="ระบุเมื่อต้องการ"></textarea></label><button class="primary" type="submit">${icon('minus')} ยืนยันนำออก 1 หน่วย</button></form>`);
   $('#quickIssueForm').addEventListener('submit', async e => {
     e.preventDefault();
     const btn = e.submitter;
     btn.disabled = true;
     const {error} = await sb.rpc('fn_issue_stock', {
       p_lot_id:l.lot_id,
-      p_quantity:Number($('#quickIssueQty').value),
+      p_quantity:1,
       p_reason_detail:$('#quickIssueReason').value.trim() || null
     });
     btn.disabled = false;
     if (error) return toast(errMsg(error), true);
     closeModal();
     stockCache = [];
-    toast('บันทึกนำออกแล้ว');
+    toast('บันทึกนำออก 1 หน่วยแล้ว');
     navigate(route === 'home' ? 'home' : 'stock');
   });
 }
