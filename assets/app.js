@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.3.4';
+const APP_VERSION = '1.3.5';
 const C = window.APP_CONFIG || {};
 const configured = C.SUPABASE_URL && !C.SUPABASE_URL.includes('YOUR-PROJECT') && C.SUPABASE_ANON_KEY && !C.SUPABASE_ANON_KEY.includes('YOUR-ANON');
 let sb = null;
@@ -10,7 +10,7 @@ let profile = null;
 let actingMode = 'staff';
 let route = 'home';
 let moveTab = 'receive';
-let reportTab = 'receive';
+let reportTab = '';
 let stockCache = [];
 let materialsCache = [];
 let inventorySummaryCache = [];
@@ -415,7 +415,7 @@ async function navigate(r, options = {}) {
   loading();
   try {
     if (r === 'home') await renderHome();
-    else if (r === 'stock') await renderStock(options.filter || 'positive');
+    else if (r === 'stock') await renderStock(options.filter || 'select');
     else if (r === 'usage') await renderUsage(usageMaterialCode);
     else if (r === 'urgent') await renderUrgent();
     else if (r === 'move') await renderMove(moveTab);
@@ -486,30 +486,30 @@ function activityCard(a) {
 }
 
 async function renderHome() {
-  const [lots, summaryRes, checkRes, activityRes, todayTxRes] = await Promise.all([
-    getLots(true),
+  const [summaryRes, checkRes, activityRes, todayTxRes, nearRes] = await Promise.all([
     sb.from('v_inventory_summary').select('*').order('material_code'),
     ensureCheck(),
-    sb.from('v_audit_activity').select('*').limit(80),
-    sb.from('v_transaction_history').select('id,tx_type,created_at').gte('created_at', todayIso()).limit(1000)
+    sb.from('v_audit_activity').select('*').limit(12),
+    sb.from('v_transaction_history').select('id,tx_type,created_at').gte('created_at', todayIso()).limit(600),
+    sb.from('v_lot_balances').select('lot_id,days_to_expiry').eq('active', true).eq('is_expired', false).gt('balance', 0).gte('days_to_expiry', 0).lte('days_to_expiry', 30)
   ]);
   if (summaryRes.error) throw summaryRes.error;
   if (activityRes.error) throw activityRes.error;
   if (todayTxRes.error) throw todayTxRes.error;
+  if (nearRes.error) throw nearRes.error;
 
   const summaries = summaryRes.data || [];
   inventorySummaryCache = summaries;
   const activities = activityRes.data || [];
   const todayTx = todayTxRes.data || [];
-  const validLots = lots.filter(x => !isExpired(x));
-  const expiredPending = lots.filter(x => isExpired(x) && Number(x.balance) > 0);
+  const expiredPendingCount = summaries.reduce((sum,x) => sum + Number(x.expired_pending_lots || 0), 0);
   const outMaterials = summaries.filter(x => Number(x.total_balance || 0) <= 0);
   const lowMaterials = summaries.filter(x => Number(x.total_balance || 0) > 0 && Number(x.total_balance || 0) <= Number(x.min_qty || 0));
-  const nearExpiry = validLots.filter(x => Number(x.balance || 0) > 0 && x.days_to_expiry !== null && Number(x.days_to_expiry) >= 0 && Number(x.days_to_expiry) <= 30);
+  const nearExpiryCount = (nearRes.data || []).length;
   const receiveToday = todayTx.filter(x => x.tx_type === 'RECEIVE').length;
   const issueToday = todayTx.filter(x => x.tx_type === 'ISSUE').length;
   const ownerGroups = groupByOwner(summaries);
-  updateUrgentBadge(expiredPending.length + lowMaterials.length + outMaterials.length);
+  updateUrgentBadge(expiredPendingCount + lowMaterials.length + outMaterials.length);
 
   let prog = null;
   if (checkRes) {
@@ -530,17 +530,17 @@ async function renderHome() {
       <button class="card kpi kpi-button" data-route="stock" data-stock-filter="low"><div class="kpi-top"><span class="kpi-icon warn">${icon('alert')}</span><small>ต่ำกว่าขั้นต่ำ</small></div><strong>${lowMaterials.length}</strong><small>รายการ</small></button>
       <button class="card kpi kpi-button" data-route="move" data-move-tab="receive"><div class="kpi-top"><span class="kpi-icon">${icon('plus')}</span><small>นำเข้า (วันนี้)</small></div><strong>${receiveToday}</strong><small>รายการ</small></button>
       <button class="card kpi kpi-button" data-route="move" data-move-tab="issue"><div class="kpi-top"><span class="kpi-icon info">${icon('minus')}</span><small>นำออก (วันนี้)</small></div><strong>${issueToday}</strong><small>รายการ</small></button>
-      <button class="card kpi kpi-button" data-route="urgent"><div class="kpi-top"><span class="kpi-icon danger">${icon('history')}</span><small>หมดอายุ · รอนำออก</small></div><strong>${expiredPending.length}</strong><small>Lot</small></button>
-      <button class="card kpi kpi-button" data-route="stock" data-stock-filter="expiry"><div class="kpi-top"><span class="kpi-icon warn">${icon('calendar')}</span><small>ใกล้หมดอายุ (≤ 30 วัน)</small></div><strong>${nearExpiry.length}</strong><small>Lot</small></button>
+      <button class="card kpi kpi-button" data-route="urgent"><div class="kpi-top"><span class="kpi-icon danger">${icon('history')}</span><small>หมดอายุ · รอนำออก</small></div><strong>${expiredPendingCount}</strong><small>Lot</small></button>
+      <button class="card kpi kpi-button" data-route="stock" data-stock-filter="expiry"><div class="kpi-top"><span class="kpi-icon warn">${icon('calendar')}</span><small>ใกล้หมดอายุ (≤ 30 วัน)</small></div><strong>${nearExpiryCount}</strong><small>Lot</small></button>
     </div>
 
     <div class="overview-grid">
       <section class="card table-card">
-        <div class="section-title compact"><div><h3>Top สินค้าที่ต้องเฝ้าระวัง</h3><p class="muted small">ข้อมูลสต๊อกเดิมและรายการใหม่รวมในหน้าเดียว</p></div><div class="segmented"><button id="homeModeProduct" class="seg active" type="button">ดูตามสินค้า</button><button id="homeModeOwner" class="seg" type="button">ดูตามผู้ดูแล</button></div></div>
+        <div class="section-title compact"><div><h3>Top สินค้าที่ต้องเฝ้าระวัง</h3><p class="muted small">หน้าหลักโหลดเฉพาะข้อมูลสรุป เพื่อลดภาระระบบ</p></div><div class="segmented"><button id="homeModeProduct" class="seg active" type="button">ดูตามสินค้า</button><button id="homeModeOwner" class="seg" type="button">ดูตามผู้ดูแล</button></div></div>
         <div id="homeOverviewPane"></div>
       </section>
       <section class="card activity-panel">
-        <div class="section-title compact"><div><h3>กิจกรรมล่าสุด</h3><p class="muted small">รวมข้อมูลรับเข้า–นำออกเดิมจาก Excel</p></div><button class="mini ghost" data-route="activity">ดูทั้งหมด ${icon('arrow')}</button></div>
+        <div class="section-title compact"><div><h3>กิจกรรมล่าสุด</h3><p class="muted small">แสดงเฉพาะรายการล่าสุด</p></div><button class="mini ghost" data-route="activity">ดูทั้งหมด ${icon('arrow')}</button></div>
         <div class="activity-list">${activities.slice(0, 6).map(activityCard).join('') || '<div class="empty">ยังไม่มีกิจกรรม</div>'}</div>
       </section>
     </div>
@@ -558,7 +558,7 @@ async function renderHome() {
   };
   $('#homeModeProduct').onclick = () => setMode('product');
   $('#homeModeOwner').onclick = () => setMode('owner');
-  $('#refreshHome').onclick = () => { stockCache = []; renderHome(); };
+  $('#refreshHome').onclick = () => { inventorySummaryCache = []; renderHome(); };
   setMode('product');
 }
 
@@ -587,14 +587,19 @@ function buildMaterialGroups(summaries = [], lots = []) {
     const activeLots = g.lots.filter(l => Number(l.balance) > 0 && !isExpired(l));
     const expiredLots = g.lots.filter(l => Number(l.balance) > 0 && isExpired(l));
     const negativeLots = g.lots.filter(l => Number(l.balance) < 0);
-    const nearest = activeLots.filter(l => l.expiry_date).sort((a,b) => String(a.expiry_date).localeCompare(String(b.expiry_date)))[0];
+    const nearestLot = activeLots.filter(l => l.expiry_date).sort((a,b) => String(a.expiry_date).localeCompare(String(b.expiry_date)))[0];
+    const nearestExpiry = g.nearest_expiry || nearestLot?.expiry_date || null;
+    let daysToNearest = nearestLot?.days_to_expiry ?? null;
+    if (daysToNearest === null && nearestExpiry) {
+      daysToNearest = Math.ceil((new Date(`${nearestExpiry}T00:00:00`) - todayStart()) / 86400000);
+    }
     return {...g,
       total_balance:Number(g.total_balance || 0), min_qty:Number(g.min_qty || 0),
       activeLots, expiredLots, negativeLots,
       active_lots:Number(g.active_lots || activeLots.length),
       expired_pending_lots:Number(g.expired_pending_lots || expiredLots.length),
-      nearest_expiry:g.nearest_expiry || nearest?.expiry_date || null,
-      days_to_nearest:nearest?.days_to_expiry ?? null
+      nearest_expiry:nearestExpiry,
+      days_to_nearest:daysToNearest
     };
   }).sort((a,b) => a.material_code.localeCompare(b.material_code, 'th'));
 }
@@ -632,21 +637,33 @@ async function ensureInventorySummary() {
 
 async function openMaterialStockDetail(code) {
   try {
-    const [summaries,lots] = await Promise.all([ensureInventorySummary(), getLots(true)]);
-    const g = buildMaterialGroups(summaries,lots).find(x => x.material_code === code);
+    const [summaries, lotRes] = await Promise.all([
+      ensureInventorySummary(),
+      sb.from('v_lot_balances').select('*').eq('active', true).eq('material_code', code).order('lot_no')
+    ]);
+    if (lotRes.error) throw lotRes.error;
+    const lots=(lotRes.data || []).filter(x => Number(x.balance) !== 0);
+    stockCache = [...new Map([...stockCache, ...lots].map(x => [x.lot_id, x])).values()];
+    const g = buildMaterialGroups(summaries.filter(x => x.material_code === code), lots).find(x => x.material_code === code);
     if (!g) return toast('ไม่พบสินค้านี้', true);
     const st = materialGroupStatus(g);
     const rows = [...g.lots].sort((a,b) => (isExpired(b)-isExpired(a)) || String(a.expiry_date || '9999').localeCompare(String(b.expiry_date || '9999')));
-    openModal(`<div class="detail-modal-head"><span class="material-code">${esc(g.material_code)}</span><div><h3>${esc(g.material_name)}</h3><p>${esc(g.responsible_name || 'ยังไม่กำหนด')} · ขั้นต่ำ ${qty(g.min_qty)} ${esc(g.unit)}</p></div></div><div class="detail-kpis"><div><span>คงเหลือรวม</span><strong>${qty(g.total_balance)}</strong><small>${esc(g.unit)}</small></div><div><span>Lot ที่ใช้งาน</span><strong>${g.active_lots}</strong><small>Lot</small></div><div><span>สถานะ</span><em class="badge ${st.badge}">${st.label}</em></div></div><div class="actions"><button class="primary" data-material-usage="${esc(g.material_code)}">${icon('chart')} วิเคราะห์การใช้</button><button class="secondary modal-close">ปิด</button></div><div class="section-title compact"><div><h3>รายการ Lot</h3><p class="muted small">เรียงตามวันหมดอายุ</p></div></div><div class="table-wrap"><table class="data-table"><thead><tr><th>Lot / QR</th><th>คงเหลือ</th><th>EXP</th><th>สถานะ</th><th></th></tr></thead><tbody>${lotTableRows(rows) || '<tr><td colspan="5" class="empty">ไม่มี Lot ที่มียอดคงเหลือ</td></tr>'}</tbody></table></div>`);
+    openModal(`<div class="detail-modal-head"><span class="material-code">${esc(g.material_code)}</span><div><h3>${esc(g.material_name)}</h3><p>${esc(g.responsible_name || 'ยังไม่กำหนด')} · ขั้นต่ำ ${qty(g.min_qty)} ${esc(g.unit)}</p></div></div><div class="detail-kpis"><div><span>คงเหลือรวม</span><strong>${qty(g.total_balance)}</strong><small>${esc(g.unit)}</small></div><div><span>Lot ที่ใช้งาน</span><strong>${g.active_lots}</strong><small>Lot</small></div><div><span>สถานะ</span><em class="badge ${st.badge}">${st.label}</em></div></div><div class="actions"><button class="primary" data-material-usage="${esc(g.material_code)}">${icon('chart')} วิเคราะห์การใช้</button><button class="secondary modal-close">ปิด</button></div><div class="section-title compact"><div><h3>รายการ Lot</h3><p class="muted small">โหลดเฉพาะ Lot ของสินค้าที่เลือก</p></div></div><div class="table-wrap"><table class="data-table"><thead><tr><th>Lot / QR</th><th>คงเหลือ</th><th>EXP</th><th>สถานะ</th><th></th></tr></thead><tbody>${lotTableRows(rows) || '<tr><td colspan="5" class="empty">ไม่มี Lot ที่มียอดคงเหลือ</td></tr>'}</tbody></table></div>`);
   } catch (e) { toast(errMsg(e), true); }
 }
 
 async function openOwnerDetail(ownerKey) {
   try {
-    const [summaries,lots] = await Promise.all([ensureInventorySummary(), getLots(true)]);
+    const summaries=await ensureInventorySummary();
     const unassigned = !ownerKey || ownerKey === 'unassigned';
+    let lotQuery=sb.from('v_lot_balances').select('*').eq('active', true);
+    lotQuery=unassigned ? lotQuery.is('responsible_email', null) : lotQuery.eq('responsible_email', ownerKey);
+    const lotRes=await lotQuery.order('material_code').order('lot_no');
+    if (lotRes.error) throw lotRes.error;
+    const lots=(lotRes.data || []).filter(x => Number(x.balance) !== 0);
+    stockCache = [...new Map([...stockCache, ...lots].map(x => [x.lot_id, x])).values()];
     const rows = summaries.filter(x => unassigned ? !x.responsible_email : x.responsible_email === ownerKey);
-    const groups = buildMaterialGroups(rows, lots.filter(l => unassigned ? !l.responsible_email : l.responsible_email === ownerKey));
+    const groups = buildMaterialGroups(rows, lots);
     const name = groups[0]?.responsible_name || (unassigned ? 'ยังไม่กำหนดผู้ดูแล' : ownerKey);
     const low = groups.filter(g => g.total_balance > 0 && g.total_balance <= g.min_qty).length;
     const out = groups.filter(g => g.total_balance <= 0).length;
@@ -655,26 +672,34 @@ async function openOwnerDetail(ownerKey) {
   } catch (e) { toast(errMsg(e), true); }
 }
 
-async function renderStock(initialFilter = 'positive') {
-  const [lots,summaryRes] = await Promise.all([getLots(true), sb.from('v_inventory_summary').select('*').order('material_code')]);
+async function renderStock(initialFilter = 'select') {
+  const summaryRes = await sb.from('v_inventory_summary').select('*').order('material_code');
   if (summaryRes.error) throw summaryRes.error;
   inventorySummaryCache = summaryRes.data || [];
-  const groups = buildMaterialGroups(inventorySummaryCache,lots);
+  const groups = buildMaterialGroups(inventorySummaryCache, []);
   const activeLots = groups.reduce((s,g) => s + g.active_lots,0);
   const lowCount = groups.filter(g => g.total_balance > 0 && g.total_balance <= g.min_qty).length;
   const nearCount = groups.filter(g => g.days_to_nearest !== null && Number(g.days_to_nearest) >= 0 && Number(g.days_to_nearest) <= 30).length;
   const outCount = groups.filter(g => g.total_balance <= 0).length;
-  page.innerHTML = `<div class="page-head stock-page-head"><div><h2>สต๊อกคงเหลือ</h2><p class="muted small">สรุปเป็นรายสินค้า กดดูรายละเอียดเพื่อเปิด Lot ทั้งหมด</p></div><button class="mini" data-route="usage">${icon('chart')} วิเคราะห์การใช้</button></div><div class="stock-summary-strip"><div><span>สินค้า</span><strong>${groups.length}</strong><small>รายการ</small></div><div><span>Lot ใช้งาน</span><strong>${activeLots}</strong><small>Lot</small></div><div><span>ต่ำกว่าขั้นต่ำ</span><strong>${lowCount}</strong><small>รายการ</small></div><div><span>สินค้าหมด</span><strong>${outCount}</strong><small>รายการ</small></div><div><span>ใกล้หมดอายุ</span><strong>${nearCount}</strong><small>รายการ</small></div></div><div class="stock-toolbar"><div class="search-box">${icon('search')}<input id="stockSearch" placeholder="ค้นหาชื่อสินค้า รหัส หรือผู้ดูแล"></div><div class="filters" id="stockFilters"><button class="chip" data-filter="all">ทั้งหมด</button><button class="chip" data-filter="positive">คงเหลือปกติ</button><button class="chip" data-filter="low">ต่ำกว่าขั้นต่ำ</button><button class="chip" data-filter="out">สินค้าหมด</button><button class="chip" data-filter="expiry">ใกล้หมดอายุ</button><button class="chip" data-filter="expired">หมดอายุรอนำออก</button><button class="chip" data-filter="negative">ยอดติดลบ</button></div></div><div id="materialStockList" class="material-stock-list"></div>`;
-  let filter = initialFilter || 'positive';
+  const selectedFilter = initialFilter && initialFilter !== 'select' ? initialFilter : '';
+  page.innerHTML = `<div class="page-head stock-page-head"><div><h2>สต๊อกคงเหลือ</h2><p class="muted small">เลือกสถานะหรือสินค้า ระบบจึงจะแสดงรายการ เพื่อลดการโหลดข้อมูลจำนวนมาก</p></div><button class="mini" data-route="usage">${icon('chart')} วิเคราะห์การใช้</button></div><div class="stock-summary-strip"><div><span>สินค้า</span><strong>${groups.length}</strong><small>รายการ</small></div><div><span>Lot ใช้งาน</span><strong>${activeLots}</strong><small>Lot</small></div><div><span>ต่ำกว่าขั้นต่ำ</span><strong>${lowCount}</strong><small>รายการ</small></div><div><span>สินค้าหมด</span><strong>${outCount}</strong><small>รายการ</small></div><div><span>ใกล้หมดอายุ</span><strong>${nearCount}</strong><small>รายการ</small></div></div><section class="card stock-choice-card"><label>เลือกสถานะ<select id="stockStatusSelect"><option value="">กรุณาเลือกสถานะ</option><option value="all">ทั้งหมด</option><option value="positive">คงเหลือปกติ</option><option value="low">ต่ำกว่าขั้นต่ำ</option><option value="out">สินค้าหมด</option><option value="expiry">ใกล้หมดอายุ</option><option value="expired">หมดอายุรอนำออก</option><option value="negative">ยอดติดลบ</option></select></label><label>หรือเลือกสินค้า<select id="stockMaterialSelect"><option value="">กรุณาเลือกสินค้า</option>${groups.map(g=>`<option value="${esc(g.material_code)}">${esc(g.material_code)} · ${esc(g.material_name)}</option>`).join('')}</select></label></section><div id="materialStockList" class="material-stock-list"></div>`;
+  const statusSelect=$('#stockStatusSelect');
+  const materialSelect=$('#stockMaterialSelect');
+  statusSelect.value=selectedFilter;
   const draw = () => {
-    const s = $('#stockSearch').value.trim().toLowerCase();
-    let arr = groups.filter(g => !s || `${g.material_code} ${g.material_name} ${g.responsible_name || ''} ${g.lots.map(l=>`${l.lot_no} ${lotKey(l)}`).join(' ')}`.toLowerCase().includes(s));
-    if (filter !== 'all') arr = arr.filter(g => materialGroupStatus(g).key === filter);
-    $('#materialStockList').innerHTML = arr.map(materialStockCard).join('') || `<div class="card empty">${icon('search')}<div>ไม่พบรายการตามตัวกรอง</div></div>`;
-    $$('[data-filter]').forEach(x => x.classList.toggle('active', x.dataset.filter === filter));
+    const filter=statusSelect.value;
+    const code=materialSelect.value;
+    if (!filter && !code) {
+      $('#materialStockList').innerHTML='<div class="card select-first-state">'+icon('box')+'<div><strong>กรุณาเลือกสถานะหรือสินค้า</strong><span>ระบบยังไม่แสดงรายการทั้งหมด จึงโหลดหน้าได้เร็วขึ้น</span></div></div>';
+      return;
+    }
+    let arr=groups;
+    if (code) arr=arr.filter(g=>g.material_code===code);
+    if (filter && filter!=='all') arr=arr.filter(g=>materialGroupStatus(g).key===filter);
+    $('#materialStockList').innerHTML=arr.map(materialStockCard).join('') || `<div class="card empty">${icon('search')}<div>ไม่พบรายการตามตัวเลือก</div></div>`;
   };
-  $('#stockSearch').addEventListener('input', draw);
-  $$('[data-filter]').forEach(b => b.addEventListener('click', () => { filter = b.dataset.filter; draw(); }));
+  statusSelect.addEventListener('change',()=>{if(statusSelect.value) materialSelect.value='';draw();});
+  materialSelect.addEventListener('change',()=>{if(materialSelect.value) statusSelect.value='';draw();});
   draw();
 }
 
@@ -706,42 +731,45 @@ function renderUsageResult(material, rows, fromDate, toDate, summary) {
   const days=Math.max(1,Math.floor((to-from)/86400000)+1);
   const receiveRows=rows.filter(x=>x.tx_type==='RECEIVE');
   const issueRows=rows.filter(x=>x.tx_type==='ISSUE');
+  const expiredRows=rows.filter(x=>x.tx_type==='EXPIRED');
   const received=receiveRows.reduce((s,x)=>s+Math.abs(Number(x.quantity_delta||0)),0);
   const used=issueRows.reduce((s,x)=>s+Math.abs(Number(x.quantity_delta||0)),0);
+  const expired=expiredRows.reduce((s,x)=>s+Math.abs(Number(x.quantity_delta||0)),0);
   const avgWeek=used/days*7, avgMonth=used/days*30.4375, avgYear=used/days*365.25;
   const map=new Map();
-  rows.forEach(x=>{ const k=new Date(x.created_at).toLocaleDateString('en-CA',{timeZone:'Asia/Bangkok',year:'numeric',month:'2-digit'}); if(!map.has(k))map.set(k,{receive:0,issue:0}); const v=map.get(k); if(x.tx_type==='RECEIVE')v.receive+=Math.abs(Number(x.quantity_delta||0)); if(x.tx_type==='ISSUE')v.issue+=Math.abs(Number(x.quantity_delta||0)); });
+  rows.forEach(x=>{ const k=new Date(x.created_at).toLocaleDateString('en-CA',{timeZone:'Asia/Bangkok',year:'numeric',month:'2-digit'}); if(!map.has(k))map.set(k,{receive:0,issue:0,expired:0}); const v=map.get(k); if(x.tx_type==='RECEIVE')v.receive+=Math.abs(Number(x.quantity_delta||0)); if(x.tx_type==='ISSUE')v.issue+=Math.abs(Number(x.quantity_delta||0)); if(x.tx_type==='EXPIRED')v.expired+=Math.abs(Number(x.quantity_delta||0)); });
   const monthKeys=[]; const cursor=new Date(from.getFullYear(),from.getMonth(),1); const last=new Date(to.getFullYear(),to.getMonth(),1);
   while(cursor<=last){monthKeys.push(`${cursor.getFullYear()}-${String(cursor.getMonth()+1).padStart(2,'0')}`);cursor.setMonth(cursor.getMonth()+1);}
-  const months=monthKeys.slice(-18).map(k=>[k,map.get(k)||{receive:0,issue:0}]);
-  const max=Math.max(1,...months.flatMap(([,v])=>[v.receive,v.issue]));
-  const adjustment=rows.filter(x=>!['RECEIVE','ISSUE'].includes(x.tx_type)).length;
-  return `<div class="usage-summary-head"><div><span class="material-code">${esc(material.code)}</span><h3>${esc(material.name)}</h3><p>${d(fromDate)} – ${d(toDate)} · ${days.toLocaleString('th-TH')} วัน</p></div><button class="mini ghost" data-material-detail="${esc(material.code)}">ดูสต๊อกปัจจุบัน</button></div><div class="usage-kpi-grid"><div class="usage-kpi current"><span>คงเหลือปัจจุบัน</span><strong>${qty(summary?.total_balance || 0)}</strong><small>${esc(material.unit || '')}</small></div><div class="usage-kpi receive"><span>นำเข้าช่วงนี้</span><strong>${qty(received)}</strong><small>${esc(material.unit || '')} · ${receiveRows.length} ครั้ง</small></div><div class="usage-kpi issue"><span>นำออก/ใช้ช่วงนี้</span><strong>${qty(used)}</strong><small>${esc(material.unit || '')} · ${issueRows.length} ครั้ง</small></div><div class="usage-kpi"><span>เฉลี่ยต่อสัปดาห์</span><strong>${qty(avgWeek)}</strong><small>${esc(material.unit || '')}/สัปดาห์</small></div><div class="usage-kpi"><span>เฉลี่ยต่อเดือน</span><strong>${qty(avgMonth)}</strong><small>${esc(material.unit || '')}/เดือน</small></div><div class="usage-kpi"><span>เฉลี่ยต่อปี</span><strong>${qty(avgYear)}</strong><small>${esc(material.unit || '')}/ปี</small></div></div><div class="usage-grid"><section class="card usage-chart-card"><div class="section-title compact"><div><h3>นำเข้า–นำออก รายเดือน</h3><p class="muted small">แสดงสูงสุด 18 เดือนล่าสุดในช่วงที่เลือก</p></div><div class="chart-legend"><span class="receive">นำเข้า</span><span class="issue">นำออก</span></div></div><div class="usage-bars">${months.map(([k,v])=>`<div class="usage-bar-row"><span>${usageMonthLabel(k)}</span><div class="bar-pair"><div class="bar-track"><i class="receive" style="width:${v.receive/max*100}%"></i></div><div class="bar-track"><i class="issue" style="width:${v.issue/max*100}%"></i></div></div><div class="bar-values"><b>+${qty(v.receive)}</b><b>-${qty(v.issue)}</b></div></div>`).join('') || '<div class="empty">ไม่มีรายการในช่วงวันที่นี้</div>'}</div></section><section class="card usage-note-card"><h3>วิธีอ่านค่าเฉลี่ย</h3><p>ระบบนับ “การใช้” จากรายการ <b>นำออก (ISSUE)</b> เท่านั้น แล้วเทียบกับจำนวนวันในช่วงที่เลือก</p><dl><div><dt>เฉลี่ย/สัปดาห์</dt><dd>ยอดใช้ ÷ จำนวนวัน × 7</dd></div><div><dt>เฉลี่ย/เดือน</dt><dd>ยอดใช้ ÷ จำนวนวัน × 30.44</dd></div><div><dt>เฉลี่ย/ปี</dt><dd>ยอดใช้ ÷ จำนวนวัน × 365.25</dd></div></dl>${adjustment?`<p class="usage-warning">พบรายการปรับยอด/หมดอายุ ${adjustment} รายการ ซึ่งไม่รวมในการคำนวณการใช้</p>`:''}</section></div><section class="card usage-history-card"><div class="section-title compact"><div><h3>ประวัติของสินค้านี้</h3><p class="muted small">${rows.length.toLocaleString('th-TH')} รายการในช่วงที่เลือก</p></div></div><div class="table-wrap"><table class="data-table"><thead><tr><th>วันเวลา</th><th>ประเภท</th><th>Lot</th><th>เปลี่ยนแปลง</th><th>ยอดหลังทำ</th><th>ผู้บันทึก</th></tr></thead><tbody>${rows.slice(0,300).map(x=>`<tr><td>${dt(x.created_at)}</td><td>${x.tx_type==='RECEIVE'?'<span class="badge ok">นำเข้า</span>':x.tx_type==='ISSUE'?'<span class="badge info">นำออก</span>':`<span class="badge warn">${esc(x.tx_type)}</span>`}</td><td>${esc(x.lot_key)}</td><td class="${x.tx_type==='ISSUE'?'negative-text':'positive-text'}">${x.tx_type==='RECEIVE'?'+':''}${qty(x.quantity_delta)} ${esc(x.unit)}</td><td>${qty(x.quantity_after)}</td><td>${esc(x.created_by_name || x.created_by_email || 'SYSTEM')}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">ไม่มีข้อมูล</td></tr>'}</tbody></table></div>${rows.length>300?'<p class="field-hint">ตารางแสดง 300 รายการล่าสุด แต่ค่ารวมคำนวณจากข้อมูลทั้งหมด</p>':''}</section>`;
+  const months=monthKeys.slice(-18).map(k=>[k,map.get(k)||{receive:0,issue:0,expired:0}]);
+  const max=Math.max(1,...months.flatMap(([,v])=>[v.receive,v.issue,v.expired]));
+  const adjustment=rows.filter(x=>!['RECEIVE','ISSUE','EXPIRED'].includes(x.tx_type)).length;
+  return `<div class="usage-summary-head"><div><span class="material-code">${esc(material.code)}</span><h3>${esc(material.name)}</h3><p>${d(fromDate)} – ${d(toDate)} · ${days.toLocaleString('th-TH')} วัน</p></div><button class="mini ghost" data-material-detail="${esc(material.code)}">ดูสต๊อกปัจจุบัน</button></div><div class="usage-kpi-grid usage-kpi-grid-7"><div class="usage-kpi current"><span>คงเหลือปัจจุบัน</span><strong>${qty(summary?.total_balance || 0)}</strong><small>${esc(material.unit || '')}</small></div><div class="usage-kpi receive"><span>นำเข้าช่วงนี้</span><strong>${qty(received)}</strong><small>${esc(material.unit || '')} · ${receiveRows.length} ครั้ง</small></div><div class="usage-kpi issue"><span>นำออก/ใช้ช่วงนี้</span><strong>${qty(used)}</strong><small>${esc(material.unit || '')} · ${issueRows.length} ครั้ง</small></div><div class="usage-kpi expired"><span>หมดอายุช่วงนี้</span><strong>${qty(expired)}</strong><small>${esc(material.unit || '')} · ${expiredRows.length} ครั้ง</small></div><div class="usage-kpi"><span>เฉลี่ยต่อสัปดาห์</span><strong>${qty(avgWeek)}</strong><small>${esc(material.unit || '')}/สัปดาห์</small></div><div class="usage-kpi"><span>เฉลี่ยต่อเดือน</span><strong>${qty(avgMonth)}</strong><small>${esc(material.unit || '')}/เดือน</small></div><div class="usage-kpi"><span>เฉลี่ยต่อปี</span><strong>${qty(avgYear)}</strong><small>${esc(material.unit || '')}/ปี</small></div></div><div class="usage-grid"><section class="card usage-chart-card"><div class="section-title compact"><div><h3>นำเข้า–นำออก–หมดอายุ รายเดือน</h3><p class="muted small">แสดงสูงสุด 18 เดือนล่าสุดในช่วงที่เลือก</p></div><div class="chart-legend"><span class="receive">นำเข้า</span><span class="issue">นำออก</span><span class="expired">หมดอายุ</span></div></div><div class="usage-bars">${months.map(([k,v])=>`<div class="usage-bar-row"><span>${usageMonthLabel(k)}</span><div class="bar-pair"><div class="bar-track"><i class="receive" style="width:${v.receive/max*100}%"></i></div><div class="bar-track"><i class="issue" style="width:${v.issue/max*100}%"></i></div><div class="bar-track"><i class="expired" style="width:${v.expired/max*100}%"></i></div></div><div class="bar-values three"><b>+${qty(v.receive)}</b><b>-${qty(v.issue)}</b><b>หมด ${qty(v.expired)}</b></div></div>`).join('') || '<div class="empty">ไม่มีรายการในช่วงวันที่นี้</div>'}</div></section><section class="card usage-note-card"><h3>วิธีอ่านค่าเฉลี่ย</h3><p>ระบบนับ “การใช้” จากรายการ <b>นำออก (ISSUE)</b> เท่านั้น ส่วนของหมดอายุแสดงแยก ไม่รวมเป็นการใช้จริง</p><dl><div><dt>เฉลี่ย/สัปดาห์</dt><dd>ยอดใช้ ÷ จำนวนวัน × 7</dd></div><div><dt>เฉลี่ย/เดือน</dt><dd>ยอดใช้ ÷ จำนวนวัน × 30.44</dd></div><div><dt>เฉลี่ย/ปี</dt><dd>ยอดใช้ ÷ จำนวนวัน × 365.25</dd></div></dl>${adjustment?`<p class="usage-warning">พบรายการปรับยอด/ชำรุด ${adjustment} รายการ ซึ่งไม่รวมในการคำนวณการใช้</p>`:''}</section></div><section class="card usage-history-card"><div class="section-title compact"><div><h3>ประวัติของสินค้านี้</h3><p class="muted small">${rows.length.toLocaleString('th-TH')} รายการในช่วงที่เลือก</p></div></div><div class="table-wrap"><table class="data-table"><thead><tr><th>วันเวลา</th><th>ประเภท</th><th>Lot</th><th>เปลี่ยนแปลง</th><th>ยอดหลังทำ</th><th>ผู้บันทึก</th></tr></thead><tbody>${rows.slice(0,300).map(x=>`<tr><td>${dt(x.created_at)}</td><td>${x.tx_type==='RECEIVE'?'<span class="badge ok">นำเข้า</span>':x.tx_type==='ISSUE'?'<span class="badge info">นำออก</span>':x.tx_type==='EXPIRED'?'<span class="badge danger">หมดอายุ</span>':`<span class="badge warn">${esc(x.tx_type)}</span>`}</td><td>${esc(x.lot_key)}</td><td class="${x.tx_type==='ISSUE'?'negative-text':x.tx_type==='EXPIRED'?'expired-text':'positive-text'}">${x.tx_type==='RECEIVE'?'+':''}${qty(x.quantity_delta)} ${esc(x.unit)}</td><td>${qty(x.quantity_after)}</td><td>${esc(x.created_by_name || x.created_by_email || 'SYSTEM')}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">ไม่มีข้อมูล</td></tr>'}</tbody></table></div>${rows.length>300?'<p class="field-hint">ตารางแสดง 300 รายการล่าสุด แต่ค่ารวมคำนวณจากข้อมูลทั้งหมด</p>':''}</section>`;
 }
 
 async function renderUsage(selectedCode = '') {
-  const [mats, summaries] = await Promise.all([loadMaterials(), ensureInventorySummary()]);
+  const mats = await loadMaterials();
   const today=new Date(), start=new Date(today); start.setFullYear(start.getFullYear()-1); start.setDate(start.getDate()+1);
-  const initial=selectedCode && mats.some(m=>m.code===selectedCode) ? selectedCode : (mats[0]?.code || '');
-  page.innerHTML = `<div class="page-head"><div><h2>วิเคราะห์การใช้สินค้า</h2><p class="muted small">เลือกสินค้าและช่วงวันที่ เพื่อดูนำเข้า นำออก และค่าเฉลี่ยการใช้</p></div></div><form id="usageFilterForm" class="card usage-filter-card"><label>สินค้า<select id="usageMaterial" required>${mats.map(m=>`<option value="${esc(m.code)}" ${m.code===initial?'selected':''}>${esc(m.code)} · ${esc(m.name)}</option>`).join('')}</select></label><div class="form-grid two"><label>ตั้งแต่วันที่<input id="usageFrom" type="date" value="${dateInputValue(start)}" required></label><label>ถึงวันที่<input id="usageTo" type="date" value="${dateInputValue(today)}" required></label></div><div class="usage-filter-actions"><div class="preset-group"><button type="button" data-usage-days="30">30 วัน</button><button type="button" data-usage-days="90">90 วัน</button><button type="button" data-usage-days="365" class="active">1 ปี</button><button type="button" data-usage-all>ทั้งหมด</button></div><button class="primary" type="submit">${icon('chart')} คำนวณ</button></div></form><div id="usageResult"><div class="card empty">เลือกช่วงวันที่แล้วกดคำนวณ</div></div>`;
+  const initial=selectedCode && mats.some(m=>m.code===selectedCode) ? selectedCode : '';
+  page.innerHTML = `<div class="page-head"><div><h2>วิเคราะห์การใช้สินค้า</h2><p class="muted small">เลือกสินค้าและช่วงวันที่ก่อน ระบบจึงจะโหลดประวัติ</p></div></div><form id="usageFilterForm" class="card usage-filter-card"><label>สินค้า<select id="usageMaterial" required><option value="">กรุณาเลือกสินค้า</option>${mats.map(m=>`<option value="${esc(m.code)}" ${m.code===initial?'selected':''}>${esc(m.code)} · ${esc(m.name)}</option>`).join('')}</select></label><div class="form-grid two"><label>ตั้งแต่วันที่<input id="usageFrom" type="date" value="${dateInputValue(start)}" required></label><label>ถึงวันที่<input id="usageTo" type="date" value="${dateInputValue(today)}" required></label></div><div class="usage-filter-actions"><div class="preset-group"><button type="button" data-usage-days="30">30 วัน</button><button type="button" data-usage-days="90">90 วัน</button><button type="button" data-usage-days="365" class="active">1 ปี</button><button type="button" data-usage-all>ทั้งหมด</button></div><button class="primary" type="submit">${icon('chart')} คำนวณ</button></div></form><div id="usageResult"><div class="card select-first-state">${icon('chart')}<div><strong>กรุณาเลือกสินค้า</strong><span>ยังไม่มีการโหลดประวัติ จนกว่าจะเลือกสินค้าและกดคำนวณ</span></div></div></div>`;
   const load = async () => {
     const code=$('#usageMaterial').value, from=$('#usageFrom').value, to=$('#usageTo').value;
-    if (!code || !from || !to) return toast('กรุณาเลือกสินค้าและช่วงวันที่',true);
+    if (!code) return toast('กรุณาเลือกสินค้า',true);
+    if (!from || !to) return toast('กรุณาเลือกช่วงวันที่',true);
     if (from>to) return toast('วันที่เริ่มต้นต้องไม่เกินวันที่สิ้นสุด',true);
     usageMaterialCode=code;
-    $('#usageResult').innerHTML='<div class="card usage-loading">กำลังคำนวณจากประวัติรับเข้า–นำออก…</div>';
+    $('#usageResult').innerHTML='<div class="card usage-loading">กำลังคำนวณจากประวัติรับเข้า–นำออก–หมดอายุ…</div>';
     try {
-      const rows=await fetchMaterialTransactions(code,from,to);
+      const [rows,summaries]=await Promise.all([fetchMaterialTransactions(code,from,to),ensureInventorySummary()]);
       const mat=mats.find(m=>m.code===code);
       const sum=summaries.find(s=>s.material_code===code);
       $('#usageResult').innerHTML=renderUsageResult(mat,rows,from,to,sum);
     } catch(e) { $('#usageResult').innerHTML=`<div class="card notice">${esc(errMsg(e))}</div>`; }
   };
   $('#usageFilterForm').addEventListener('submit',e=>{e.preventDefault();load();});
-  $$('[data-usage-days]').forEach(b=>b.addEventListener('click',()=>{const end=new Date();const begin=new Date(end);begin.setDate(begin.getDate()-Number(b.dataset.usageDays)+1);$('#usageFrom').value=dateInputValue(begin);$('#usageTo').value=dateInputValue(end);$$('[data-usage-days]').forEach(x=>x.classList.toggle('active',x===b));load();}));
-  $('[data-usage-all]').addEventListener('click',()=>{$('#usageFrom').value='2000-01-01';$('#usageTo').value=dateInputValue(new Date());$$('[data-usage-days]').forEach(x=>x.classList.remove('active'));load();});
-  $('#usageMaterial').addEventListener('change',load);
-  await load();
+  $$('[data-usage-days]').forEach(b=>b.addEventListener('click',()=>{const end=new Date();const begin=new Date(end);begin.setDate(begin.getDate()-Number(b.dataset.usageDays)+1);$('#usageFrom').value=dateInputValue(begin);$('#usageTo').value=dateInputValue(end);$$('[data-usage-days]').forEach(x=>x.classList.toggle('active',x===b));if($('#usageMaterial').value)load();}));
+  $('[data-usage-all]').addEventListener('click',()=>{$('#usageFrom').value='2000-01-01';$('#usageTo').value=dateInputValue(new Date());$$('[data-usage-days]').forEach(x=>x.classList.remove('active'));if($('#usageMaterial').value)load();});
+  $('#usageMaterial').addEventListener('change',()=>{if($('#usageMaterial').value)load();else $('#usageResult').innerHTML='<div class="card select-first-state">'+icon('chart')+'<div><strong>กรุณาเลือกสินค้า</strong><span>ระบบยังไม่โหลดประวัติ</span></div></div>';});
+  if(initial) await load();
 }
 
 async function renderUrgent() {
@@ -755,12 +783,17 @@ async function renderUrgent() {
 }
 
 async function printLabel(lotId) {
-  const popup = window.open('about:blank', 'cnmi_inventory_label', 'width=470,height=390');
+  const popup = window.open('about:blank', 'cnmi_inventory_label', 'width=420,height=300');
   if (!popup) return toast('เบราว์เซอร์บล็อกหน้าพิมพ์ กรุณาอนุญาต Pop-up ของเว็บไซต์นี้', true);
-  popup.document.write('<!doctype html><meta charset="utf-8"><title>กำลังเตรียมสติ๊กเกอร์</title><body style="font-family:system-ui;padding:24px">กำลังเตรียม QR Sticker…</body>');
+  popup.document.write('<!doctype html><meta charset="utf-8"><title>กำลังเปิดหน้าพิมพ์</title><body style="font-family:system-ui;padding:24px">กำลังเปิดหน้าพิมพ์ QR Sticker…</body>');
   popup.document.close();
   try {
-    const l = stockCache.find(x => x.lot_id === lotId) || (await getLots(true)).find(x => x.lot_id === lotId);
+    let l = stockCache.find(x => x.lot_id === lotId);
+    if (!l) {
+      const lotRes=await sb.from('v_lot_balances').select('*').eq('lot_id',lotId).maybeSingle();
+      if (lotRes.error) throw lotRes.error;
+      l=lotRes.data;
+    }
     if (!l) { popup.close(); return toast('ไม่พบ Lot', true); }
     const params = new URLSearchParams({
       code:l.material_code,
@@ -794,26 +827,45 @@ function transactionRows(rows) {
 }
 
 async function renderMove(defaultTab = 'receive') {
-  const [mats, lots, historyRes] = await Promise.all([
-    loadMaterials(),
-    getLots(true),
-    sb.from('v_transaction_history').select('*').in('tx_type', ['RECEIVE','ISSUE']).limit(120)
-  ]);
-  if (historyRes.error) throw historyRes.error;
-  const history = historyRes.data || [];
-  page.innerHTML = `<div class="page-head"><div><h2>นำเข้า–นำออก</h2><p class="muted small">ข้อมูลเดิมจากแท็บ In / Out แสดงต่อเนื่องกับรายการใหม่</p></div></div><div class="tabs move-tabs"><button data-tab="receive">${icon('plus')} นำเข้า</button><button data-tab="issue">${icon('minus')} นำออก</button></div><div id="movePane"></div>`;
+  page.innerHTML = `<div class="page-head"><div><h2>นำเข้า–นำออก</h2><p class="muted small">เลือกงานจากแท็บ ระบบจะโหลดเฉพาะข้อมูลที่จำเป็น</p></div></div><div class="tabs move-tabs"><button data-tab="receive">${icon('plus')} นำเข้า</button><button data-tab="issue">${icon('minus')} นำออก</button></div><div id="movePane"></div>`;
 
-  const draw = tab => {
+  const draw = async tab => {
     moveTab = tab;
     navActive();
     $$('[data-tab]').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
-    const historyRows = history.filter(x => x.tx_type === (tab === 'receive' ? 'RECEIVE' : 'ISSUE'));
+    $('#movePane').innerHTML='<div class="card usage-loading">กำลังโหลดข้อมูลเฉพาะเมนูที่เลือก…</div>';
     if (tab === 'receive') {
-      $('#movePane').innerHTML = `<div class="move-layout"><form id="receiveForm" class="card form-card form-grid"><div class="form-title"><span>${icon('plus')}</span><div><h3>บันทึกนำเข้า</h3><p>เพิ่ม Lot ใหม่หรือเพิ่มจำนวนใน Lot เดิม</p></div></div><label>วัสดุ<select id="rMat" required><option value="">เลือกวัสดุ</option>${mats.map(m => `<option value="${esc(m.code)}">${esc(m.code)} · ${esc(m.name)}</option>`).join('')}</select></label><div class="form-grid two"><label>Lot<input id="rLot" required autocomplete="off"></label><label>วันหมดอายุ<input id="rExp" type="date"></label></div><label>จำนวน<input id="rQty" type="number" min="0.01" step="0.01" required inputmode="decimal"></label><p class="field-hint">หลังบันทึกกดพิมพ์ QR Sticker ได้ทันที สติ๊กเกอร์ใหม่ใช้รหัสหลัก แต่รหัสเดิมยังสแกนได้</p><button class="primary" type="submit">${icon('plus')} บันทึกนำเข้า</button></form><section class="card history-card"><div class="section-title compact"><div><h3>ประวัตินำเข้า</h3><p class="muted small">รวมรายการจาก Excel เดิม</p></div><button class="mini ghost" data-route="reports">ดูทั้งหมด</button></div><div class="table-wrap"><table class="data-table"><thead><tr><th>วันเวลา</th><th>สินค้า</th><th>Lot</th><th>จำนวน</th><th>ยอดหลังทำ</th><th>ผู้บันทึก</th></tr></thead><tbody>${transactionRows(historyRows.slice(0,30)) || '<tr><td colspan="6" class="empty">ไม่มีรายการ</td></tr>'}</tbody></table></div></section></div>`;
+      const [mats, historyRes] = await Promise.all([
+        loadMaterials(),
+        sb.from('v_transaction_history').select('*').eq('tx_type','RECEIVE').limit(60)
+      ]);
+      if (historyRes.error) throw historyRes.error;
+      const historyRows=historyRes.data || [];
+      $('#movePane').innerHTML = `<div class="move-layout"><form id="receiveForm" class="card form-card form-grid"><div class="form-title"><span>${icon('plus')}</span><div><h3>บันทึกนำเข้า</h3><p>เพิ่ม Lot ใหม่หรือเพิ่มจำนวนใน Lot เดิม</p></div></div><label>วัสดุ<select id="rMat" required><option value="">กรุณาเลือกวัสดุ</option>${mats.map(m => `<option value="${esc(m.code)}">${esc(m.code)} · ${esc(m.name)}</option>`).join('')}</select></label><div class="form-grid two"><label>Lot<input id="rLot" required autocomplete="off" autocapitalize="characters" maxlength="60" pattern="[A-Za-z0-9]+" placeholder="เช่น 8A145"><small id="lotRule" class="field-hint lot-rule">กรอกเฉพาะตัวเลข 0–9 และ/หรือตัวอักษรภาษาอังกฤษ A–Z เท่านั้น</small></label><label>วันหมดอายุ<input id="rExp" type="date"></label></div><label>จำนวน<input id="rQty" type="number" min="0.01" step="0.01" required inputmode="decimal"></label><p class="field-hint">ระบบจะป้องกันอักษรไทย สระ ช่องว่าง และอักขระพิเศษใน Lot เพื่อไม่ให้ QR ผิด</p><button class="primary" type="submit">${icon('plus')} บันทึกนำเข้า</button></form><section class="card history-card"><div class="section-title compact"><div><h3>ประวัตินำเข้าล่าสุด</h3><p class="muted small">โหลดเฉพาะ 60 รายการล่าสุด</p></div><button class="mini ghost" data-route="reports">ดูรายงาน</button></div><div class="table-wrap"><table class="data-table"><thead><tr><th>วันเวลา</th><th>สินค้า</th><th>Lot</th><th>จำนวน</th><th>ยอดหลังทำ</th><th>ผู้บันทึก</th></tr></thead><tbody>${transactionRows(historyRows.slice(0,30)) || '<tr><td colspan="6" class="empty">ไม่มีรายการ</td></tr>'}</tbody></table></div></section></div>`;
+      const lotInput=$('#rLot');
+      const validateLot=()=>{
+        const value=lotInput.value.trim();
+        if (value && !/^[A-Za-z0-9]+$/.test(value)) {
+          lotInput.setCustomValidity('Lot ต้องเป็นตัวเลขและ/หรือตัวอักษรภาษาอังกฤษเท่านั้น');
+          $('#lotRule').classList.add('invalid');
+        } else {
+          lotInput.setCustomValidity('');
+          $('#lotRule').classList.remove('invalid');
+          if (value) lotInput.value=value.toUpperCase();
+        }
+      };
+      lotInput.addEventListener('input',validateLot);
+      lotInput.addEventListener('blur',validateLot);
       $('#receiveForm').addEventListener('submit', receive);
     } else {
+      const [lots, historyRes] = await Promise.all([
+        getLots(true),
+        sb.from('v_transaction_history').select('*').eq('tx_type','ISSUE').limit(60)
+      ]);
+      if (historyRes.error) throw historyRes.error;
+      const historyRows=historyRes.data || [];
       const usableLots = lots.filter(l => Number(l.balance) > 0 && !isExpired(l));
-      $('#movePane').innerHTML = `<div class="move-layout"><div><div class="card scan-card"><div class="scan-icon">${icon('qr')}</div><div><h3>สแกน QR Sticker</h3><p>รองรับทั้งรหัสหลักใหม่และสติ๊กเกอร์ Old code ที่ติดอยู่เดิม · สแกน 1 ครั้ง = ตัดออก 1 หน่วย</p></div><button class="secondary scan-action" type="button" data-camera-scan>${icon('camera')} เปิดกล้องสแกน</button></div><form id="issueForm" class="card form-card form-grid" style="margin-top:12px"><label>รหัส QR / รหัสล็อต<div class="toolbar" style="margin:0"><input id="issueCode" autocomplete="off" placeholder="เช่น BB020-69020"><button type="button" class="mini" id="findIssueCode">ค้นหา</button></div></label><label>เลือก Lot<select id="iLot" required><option value="">เลือก Lot</option>${usableLots.map(l => `<option value="${esc(l.lot_id)}">${esc(lotKey(l))} · ${esc(l.material_name)} · เหลือ ${qty(l.balance)} ${esc(l.unit)}</option>`).join('')}</select></label><div id="selectedLot"></div><div class="notice">ระบบล็อกให้ตัดออกครั้งละ 1 หน่วยต่อ 1 ครั้ง ไม่ต้องกรอกจำนวน</div><label>หมายเหตุ<textarea id="iReason" rows="2" placeholder="ระบุเมื่อต้องการ"></textarea></label><button class="primary" type="submit">${icon('minus')} ยืนยันนำออก 1 หน่วย</button></form></div><section class="card history-card"><div class="section-title compact"><div><h3>ประวัตินำออก</h3><p class="muted small">รวมรายการจาก Excel เดิม</p></div><button class="mini ghost" data-route="reports">ดูทั้งหมด</button></div><div class="table-wrap"><table class="data-table"><thead><tr><th>วันเวลา</th><th>สินค้า</th><th>Lot</th><th>จำนวน</th><th>ยอดหลังทำ</th><th>ผู้บันทึก</th></tr></thead><tbody>${transactionRows(historyRows.slice(0,30)) || '<tr><td colspan="6" class="empty">ไม่มีรายการ</td></tr>'}</tbody></table></div></section></div>`;
+      $('#movePane').innerHTML = `<div class="move-layout"><div><div class="card scan-card"><div class="scan-icon">${icon('qr')}</div><div><h3>สแกน QR Sticker</h3><p>รองรับรหัสเดิม · สแกน 1 ครั้ง = ตัดออก 1 หน่วย</p></div><button class="secondary scan-action" type="button" data-camera-scan>${icon('camera')} เปิดกล้องสแกน</button></div><form id="issueForm" class="card form-card form-grid" style="margin-top:12px"><label>รหัส QR / รหัสล็อต<div class="toolbar" style="margin:0"><input id="issueCode" autocomplete="off" placeholder="เช่น BB020-69020"><button type="button" class="mini" id="findIssueCode">ค้นหา</button></div></label><label>เลือก Lot<select id="iLot" required><option value="">กรุณาเลือก Lot</option>${usableLots.map(l => `<option value="${esc(l.lot_id)}">${esc(lotKey(l))} · ${esc(l.material_name)} · เหลือ ${qty(l.balance)} ${esc(l.unit)}</option>`).join('')}</select></label><div id="selectedLot"></div><div class="notice">ระบบล็อกให้ตัดออกครั้งละ 1 หน่วยต่อ 1 ครั้ง ไม่ต้องกรอกจำนวน</div><label>หมายเหตุ<textarea id="iReason" rows="2" placeholder="ระบุเมื่อต้องการ"></textarea></label><button class="primary" type="submit">${icon('minus')} ยืนยันนำออก 1 หน่วย</button></form></div><section class="card history-card"><div class="section-title compact"><div><h3>ประวัตินำออกล่าสุด</h3><p class="muted small">โหลดเฉพาะ 60 รายการล่าสุด</p></div><button class="mini ghost" data-route="reports">ดูรายงาน</button></div><div class="table-wrap"><table class="data-table"><thead><tr><th>วันเวลา</th><th>สินค้า</th><th>Lot</th><th>จำนวน</th><th>ยอดหลังทำ</th><th>ผู้บันทึก</th></tr></thead><tbody>${transactionRows(historyRows.slice(0,30)) || '<tr><td colspan="6" class="empty">ไม่มีรายการ</td></tr>'}</tbody></table></div></section></div>`;
       const select = $('#iLot');
       const showSelected = () => {
         const l = usableLots.find(x => x.lot_id === select.value);
@@ -831,17 +883,23 @@ async function renderMove(defaultTab = 'receive') {
       $('#issueForm').addEventListener('submit', issue);
     }
   };
-  $$('[data-tab]').forEach(b => b.addEventListener('click', () => draw(b.dataset.tab)));
-  draw(defaultTab === 'issue' ? 'issue' : 'receive');
+  $$('[data-tab]').forEach(b => b.addEventListener('click', () => draw(b.dataset.tab).catch(e=>{ $('#movePane').innerHTML=`<div class="card notice">${esc(errMsg(e))}</div>`; })));
+  await draw(defaultTab === 'issue' ? 'issue' : 'receive');
 }
 
 async function receive(e) {
   e.preventDefault();
+  const lot=$('#rLot').value.trim().toUpperCase();
+  if (!/^[A-Za-z0-9]+$/.test(lot)) {
+    $('#rLot').focus();
+    return toast('Lot กรอกได้เฉพาะตัวเลขและ/หรือตัวอักษรภาษาอังกฤษ A–Z เท่านั้น', true);
+  }
+  $('#rLot').value=lot;
   const btn = e.submitter;
   btn.disabled = true;
   const {data, error} = await sb.rpc('fn_receive_stock', {
     p_material_code:$('#rMat').value,
-    p_lot_no:$('#rLot').value.trim(),
+    p_lot_no:lot,
     p_expiry_date:$('#rExp').value || null,
     p_quantity:Number($('#rQty').value)
   });
@@ -849,6 +907,7 @@ async function receive(e) {
   if (error) return toast(errMsg(error), true);
   materialsCache = [];
   stockCache = [];
+  inventorySummaryCache=[];
   toast('รับเข้าสต๊อกแล้ว');
   const row = Array.isArray(data) ? data[0] : data;
   openModal(`<h3>รับเข้าเรียบร้อย</h3><p class="muted">ยอดใหม่ ${qty(row?.quantity_after)}</p><div class="actions"><button class="primary" data-print="${esc(row?.lot_id || '')}">${icon('print')} พิมพ์ QR Sticker</button><button class="secondary modal-close">ปิด</button></div>`);
@@ -1085,17 +1144,25 @@ function openExpiredRemoval(id) {
 }
 
 async function renderActivity() {
-  const {data, error} = await sb.from('v_audit_activity').select('*').limit(300);
-  if (error) throw error;
-  page.innerHTML = `<div class="page-head"><div><h2>ประวัติการทำรายการ</h2><p class="muted small">รวมรับเข้า นำออก ตรวจ ปรับยอด พิมพ์ และยืนยันของหมดอายุ</p></div></div><div class="toolbar"><div class="search-box">${icon('search')}<input id="activitySearch" placeholder="ค้นหาชื่อ รหัส Lot หรือเหตุผล"></div><button class="mini" id="activitySearchBtn">ค้นหา</button></div><div id="activityList" class="activity-page-list"></div>`;
-  const draw = () => {
-    const s = $('#activitySearch').value.toLowerCase();
-    const arr = (data || []).filter(a => !s || JSON.stringify(a).toLowerCase().includes(s));
-    $('#activityList').innerHTML = arr.map(a => `<div class="card">${activityCard(a)}</div>`).join('') || '<div class="card empty">ไม่พบกิจกรรม</div>';
+  page.innerHTML = `<div class="page-head"><div><h2>ประวัติการทำรายการ</h2><p class="muted small">เลือกประเภทก่อน ระบบจึงจะโหลดรายการล่าสุด</p></div></div><section class="card lazy-filter-card"><label>ประเภทกิจกรรม<select id="activityType"><option value="">กรุณาเลือกประเภท</option><option value="all">ทั้งหมด</option><option value="receive">นำเข้า</option><option value="issue">นำออก</option><option value="print">พิมพ์ QR Sticker</option><option value="check">ตรวจสต๊อก</option><option value="expired">ของหมดอายุ</option></select></label><div class="search-box">${icon('search')}<input id="activitySearch" placeholder="ค้นหาในรายการที่โหลด" disabled></div></section><div id="activityList"><div class="card select-first-state">${icon('history')}<div><strong>กรุณาเลือกประเภทกิจกรรม</strong><span>ยังไม่มีการโหลดประวัติ</span></div></div></div>`;
+  let loaded=[];
+  const draw=()=>{const s=$('#activitySearch').value.toLowerCase();const arr=loaded.filter(a=>!s||JSON.stringify(a).toLowerCase().includes(s));$('#activityList').innerHTML=arr.map(a=>`<div class="card">${activityCard(a)}</div>`).join('')||'<div class="card empty">ไม่พบกิจกรรม</div>';};
+  const load=async()=>{
+    const type=$('#activityType').value;
+    if(!type){loaded=[];$('#activitySearch').disabled=true;$('#activityList').innerHTML='<div class="card select-first-state">'+icon('history')+'<div><strong>กรุณาเลือกประเภทกิจกรรม</strong><span>ยังไม่มีการโหลดประวัติ</span></div></div>';return;}
+    $('#activityList').innerHTML='<div class="card usage-loading">กำลังโหลดกิจกรรมล่าสุด…</div>';
+    let q=sb.from('v_audit_activity').select('*');
+    if(type==='receive')q=q.eq('action','RECEIVE');
+    else if(type==='issue')q=q.eq('action','ISSUE');
+    else if(type==='print')q=q.eq('action','LABEL_PRINT');
+    else if(type==='expired')q=q.in('action',['EXPIRED_REMOVED','AUTO_EXPIRED']);
+    else if(type==='check')q=q.in('action',['STOCK_CHECK_MATCHED','STOCK_CHECK_ADJUSTED','WEEKLY_CHECK_COMPLETED']);
+    const {data,error}=await q.limit(300);
+    if(error){$('#activityList').innerHTML=`<div class="card notice">${esc(errMsg(error))}</div>`;return;}
+    loaded=data||[];$('#activitySearch').disabled=false;draw();
   };
-  $('#activitySearch').addEventListener('input', draw);
-  $('#activitySearchBtn').addEventListener('click', draw);
-  draw();
+  $('#activityType').addEventListener('change',load);
+  $('#activitySearch').addEventListener('input',draw);
 }
 
 function csvCell(v) {
@@ -1128,29 +1195,27 @@ function exportReport(kind) {
   toast('ส่งออก CSV แล้ว');
 }
 
-async function renderReports(defaultTab = 'receive') {
-  const [historyRes, lots] = await Promise.all([
-    sb.from('v_transaction_history').select('*').limit(1500),
-    getLots(true)
-  ]);
-  if (historyRes.error) throw historyRes.error;
-  const rows = historyRes.data || [];
-  window._reportRows = rows;
-  window._reportStock = lots;
-  page.innerHTML = `<div class="page-head"><div><h2>รายงาน & ส่งออก</h2><p class="muted small">ดูข้อมูลเดิมจากแท็บ In / Out และส่งออก CSV ได้</p></div></div><div class="tabs report-tabs"><button data-report-tab="receive">นำเข้า</button><button data-report-tab="issue">นำออก</button><button data-report-tab="expired">หมดอายุ</button><button data-report-tab="stock">สต๊อกคงเหลือ</button></div><div id="reportPane"></div>`;
-  const draw = tab => {
+async function renderReports(defaultTab = '') {
+  page.innerHTML = `<div class="page-head"><div><h2>รายงาน & ส่งออก</h2><p class="muted small">เลือกประเภทรายงานก่อน ระบบจึงจะโหลดข้อมูล</p></div></div><div class="tabs report-tabs"><button data-report-tab="receive">นำเข้า</button><button data-report-tab="issue">นำออก</button><button data-report-tab="expired">หมดอายุ</button><button data-report-tab="stock">สต๊อกคงเหลือ</button></div><div id="reportPane"><div class="card select-first-state">${icon('download')}<div><strong>กรุณาเลือกประเภทรายงาน</strong><span>ยังไม่มีการโหลดข้อมูล</span></div></div></div>`;
+  const draw = async tab => {
     reportTab = tab;
     $$('[data-report-tab]').forEach(x => x.classList.toggle('active', x.dataset.reportTab === tab));
+    $('#reportPane').innerHTML='<div class="card usage-loading">กำลังโหลดรายงานที่เลือก…</div>';
     if (tab === 'stock') {
+      const lots=await getLots(true);
+      window._reportStock=lots;
       $('#reportPane').innerHTML = `<div class="report-actions"><span class="muted">แสดง ${lots.length} Lot ที่ยัง Active</span><button class="primary" data-export-report="stock">${icon('download')} ส่งออกสต๊อก CSV</button></div><div class="table-wrap"><table class="data-table"><thead><tr><th>สินค้า</th><th>Lot</th><th>คงเหลือ</th><th>EXP</th><th>ผู้ดูแล</th><th>สถานะ</th></tr></thead><tbody>${lots.map(x => `<tr><td><strong>${esc(x.material_name)}</strong><div class="muted tiny">${esc(x.material_code)}</div></td><td>${esc(lotKey(x))}</td><td>${qty(x.balance)} ${esc(x.unit)}</td><td>${d(x.expiry_date)}</td><td>${esc(x.responsible_name || '-')}</td><td>${statusBadge(x)}</td></tr>`).join('')}</tbody></table></div>`;
       return;
     }
     const type = tab === 'receive' ? 'RECEIVE' : tab === 'issue' ? 'ISSUE' : 'EXPIRED';
-    const filtered = rows.filter(x => x.tx_type === type);
+    const {data,error}=await sb.from('v_transaction_history').select('*').eq('tx_type',type).limit(1500);
+    if(error)throw error;
+    const filtered=data||[];
+    window._reportRows=filtered;
     $('#reportPane').innerHTML = `<div class="report-actions"><span class="muted">แสดง ${filtered.length} รายการล่าสุด</span><button class="primary" data-export-report="${tab}">${icon('download')} ส่งออก CSV</button></div><div class="table-wrap"><table class="data-table"><thead><tr><th>วันเวลา</th><th>สินค้า</th><th>Lot</th><th>จำนวน</th><th>ยอดหลังทำ</th><th>ผู้บันทึก</th></tr></thead><tbody>${transactionRows(filtered) || '<tr><td colspan="6" class="empty">ไม่มีรายการ</td></tr>'}</tbody></table></div>`;
   };
-  $$('[data-report-tab]').forEach(b => b.addEventListener('click', () => draw(b.dataset.reportTab)));
-  draw(defaultTab || 'receive');
+  $$('[data-report-tab]').forEach(b => b.addEventListener('click', () => draw(b.dataset.reportTab).catch(e=>{$('#reportPane').innerHTML=`<div class="card notice">${esc(errMsg(e))}</div>`;})));
+  if(defaultTab) await draw(defaultTab);
 }
 
 async function renderAdmin() {
