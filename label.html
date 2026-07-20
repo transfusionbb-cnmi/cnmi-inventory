@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>พิมพ์สติ๊กเกอร์</title>
+<style>
+@page { size: 25mm 20mm; margin: 0; }
+* { box-sizing: border-box; }
+html,body { width:25mm; height:20mm; margin:0; padding:0; background:#fff; }
+.label { width:25mm; height:20mm; padding:1mm 2mm; box-sizing:border-box; overflow:hidden; color:#000; font-family:Tahoma,"Noto Sans Thai",Arial,sans-serif; line-height:1.05; display:flex; flex-direction:column; justify-content:space-between; }
+.code { font-size:7pt; font-weight:800; white-space:nowrap; overflow:hidden; }
+.name { font-size:5.7pt; font-weight:700; height:6.2mm; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow-wrap:anywhere; }
+.meta { font-size:5.5pt; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.controls { position:fixed; left:28mm; top:4mm; width:220px; font-family:Arial,sans-serif; }
+.controls button { padding:10px 14px; border:0; border-radius:8px; background:#0f766e; color:#fff; cursor:pointer; }
+.controls p { font-size:12px; color:#555; line-height:1.4; }
+@media print { .controls { display:none!important; } }
+</style>
+</head>
+<body>
+<div class="label">
+  <div class="code" id="code"></div>
+  <div class="name" id="name"></div>
+  <div class="meta" id="lot"></div>
+  <div class="meta" id="exp"></div>
+</div>
+<div class="controls"><button onclick="window.print()">พิมพ์สติ๊กเกอร์</button><p>ตั้งกระดาษ 25 × 20 mm<br>Scale 100% · Margin None<br>ปิด Header/Footer</p></div>
+<script>
+const p=new URLSearchParams(location.search);
+const safe=(v,f='-')=>v&&v!=='null'?v:f;
+document.getElementById('code').textContent=safe(p.get('code'));
+document.getElementById('name').textContent=safe(p.get('name'));
+document.getElementById('lot').textContent='LOT '+safe(p.get('lot'));
+document.getElementById('exp').textContent='EXP '+safe(p.get('exp'),'ไม่ระบุ');
+setTimeout(()=>{ if(p.get('auto')==='1') window.print(); },350);
+</script>
+</body></html>

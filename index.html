@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0f766e">
+  <meta name="description" content="ระบบ Inventory หน่วยเวชศาสตร์บริการโลหิต">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="assets/app.css?v=1.0.1">
+  <title>CNMI Inventory</title>
+</head>
+<body>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="modal" class="modal hidden" aria-hidden="true"><div class="modal-card"><button class="icon-button modal-close" aria-label="ปิด">×</button><div id="modalBody"></div></div></div>
+
+  <main id="loginView" class="login-shell">
+    <section class="login-card">
+      <div class="brand-mark">INV</div>
+      <h1>CNMI Inventory</h1>
+      <p class="muted">หน่วยเวชศาสตร์บริการโลหิต</p>
+      <p class="login-account-note">ใช้อีเมลเดิม และตั้งรหัสผ่านให้เหมือน Staff Planner ได้<br><small>บัญชีของทั้งสองแอพแยกกัน</small></p>
+      <form id="loginForm" class="stack">
+        <label>อีเมล<input id="loginEmail" type="email" autocomplete="username" required placeholder="name@mahidol.ac.th"></label>
+        <label>รหัสผ่าน<input id="loginPassword" type="password" autocomplete="current-password" minlength="6" required></label>
+        <button class="primary" type="submit">เข้าสู่ระบบ</button>
+        <button class="secondary" type="button" id="registerBtn">สร้างบัญชีครั้งแรก</button>
+      </form>
+      <p id="setupWarning" class="notice hidden"></p>
+    </section>
+  </main>
+
+  <div id="appView" class="app hidden">
+    <header class="topbar">
+      <div><strong>CNMI Inventory</strong><small id="userBadge"></small></div>
+      <div class="top-actions"><a class="app-switch-link" href="https://staff.cnmiblood.com" target="_blank" rel="noopener noreferrer" title="เปิด Staff Planner">Staff Planner</a><button class="icon-button" data-route="help" title="คู่มือ">?</button><button class="icon-button" id="logoutBtn" title="ออกจากระบบ">↪</button></div>
+    </header>
+    <main id="page" class="page"></main>
+    <nav class="bottom-nav" aria-label="เมนูหลัก">
+      <button data-route="home"><span>⌂</span><small>หน้าหลัก</small></button>
+      <button data-route="stock"><span>▦</span><small>สต๊อก</small></button>
+      <button data-route="move"><span>⇄</span><small>รับ–เบิก</small></button>
+      <button data-route="weekly"><span>✓</span><small>ตรวจศุกร์</small></button>
+      <button data-route="activity"><span>≡</span><small>ประวัติ</small></button>
+    </nav>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="assets/config.js?v=1.0.1"></script>
+  <script src="assets/app.js?v=1.0.1"></script>
+</body>
+</html>
