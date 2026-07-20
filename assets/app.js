@@ -1,62 +1,805 @@
 (() => {
 'use strict';
-const C=window.APP_CONFIG||{};
-const configured=C.SUPABASE_URL&&!C.SUPABASE_URL.includes('YOUR-PROJECT')&&C.SUPABASE_ANON_KEY&&!C.SUPABASE_ANON_KEY.includes('YOUR-ANON');
-let sb=null, session=null, profile=null, route='home', stockCache=[], materialsCache=[];
-const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
-const page=$('#page'), loginView=$('#loginView'), appView=$('#appView');
-const esc=(v='')=>String(v??'').replace(/[&<>'"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[m]));
-const qty=v=>Number(v||0).toLocaleString('th-TH',{maximumFractionDigits:2});
-const d=v=>v?new Date(v+'T00:00:00').toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}):'ไม่ระบุ';
-const dt=v=>v?new Date(v).toLocaleString('th-TH',{dateStyle:'short',timeStyle:'short'}):'-';
-function toast(msg,bad=false){const t=$('#toast');t.textContent=msg;t.style.background=bad?'#b42318':'#17201f';t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2600)}
-function openModal(html){$('#modalBody').innerHTML=html;$('#modal').classList.remove('hidden');$('#modal').setAttribute('aria-hidden','false')}
-function closeModal(){$('#modal').classList.add('hidden');$('#modal').setAttribute('aria-hidden','true')}
-function loading(){page.innerHTML='<div class="grid"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>'}
-function errMsg(e){return e?.message||String(e||'เกิดข้อผิดพลาด')}
-async function init(){
-  if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(()=>{});
-  $('#modal').addEventListener('click',e=>{if(e.target.id==='modal'||e.target.closest('.modal-close'))closeModal()});
-  $('#loginForm').addEventListener('submit',login); $('#registerBtn').addEventListener('click',register); $('#logoutBtn').addEventListener('click',logout);
-  document.addEventListener('click',globalClick);
-  if(!configured){$('#setupWarning').classList.remove('hidden');$('#setupWarning').textContent='ยังไม่ได้ตั้งค่า Supabase กรุณาแก้ไฟล์ assets/config.js ตาม README_INSTALL_TH.md';return}
-  sb=window.supabase.createClient(C.SUPABASE_URL,C.SUPABASE_ANON_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
-  const {data}=await sb.auth.getSession(); session=data.session;
-  sb.auth.onAuthStateChange((_e,s)=>{session=s;if(!s)showLogin()});
-  if(session) await enterApp();
+
+const C = window.APP_CONFIG || {};
+const configured = C.SUPABASE_URL && !C.SUPABASE_URL.includes('YOUR-PROJECT') && C.SUPABASE_ANON_KEY && !C.SUPABASE_ANON_KEY.includes('YOUR-ANON');
+let sb = null;
+let session = null;
+let profile = null;
+let route = 'home';
+let stockCache = [];
+let materialsCache = [];
+let autoExpiryRan = false;
+let scannerStream = null;
+let scannerTimer = null;
+let pendingIssueCode = new URLSearchParams(location.search).get('issue') || new URLSearchParams(location.search).get('lot');
+
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const page = $('#page');
+const loginView = $('#loginView');
+const appView = $('#appView');
+const esc = (v = '') => String(v ?? '').replace(/[&<>'"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[m]));
+const qty = v => Number(v || 0).toLocaleString('th-TH', {maximumFractionDigits: 2});
+const d = v => v ? new Date(v + 'T00:00:00').toLocaleDateString('th-TH', {day:'2-digit',month:'2-digit',year:'numeric'}) : 'ไม่ระบุ';
+const dt = v => v ? new Date(v).toLocaleString('th-TH', {dateStyle:'short',timeStyle:'short'}) : '-';
+const icon = (name, cls = 'icon') => `<svg class="${cls}" aria-hidden="true"><use href="#i-${name}"></use></svg>`;
+
+function toast(msg, bad = false) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.style.background = bad ? '#b42318' : '#17201f';
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 3000);
 }
-async function login(e){e.preventDefault();if(!configured)return toast('กรุณาตั้งค่า Supabase ก่อน',true);const email=$('#loginEmail').value.trim();const password=$('#loginPassword').value;const {error}=await sb.auth.signInWithPassword({email,password});if(error)return toast(errMsg(error),true);await enterApp()}
-async function register(){if(!configured)return toast('กรุณาตั้งค่า Supabase ก่อน',true);const email=$('#loginEmail').value.trim(),password=$('#loginPassword').value;if(!email||password.length<6)return toast('กรอกอีเมลและรหัสผ่านอย่างน้อย 6 ตัว',true);const {error}=await sb.auth.signUp({email,password});if(error)return toast(errMsg(error),true);toast('สร้างบัญชีแล้ว กรุณาตรวจอีเมลยืนยัน หรือเข้าสู่ระบบตามการตั้งค่า Supabase')}
-async function loadProfile(){const {data,error}=await sb.from('profiles').select('*').eq('id',session.user.id).maybeSingle();if(error)throw error;if(!data||!data.active)throw new Error('อีเมลนี้ยังไม่ได้รับสิทธิ์ใช้งาน');profile=data}
-async function enterApp(){try{const {data}=await sb.auth.getSession();session=data.session;if(!session)return showLogin();await loadProfile();loginView.classList.add('hidden');appView.classList.remove('hidden');$('#userBadge').textContent=`${profile.display_name} · ${profile.role==='admin'?'ผู้ดูแลระบบ':'Staff'}`;navigate('home')}catch(e){toast(errMsg(e),true);await sb.auth.signOut();showLogin()}}
-function showLogin(){appView.classList.add('hidden');loginView.classList.remove('hidden')}
-async function logout(){if(sb)await sb.auth.signOut();profile=null;showLogin()}
-function globalClick(e){const r=e.target.closest('[data-route]');if(r){e.preventDefault();navigate(r.dataset.route);return}const p=e.target.closest('[data-print]');if(p){printLabel(p.dataset.print);return}const c=e.target.closest('[data-check]');if(c){openCheck(c.dataset.check);return}const edit=e.target.closest('[data-edit-material]');if(edit){openMaterialEditor(edit.dataset.editMaterial);return}}
-function navActive(){$$('.bottom-nav button').forEach(b=>b.classList.toggle('active',b.dataset.route===route))}
-async function navigate(r){route=r;navActive();loading();try{if(r==='home')await renderHome();else if(r==='stock')await renderStock();else if(r==='move')await renderMove();else if(r==='weekly')await renderWeekly();else if(r==='activity')await renderActivity();else if(r==='help')renderHelp();else if(r==='admin')await renderAdmin();else await renderHome();window.scrollTo({top:0,behavior:'smooth'})}catch(e){page.innerHTML=`<div class="card notice">${esc(errMsg(e))}</div>`}}
-async function getLots(){const {data,error}=await sb.from('v_lot_balances').select('*').order('material_code').order('lot_no');if(error)throw error;stockCache=data||[];return stockCache}
-async function ensureCheck(){const {data,error}=await sb.rpc('fn_ensure_weekly_check');if(error)throw error;return Array.isArray(data)?data[0]:data}
-function statusBadge(x){if(Number(x.balance)<0)return '<span class="badge danger">ยอดติดลบ</span>';if(x.expiry_date&&new Date(x.expiry_date)<new Date())return '<span class="badge danger">หมดอายุ</span>';if(x.days_to_expiry!==null&&x.days_to_expiry<=90)return '<span class="badge warn">ใกล้หมดอายุ</span>';return '<span class="badge ok">ปกติ</span>'}
-async function renderHome(){const [lots,checkRes,activityRes]=await Promise.all([getLots(),ensureCheck(),sb.from('v_audit_activity').select('*').limit(8)]);if(activityRes.error)throw activityRes.error;const positive=lots.filter(x=>Number(x.balance)>0), low=lots.filter(x=>Number(x.balance)>0&&Number(x.balance)<=Number(x.min_qty)), exp=lots.filter(x=>x.days_to_expiry!==null&&x.days_to_expiry>=0&&x.days_to_expiry<=90&&Number(x.balance)>0), neg=lots.filter(x=>Number(x.balance)<0);let prog=null;if(checkRes){const q=await sb.from('v_weekly_check_progress').select('*').eq('check_id',checkRes.id).maybeSingle();prog=q.data}
-page.innerHTML=`<div class="page-head"><div><h2>ภาพรวม</h2><div class="muted small">Location: ${esc(C.LOCATION_NAME||'Staff')}</div></div>${profile.role==='admin'?'<button class="mini" data-route="admin">ตั้งค่า</button>':''}</div>
-<div class="grid kpi-grid"><div class="card kpi"><small>Lot คงเหลือ</small><strong>${positive.length}</strong></div><div class="card kpi"><small>ต่ำกว่าขั้นต่ำ</small><strong>${low.length}</strong></div><div class="card kpi"><small>ใกล้หมดอายุ</small><strong>${exp.length}</strong></div><div class="card kpi"><small>ยอดติดลบ</small><strong>${neg.length}</strong></div><div class="card kpi"><small>ตรวจวันศุกร์</small><strong>${prog?`${prog.checked_items}/${prog.total_items}`:'-'}</strong></div></div>
-<div class="grid quick-grid"><button class="quick" data-route="move">＋ รับเข้า</button><button class="quick" data-route="move">－ เบิกออก</button><button class="quick" data-route="weekly">✓ ตรวจสต๊อก</button><button class="quick" data-route="stock">▦ ดูสต๊อก</button></div>
-${prog?`<div class="card"><div class="check-info"><div><strong>ตรวจสต๊อกวันศุกร์ ${d(prog.week_friday)}</strong><div class="muted small">${prog.status==='COMPLETED'?'เสร็จแล้ว':'กำลังดำเนินการ'}</div></div><span class="badge ${prog.status==='COMPLETED'?'ok':'warn'}">${prog.percent_complete}%</span></div><div class="progress" style="margin-top:12px"><span style="width:${prog.percent_complete}%"></span></div></div>`:''}
-<div class="section-title"><h3>ต้องตรวจสอบ</h3></div><div class="list">${[...neg,...low.slice(0,5)].slice(0,8).map(l=>lotCard(l)).join('')||'<div class="card empty">ไม่มีรายการเร่งด่วน</div>'}</div>
-<div class="section-title"><h3>กิจกรรมล่าสุด</h3><button class="mini" data-route="activity">ดูทั้งหมด</button></div><div class="list">${(activityRes.data||[]).map(activityCard).join('')||'<div class="card empty">ยังไม่มีกิจกรรม</div>'}</div>`}
-function lotCard(l){return `<div class="card lot-card"><div><div class="lot-title">${esc(l.material_code)} · ${esc(l.material_name)}</div><div class="lot-meta">Lot ${esc(l.lot_no)} · EXP ${d(l.expiry_date)} · ${esc(l.responsible_name||'-')}</div><div style="margin-top:6px">${statusBadge(l)}</div><div class="actions"><button class="mini" data-print="${esc(l.lot_id)}">พิมพ์</button></div></div><div><div class="qty">${qty(l.balance)}</div><div class="muted small">${esc(l.unit)}</div></div></div>`}
-async function renderStock(){const lots=await getLots();page.innerHTML=`<div class="page-head"><h2>สต๊อกตาม Lot</h2><span class="badge">${lots.length} Lot</span></div><div class="toolbar"><input id="stockSearch" placeholder="ค้นหารหัส ชื่อ หรือ Lot"><button class="mini" id="stockScan">ค้นหา</button></div><div class="filters"><button class="chip active" data-filter="positive">คงเหลือ</button><button class="chip" data-filter="all">ทั้งหมด</button><button class="chip" data-filter="low">ใกล้หมด</button><button class="chip" data-filter="expiry">ใกล้หมดอายุ</button><button class="chip" data-filter="negative">ติดลบ</button></div><div id="stockList" class="list"></div>`;let filter='positive';const draw=()=>{const s=$('#stockSearch').value.trim().toLowerCase();let arr=lots.filter(x=>!s||`${x.material_code} ${x.material_name} ${x.lot_no}`.toLowerCase().includes(s));if(filter==='positive')arr=arr.filter(x=>Number(x.balance)>0);if(filter==='low')arr=arr.filter(x=>Number(x.balance)>0&&Number(x.balance)<=Number(x.min_qty));if(filter==='expiry')arr=arr.filter(x=>x.days_to_expiry!==null&&x.days_to_expiry<=90&&Number(x.balance)>0);if(filter==='negative')arr=arr.filter(x=>Number(x.balance)<0);$('#stockList').innerHTML=arr.map(lotCard).join('')||'<div class="card empty">ไม่พบรายการ</div>'};$('#stockSearch').addEventListener('input',draw);$$('[data-filter]').forEach(b=>b.addEventListener('click',()=>{filter=b.dataset.filter;$$('[data-filter]').forEach(x=>x.classList.toggle('active',x===b));draw()}));draw()}
-async function printLabel(lotId){const l=stockCache.find(x=>x.lot_id===lotId)||((await getLots()).find(x=>x.lot_id===lotId));if(!l)return toast('ไม่พบ Lot',true);const url=`label.html?code=${encodeURIComponent(l.material_code)}&name=${encodeURIComponent(l.label_name||l.material_name)}&lot=${encodeURIComponent(l.lot_no)}&exp=${encodeURIComponent(l.expiry_date?d(l.expiry_date):'ไม่ระบุ')}`;window.open(url,'_blank','width=520,height=420');sb.rpc('fn_log_label_print',{p_lot_id:lotId}).catch(()=>{})}
-async function loadMaterials(){if(materialsCache.length)return materialsCache;const {data,error}=await sb.from('materials').select('*').eq('status','Active').eq('is_main',true).order('name');if(error)throw error;materialsCache=data||[];return materialsCache}
-async function renderMove(){const [mats,lots]=await Promise.all([loadMaterials(),getLots()]);page.innerHTML=`<div class="page-head"><h2>รับเข้า–เบิกออก</h2></div><div class="tabs"><button class="active" data-tab="receive">รับเข้า</button><button data-tab="issue">เบิกออก</button></div><div id="movePane"></div>`;const draw=t=>{if(t==='receive'){$('#movePane').innerHTML=`<form id="receiveForm" class="card form-card form-grid"><label>วัสดุ<select id="rMat" required><option value="">เลือกวัสดุ</option>${mats.map(m=>`<option value="${esc(m.code)}">${esc(m.code)} · ${esc(m.name)}</option>`).join('')}</select></label><div class="form-grid two"><label>Lot<input id="rLot" required></label><label>วันหมดอายุ<input id="rExp" type="date"></label></div><label>จำนวน<input id="rQty" type="number" min="0.01" step="0.01" required></label><button class="primary" type="submit">บันทึกรับเข้า</button></form>`;$('#receiveForm').addEventListener('submit',receive)}else{$('#movePane').innerHTML=`<form id="issueForm" class="card form-card form-grid"><label>Lot<select id="iLot" required><option value="">เลือก Lot</option>${lots.filter(l=>Number(l.balance)>0).map(l=>`<option value="${esc(l.lot_id)}">${esc(l.material_code)} · ${esc(l.lot_no)} · เหลือ ${qty(l.balance)} ${esc(l.unit)}</option>`).join('')}</select></label><label>จำนวน<input id="iQty" type="number" min="0.01" step="0.01" required></label><label>หมายเหตุ<textarea id="iReason" rows="2" placeholder="ระบุเมื่อต้องการ"></textarea></label><button class="primary" type="submit">ยืนยันเบิกออก</button></form>`;$('#issueForm').addEventListener('submit',issue)}};$$('[data-tab]').forEach(b=>b.addEventListener('click',()=>{$$('[data-tab]').forEach(x=>x.classList.toggle('active',x===b));draw(b.dataset.tab)}));draw('receive')}
-async function receive(e){e.preventDefault();const btn=e.submitter;btn.disabled=true;const p={p_material_code:$('#rMat').value,p_lot_no:$('#rLot').value.trim(),p_expiry_date:$('#rExp').value||null,p_quantity:Number($('#rQty').value)};const {data,error}=await sb.rpc('fn_receive_stock',p);btn.disabled=false;if(error)return toast(errMsg(error),true);materialsCache=[];stockCache=[];toast('รับเข้าสต๊อกแล้ว');const row=Array.isArray(data)?data[0]:data;openModal(`<h3>รับเข้าเรียบร้อย</h3><p>ยอดใหม่ ${qty(row?.quantity_after)}</p><div class="actions"><button class="primary" id="printNew">พิมพ์สติ๊กเกอร์</button><button class="secondary modal-close">ปิด</button></div>`);$('#printNew').onclick=async()=>{closeModal();stockCache=[];await printLabel(row?.lot_id)}}
-async function issue(e){e.preventDefault();const btn=e.submitter;btn.disabled=true;const {error}=await sb.rpc('fn_issue_stock',{p_lot_id:$('#iLot').value,p_quantity:Number($('#iQty').value),p_reason_detail:$('#iReason').value.trim()||null});btn.disabled=false;if(error)return toast(errMsg(error),true);stockCache=[];toast('บันทึกเบิกออกแล้ว');navigate('move')}
-async function renderWeekly(){const check=await ensureCheck();if(!check){page.innerHTML='<div class="card empty">ยังไม่มีรอบตรวจ</div>';return}const {data,error}=await sb.from('v_weekly_check_items').select('*').eq('check_id',check.id).order('material_code').order('lot_no');if(error)throw error;const items=data||[],done=items.filter(x=>x.checked_at).length,pct=items.length?Math.round(done*100/items.length):100;page.innerHTML=`<div class="page-head"><div><h2>ตรวจสต๊อกวันศุกร์</h2><div class="muted small">${d(check.week_friday)}</div></div><span class="badge ${check.status==='COMPLETED'?'ok':'warn'}">${check.status==='COMPLETED'?'เสร็จแล้ว':`${done}/${items.length}`}</span></div><div class="card"><div class="progress"><span style="width:${pct}%"></span></div><div class="small muted" style="margin-top:8px">ตรวจครบทุก Lot แล้วจึงปิดรอบได้</div></div><div class="filters"><button class="chip active" data-wf="mine">งานของฉัน</button><button class="chip" data-wf="pending">ยังไม่ตรวจ</button><button class="chip" data-wf="all">ทั้งหมด</button><button class="chip" data-wf="mismatch">เคยไม่ตรง</button></div><div id="checkList" class="list"></div>${check.status!=='COMPLETED'?'<button id="completeCheck" class="primary" style="width:100%;margin-top:14px">เสร็จสิ้นการตรวจสต๊อก</button>':''}`;let f='mine';const draw=()=>{let arr=items;if(f==='mine')arr=arr.filter(x=>x.responsible_email===profile.email||profile.role==='admin');if(f==='pending')arr=arr.filter(x=>!x.checked_at);if(f==='mismatch')arr=arr.filter(x=>x.result==='ADJUSTED');$('#checkList').innerHTML=arr.map(x=>`<div class="card check-card ${x.checked_at?(x.result==='ADJUSTED'?'mismatch':'checked'):''}"><div class="check-info"><div><strong>${esc(x.material_code)} · ${esc(x.material_name)}</strong><div class="lot-meta">Lot ${esc(x.lot_no)} · ระบบ ${qty(x.current_balance)} ${esc(x.unit)}</div><div class="lot-meta">ผู้ดูแล: ${esc(x.responsible_name||'-')}</div>${x.checked_at?`<div class="lot-meta">ตรวจโดย ${esc(x.checked_by_name||x.checked_by_email)} · ${dt(x.checked_at)}</div>`:''}</div>${x.checked_at?`<span class="badge ${x.result==='MATCHED'?'ok':'warn'}">${x.result==='MATCHED'?'ตรง':'ปรับแล้ว'}</span>`:`<button class="mini" data-check="${esc(x.item_id)}">ตรวจ</button>`}</div></div>`).join('')||'<div class="card empty">ไม่มีรายการ</div>'};$$('[data-wf]').forEach(b=>b.addEventListener('click',()=>{f=b.dataset.wf;$$('[data-wf]').forEach(x=>x.classList.toggle('active',x===b));draw()}));draw();if($('#completeCheck'))$('#completeCheck').onclick=async()=>{const {error}=await sb.rpc('fn_complete_weekly_check',{p_check_id:check.id});if(error)return toast(errMsg(error),true);toast('ปิดรอบตรวจสต๊อกแล้ว');renderWeekly()};window._weeklyItems=items}
-function openCheck(id){const x=(window._weeklyItems||[]).find(i=>i.item_id===id);if(!x)return;const can=x.responsible_email===profile.email||profile.role==='admin';if(!can)return toast('รายการนี้เป็นความรับผิดชอบของ '+(x.responsible_name||x.responsible_email),true);openModal(`<h3>${esc(x.material_code)} · ${esc(x.material_name)}</h3><p class="muted">Lot ${esc(x.lot_no)} · ยอดปัจจุบัน ${qty(x.current_balance)} ${esc(x.unit)}</p><form id="checkForm" class="form-grid"><label>จำนวนที่พบจริง<input id="actualQty" type="number" min="0" step="0.01" value="${Number(x.current_balance)}" required></label><div id="reasonFields" class="form-grid hidden"><label>เหตุผล<select id="reasonCode"><option value="">เลือกเหตุผล</option><option>เบิกใช้แล้วไม่ได้บันทึก</option><option>รับเข้าหรือเบิกผิดจำนวน</option><option>สูญหายหรือหาไม่พบ</option><option>ชำรุด</option><option>หมดอายุและนำออกแล้ว</option><option>นับครั้งก่อนผิด</option><option>Lot หรือสติ๊กเกอร์ไม่ตรง</option><option>อื่น ๆ</option></select></label><label>รายละเอียด<textarea id="reasonDetail" rows="3"></textarea></label></div><button class="primary" type="submit">บันทึกผลตรวจ</button></form>`);const toggle=()=>$('#reasonFields').classList.toggle('hidden',Number($('#actualQty').value)===Number(x.current_balance));$('#actualQty').addEventListener('input',toggle);$('#checkForm').addEventListener('submit',async e=>{e.preventDefault();const actual=Number($('#actualQty').value),diff=actual!==Number(x.current_balance);if(diff&&!$('#reasonCode').value)return toast('กรุณาเลือกเหตุผล',true);const {error}=await sb.rpc('fn_save_stock_check',{p_item_id:id,p_actual_qty:actual,p_reason_code:diff?$('#reasonCode').value:null,p_reason_detail:diff?$('#reasonDetail').value.trim()||null:null});if(error)return toast(errMsg(error),true);closeModal();stockCache=[];toast('บันทึกผลตรวจแล้ว');renderWeekly()})}
-function activityCard(a){const detail=a.summary||{};return `<div class="card activity"><strong>${esc(a.action_label||a.action)}</strong><div>${esc(a.actor_name||a.actor_email||'SYSTEM')}</div><div class="muted small">${esc(detail.material_code||detail.stock_code||'')} ${detail.lot_no?'· Lot '+esc(detail.lot_no):''} ${detail.before!==undefined?'· '+qty(detail.before)+' → '+qty(detail.after):''}</div><time>${dt(a.created_at)}</time></div>`}
-async function renderActivity(){const {data,error}=await sb.from('v_audit_activity').select('*').limit(150);if(error)throw error;page.innerHTML=`<div class="page-head"><h2>ประวัติการทำรายการ</h2></div><div class="toolbar"><input id="activitySearch" placeholder="ค้นหาชื่อ รหัส Lot หรือเหตุผล"><button class="mini">ค้นหา</button></div><div id="activityList" class="list"></div>`;const draw=()=>{const s=$('#activitySearch').value.toLowerCase();const arr=(data||[]).filter(a=>!s||JSON.stringify(a).toLowerCase().includes(s));$('#activityList').innerHTML=arr.map(activityCard).join('')||'<div class="card empty">ไม่พบกิจกรรม</div>'};$('#activitySearch').addEventListener('input',draw);draw()}
-async function renderAdmin(){if(profile.role!=='admin'){page.innerHTML='<div class="card notice">เฉพาะผู้ดูแลระบบ</div>';return}const [{data:m,error:me},{data:s,error:se}]=await Promise.all([sb.from('materials').select('*').eq('is_main',true).order('code'),sb.from('staff_directory').select('*').order('display_name')]);if(me||se)throw me||se;materialsCache=[];page.innerHTML=`<div class="page-head"><h2>ตั้งค่าระบบ</h2></div><div class="section-title"><h3>ผู้ใช้งาน</h3></div><div class="table-wrap"><table class="data-table"><thead><tr><th>ชื่อ</th><th>อีเมล</th><th>สิทธิ์</th></tr></thead><tbody>${s.map(x=>`<tr><td>${esc(x.display_name)}</td><td>${esc(x.email)}</td><td><select data-role-email="${esc(x.email)}"><option value="staff" ${x.role==='staff'?'selected':''}>Staff</option><option value="admin" ${x.role==='admin'?'selected':''}>Admin</option></select></td></tr>`).join('')}</tbody></table></div><div class="section-title"><h3>วัสดุหลัก</h3></div><div class="list">${m.map(x=>`<div class="card lot-card"><div><strong>${esc(x.code)} · ${esc(x.name)}</strong><div class="lot-meta">ขั้นต่ำ ${qty(x.min_qty)} ${esc(x.unit)} · ${esc(x.responsible_email||'-')}</div><div class="lot-meta">ชื่อบนสติ๊กเกอร์: ${esc(x.label_name||x.name)}</div></div><button class="mini" data-edit-material="${esc(x.code)}">แก้ไข</button></div>`).join('')}</div>`;$$('[data-role-email]').forEach(sel=>sel.addEventListener('change',async()=>{const {error}=await sb.from('staff_directory').update({role:sel.value}).eq('email',sel.dataset.roleEmail);if(error)return toast(errMsg(error),true);toast('บันทึกสิทธิ์แล้ว')}));window._adminMaterials=m}
-function openMaterialEditor(code){const x=(window._adminMaterials||[]).find(m=>m.code===code);if(!x)return;openModal(`<h3>${esc(x.code)} · ${esc(x.name)}</h3><form id="matForm" class="form-grid"><label>ชื่อบนสติ๊กเกอร์<input id="matLabel" maxlength="60" value="${esc(x.label_name||x.name)}"></label><label>จำนวนขั้นต่ำ<input id="matMin" type="number" min="0" step="0.01" value="${Number(x.min_qty||0)}"></label><label>ผู้รับผิดชอบ (อีเมล)<input id="matOwner" type="email" value="${esc(x.responsible_email||'')}"></label><button class="primary" type="submit">บันทึก</button></form>`);$('#matForm').addEventListener('submit',async e=>{e.preventDefault();const {error}=await sb.from('materials').update({label_name:$('#matLabel').value.trim(),min_qty:Number($('#matMin').value),responsible_email:$('#matOwner').value.trim().toLowerCase()||null}).eq('code',code);if(error)return toast(errMsg(error),true);closeModal();toast('บันทึกวัสดุแล้ว');renderAdmin()})}
-function renderHelp(){page.innerHTML=`<div class="page-head"><h2>คู่มือย่อ</h2></div><div class="grid"><div class="card help-card"><h3>รับเข้า</h3><ol class="help-steps"><li>เปิดเมนู รับ–เบิก</li><li>เลือกวัสดุ ใส่ Lot วันหมดอายุ และจำนวน</li><li>บันทึก แล้วพิมพ์สติ๊กเกอร์จากหน้าสต๊อก</li></ol></div><div class="card help-card"><h3>เบิกออก</h3><ol class="help-steps"><li>เลือก Lot ที่ต้องการ</li><li>ใส่จำนวน</li><li>ยืนยัน ระบบจะเก็บชื่อและเวลาอัตโนมัติ</li></ol></div><div class="card help-card"><h3>ตรวจทุกวันศุกร์</h3><ol class="help-steps"><li>เปิดเมนู ตรวจศุกร์</li><li>เลือก งานของฉัน</li><li>นับจริงทีละ Lot</li><li>ถ้าไม่ตรง ต้องเลือกเหตุผล ระบบจะปรับยอดและเก็บ Log</li></ol></div><div class="card help-card"><h3>ตั้งเครื่องพิมพ์</h3><p>Paper 25 × 20 mm · Scale 100% · Margin None · ปิด Header/Footer</p></div></div>`}
+
+function openModal(html) {
+  stopScanner();
+  $('#modalBody').innerHTML = html;
+  $('#modal').classList.remove('hidden');
+  $('#modal').setAttribute('aria-hidden', 'false');
+}
+
+function closeModal() {
+  stopScanner();
+  $('#modal').classList.add('hidden');
+  $('#modal').setAttribute('aria-hidden', 'true');
+  $('#modalBody').innerHTML = '';
+}
+
+function loading() {
+  page.innerHTML = '<div class="grid"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>';
+}
+
+function errMsg(e) {
+  return e?.message || String(e || 'เกิดข้อผิดพลาด');
+}
+
+function todayStart() {
+  const x = new Date();
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+function isExpired(x) {
+  return Boolean(x?.expiry_date && new Date(x.expiry_date + 'T00:00:00') < todayStart());
+}
+
+function lotKey(l) {
+  return l?.lot_key || `${l?.material_code || l?.stock_code || ''}-${l?.lot_no || ''}`;
+}
+
+async function init() {
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
+  if ($('#staffPlannerLink') && C.STAFF_PLANNER_URL) $('#staffPlannerLink').href = C.STAFF_PLANNER_URL;
+
+  $('#modal').addEventListener('click', e => {
+    if (e.target.id === 'modal' || e.target.closest('.modal-close')) closeModal();
+  });
+  $('#loginForm').addEventListener('submit', login);
+  $('#registerBtn').addEventListener('click', register);
+  $('#logoutBtn').addEventListener('click', logout);
+  document.addEventListener('click', globalClick);
+  window.addEventListener('beforeunload', stopScanner);
+
+  if (!configured) {
+    $('#setupWarning').classList.remove('hidden');
+    $('#setupWarning').textContent = 'ยังไม่ได้ตั้งค่า Supabase กรุณาแก้ไฟล์ assets/config.js ตาม README_INSTALL_TH.md';
+    return;
+  }
+
+  sb = window.supabase.createClient(C.SUPABASE_URL, C.SUPABASE_ANON_KEY, {
+    auth: {persistSession:true, autoRefreshToken:true, detectSessionInUrl:true}
+  });
+  const {data} = await sb.auth.getSession();
+  session = data.session;
+  sb.auth.onAuthStateChange((_event, s) => {
+    session = s;
+    if (!s) showLogin();
+  });
+  if (session) await enterApp();
+}
+
+async function login(e) {
+  e.preventDefault();
+  if (!configured) return toast('กรุณาตั้งค่า Supabase ก่อน', true);
+  const email = $('#loginEmail').value.trim().toLowerCase();
+  const password = $('#loginPassword').value;
+  const btn = e.submitter;
+  btn.disabled = true;
+  const {error} = await sb.auth.signInWithPassword({email, password});
+  btn.disabled = false;
+  if (error) return toast(errMsg(error), true);
+  await enterApp();
+}
+
+async function register() {
+  if (!configured) return toast('กรุณาตั้งค่า Supabase ก่อน', true);
+  const email = $('#loginEmail').value.trim().toLowerCase();
+  const password = $('#loginPassword').value;
+  if (!email || password.length < 6) return toast('กรอกอีเมลและรหัสผ่านอย่างน้อย 6 ตัว', true);
+  const {error} = await sb.auth.signUp({email, password});
+  if (error) return toast(errMsg(error), true);
+  toast('สร้างบัญชีแล้ว กรุณาตรวจอีเมลยืนยันตามการตั้งค่า Supabase');
+}
+
+async function loadProfile() {
+  const {data, error} = await sb.from('profiles').select('*').eq('id', session.user.id).maybeSingle();
+  if (error) throw error;
+  if (!data || !data.active) throw new Error('อีเมลนี้ยังไม่ได้รับสิทธิ์ใช้งาน');
+  profile = data;
+}
+
+async function enterApp() {
+  try {
+    const {data} = await sb.auth.getSession();
+    session = data.session;
+    if (!session) return showLogin();
+    await loadProfile();
+    loginView.classList.add('hidden');
+    appView.classList.remove('hidden');
+    $('#userBadge').textContent = `${profile.display_name} · ${profile.role === 'admin' ? 'ผู้ดูแลระบบ' : 'เจ้าหน้าที่'}`;
+    await runAutoExpiry(true);
+    const hashRoute = location.hash.replace(/^#/, '');
+    const initialRoute = ['home','stock','move','weekly','activity','help','admin'].includes(hashRoute) ? hashRoute : 'home';
+    await navigate(initialRoute);
+    if (pendingIssueCode) setTimeout(openPendingIssue, 250);
+  } catch (e) {
+    toast(errMsg(e), true);
+    await sb.auth.signOut();
+    showLogin();
+  }
+}
+
+function showLogin() {
+  stopScanner();
+  appView.classList.add('hidden');
+  loginView.classList.remove('hidden');
+}
+
+async function logout() {
+  if (sb) await sb.auth.signOut();
+  profile = null;
+  stockCache = [];
+  materialsCache = [];
+  autoExpiryRan = false;
+  showLogin();
+}
+
+function globalClick(e) {
+  const r = e.target.closest('[data-route]');
+  if (r) {
+    e.preventDefault();
+    navigate(r.dataset.route, {tab:r.dataset.moveTab});
+    return;
+  }
+  const p = e.target.closest('[data-print]');
+  if (p) {
+    e.preventDefault();
+    printLabel(p.dataset.print);
+    return;
+  }
+  const issue = e.target.closest('[data-issue-lot]');
+  if (issue) {
+    e.preventDefault();
+    const l = stockCache.find(x => x.lot_id === issue.dataset.issueLot);
+    if (l) openIssueModal(l);
+    return;
+  }
+  const scan = e.target.closest('[data-camera-scan]');
+  if (scan) {
+    e.preventDefault();
+    startCameraScanner();
+    return;
+  }
+  const c = e.target.closest('[data-check]');
+  if (c) {
+    openCheck(c.dataset.check);
+    return;
+  }
+  const edit = e.target.closest('[data-edit-material]');
+  if (edit) openMaterialEditor(edit.dataset.editMaterial);
+}
+
+function navActive() {
+  $$('.bottom-nav button').forEach(b => b.classList.toggle('active', b.dataset.route === route));
+}
+
+async function navigate(r, options = {}) {
+  route = r;
+  navActive();
+  loading();
+  try {
+    if (r === 'home') await renderHome();
+    else if (r === 'stock') await renderStock();
+    else if (r === 'move') await renderMove(options.tab || 'receive');
+    else if (r === 'weekly') await renderWeekly();
+    else if (r === 'activity') await renderActivity();
+    else if (r === 'help') renderHelp();
+    else if (r === 'admin') await renderAdmin();
+    else await renderHome();
+    window.scrollTo({top:0, behavior:'smooth'});
+  } catch (e) {
+    page.innerHTML = `<div class="card notice">${esc(errMsg(e))}</div>`;
+  }
+}
+
+async function runAutoExpiry(showNotice = false) {
+  if (!sb || autoExpiryRan) return 0;
+  autoExpiryRan = true;
+  const {data, error} = await sb.rpc('fn_auto_expire_stock');
+  if (error) {
+    console.warn('fn_auto_expire_stock:', error.message);
+    return 0;
+  }
+  const count = Number(Array.isArray(data) ? data[0] : data) || 0;
+  if (count > 0) {
+    stockCache = [];
+    if (showNotice) toast(`ระบบนำ Lot หมดอายุออกจากสต๊อกอัตโนมัติแล้ว ${count} Lot`);
+  }
+  return count;
+}
+
+async function getLots(force = false) {
+  await runAutoExpiry(false);
+  if (!force && stockCache.length) return stockCache;
+  const {data, error} = await sb.from('v_lot_balances').select('*').eq('active', true).order('material_code').order('lot_no');
+  if (error) throw error;
+  stockCache = (data || []).filter(x => Number(x.balance) !== 0 && !isExpired(x));
+  return stockCache;
+}
+
+async function ensureCheck() {
+  await runAutoExpiry(false);
+  const {data, error} = await sb.rpc('fn_ensure_weekly_check');
+  if (error) throw error;
+  return Array.isArray(data) ? data[0] : data;
+}
+
+function statusBadge(x) {
+  if (Number(x.balance) < 0) return '<span class="badge danger">ยอดติดลบ</span>';
+  if (Number(x.balance) <= Number(x.min_qty)) return '<span class="badge warn">ต่ำกว่าขั้นต่ำ</span>';
+  if (x.days_to_expiry !== null && Number(x.days_to_expiry) <= 90) return '<span class="badge warn">ใกล้หมดอายุ</span>';
+  return '<span class="badge ok">พร้อมใช้</span>';
+}
+
+async function renderHome() {
+  const [lots, checkRes, activityRes] = await Promise.all([
+    getLots(true),
+    ensureCheck(),
+    sb.from('v_audit_activity').select('*').limit(6)
+  ]);
+  if (activityRes.error) throw activityRes.error;
+
+  const positive = lots.filter(x => Number(x.balance) > 0);
+  const low = lots.filter(x => Number(x.balance) > 0 && Number(x.balance) <= Number(x.min_qty));
+  const exp = lots.filter(x => x.days_to_expiry !== null && Number(x.days_to_expiry) >= 0 && Number(x.days_to_expiry) <= 90 && Number(x.balance) > 0);
+  const neg = lots.filter(x => Number(x.balance) < 0);
+  let prog = null;
+  if (checkRes) {
+    const q = await sb.from('v_weekly_check_progress').select('*').eq('check_id', checkRes.id).maybeSingle();
+    prog = q.data;
+  }
+  const urgentMap = new Map();
+  [...neg, ...exp, ...low].forEach(x => urgentMap.set(x.lot_id, x));
+  const urgent = [...urgentMap.values()].slice(0, 8);
+
+  page.innerHTML = `
+    <section class="hero-card">
+      <div>
+        <h2>สวัสดี ${esc(profile.display_name)}</h2>
+        <p>สต๊อกที่ใช้งานจริงอยู่ตรงนี้ ส่วน Lot ที่หมดอายุระบบนำออกให้อัตโนมัติแล้ว</p>
+      </div>
+      <div class="hero-icon">${icon('box')}</div>
+    </section>
+
+    <div class="grid kpi-grid">
+      <div class="card kpi"><div class="kpi-top"><small>Lot คงเหลือ</small><span class="kpi-icon">${icon('box')}</span></div><strong>${positive.length}</strong></div>
+      <div class="card kpi"><div class="kpi-top"><small>ต่ำกว่าขั้นต่ำ</small><span class="kpi-icon warn">${icon('alert')}</span></div><strong>${low.length}</strong></div>
+      <div class="card kpi"><div class="kpi-top"><small>ใกล้หมดอายุ</small><span class="kpi-icon warn">${icon('calendar')}</span></div><strong>${exp.length}</strong></div>
+      <div class="card kpi"><div class="kpi-top"><small>ยอดติดลบ</small><span class="kpi-icon danger">${icon('minus')}</span></div><strong>${neg.length}</strong></div>
+      <div class="card kpi"><div class="kpi-top"><small>ตรวจวันศุกร์</small><span class="kpi-icon info">${icon('check')}</span></div><strong>${prog ? `${prog.checked_items}/${prog.total_items}` : '-'}</strong></div>
+    </div>
+
+    <div class="grid quick-grid">
+      <button class="quick" data-route="move" data-move-tab="receive"><span class="quick-icon">${icon('plus')}</span><span>รับเข้าสต๊อก</span><small>เพิ่ม Lot และพิมพ์ QR Sticker</small></button>
+      <button class="quick" data-route="move" data-move-tab="issue"><span class="quick-icon">${icon('minus')}</span><span>เบิกออก</span><small>สแกน QR หรือเลือกรายการ</small></button>
+      <button class="quick" data-route="weekly"><span class="quick-icon">${icon('check')}</span><span>ตรวจสต๊อก</span><small>ตรวจทีละ Lot ทุกวันศุกร์</small></button>
+      <button class="quick" data-route="stock"><span class="quick-icon">${icon('search')}</span><span>ค้นหาสต๊อก</span><small>ดูจำนวน Lot และวันหมดอายุ</small></button>
+    </div>
+
+    ${prog ? `<div class="card"><div class="check-info"><div><strong>ตรวจสต๊อกวันศุกร์ ${d(prog.week_friday)}</strong><div class="muted small">${prog.status === 'COMPLETED' ? 'เสร็จแล้ว' : 'กำลังดำเนินการ'}</div></div><span class="badge ${prog.status === 'COMPLETED' ? 'ok' : 'info'}">${prog.percent_complete}%</span></div><div class="progress" style="margin-top:13px"><span style="width:${prog.percent_complete}%"></span></div></div>` : ''}
+
+    <div class="section-title"><h3>รายการที่ควรดู</h3></div>
+    <div class="list">${urgent.map(lotCard).join('') || `<div class="card empty">${icon('check')}<div>ไม่มีรายการเร่งด่วน</div></div>`}</div>
+
+    <div class="section-title"><h3>กิจกรรมล่าสุด</h3><button class="mini" data-route="activity">ดูทั้งหมด ${icon('arrow')}</button></div>
+    <div class="list">${(activityRes.data || []).map(activityCard).join('') || '<div class="card empty">ยังไม่มีกิจกรรม</div>'}</div>
+  `;
+}
+
+function lotCard(l) {
+  return `
+    <div class="card lot-card">
+      <div class="lot-main">
+        <div class="lot-code">${icon('qr')} ${esc(lotKey(l))}</div>
+        <div class="lot-title">${esc(l.material_code)} · ${esc(l.material_name)}</div>
+        <div class="lot-meta">Lot ${esc(l.lot_no)} · EXP ${d(l.expiry_date)}</div>
+        <div class="lot-meta">ผู้ดูแล: ${esc(l.responsible_name || '-')}</div>
+        <div style="margin-top:8px">${statusBadge(l)}</div>
+        <div class="actions">
+          <button class="mini" data-print="${esc(l.lot_id)}">${icon('print')} พิมพ์ QR</button>
+          ${Number(l.balance) > 0 ? `<button class="mini ghost" data-issue-lot="${esc(l.lot_id)}">${icon('minus')} เบิกออก</button>` : ''}
+        </div>
+      </div>
+      <div class="qty-wrap"><div class="qty">${qty(l.balance)}</div><div class="muted small">${esc(l.unit)}</div></div>
+    </div>`;
+}
+
+async function renderStock() {
+  const lots = await getLots(true);
+  page.innerHTML = `
+    <div class="page-head"><div><h2>สต๊อกตาม Lot</h2><p class="muted small">แสดงเฉพาะ Lot ที่ยังใช้งาน ไม่รวมของหมดอายุ</p></div><span class="badge info">${lots.length} Lot</span></div>
+    <div class="toolbar">
+      <div class="search-box">${icon('search')}<input id="stockSearch" placeholder="ค้นหารหัส ชื่อ Lot หรือ QR Code"></div>
+      <button class="mini" id="stockSearchBtn">ค้นหา</button>
+    </div>
+    <div class="filters">
+      <button class="chip active" data-filter="positive">คงเหลือ</button>
+      <button class="chip" data-filter="all">ทั้งหมด</button>
+      <button class="chip" data-filter="low">ต่ำกว่าขั้นต่ำ</button>
+      <button class="chip" data-filter="expiry">ใกล้หมดอายุ</button>
+      <button class="chip" data-filter="negative">ยอดติดลบ</button>
+    </div>
+    <div id="stockList" class="list"></div>`;
+
+  let filter = 'positive';
+  const draw = () => {
+    const s = $('#stockSearch').value.trim().toLowerCase();
+    let arr = lots.filter(x => !s || `${x.material_code} ${x.material_name} ${x.lot_no} ${lotKey(x)}`.toLowerCase().includes(s));
+    if (filter === 'positive') arr = arr.filter(x => Number(x.balance) > 0);
+    if (filter === 'low') arr = arr.filter(x => Number(x.balance) > 0 && Number(x.balance) <= Number(x.min_qty));
+    if (filter === 'expiry') arr = arr.filter(x => x.days_to_expiry !== null && Number(x.days_to_expiry) <= 90 && Number(x.balance) > 0);
+    if (filter === 'negative') arr = arr.filter(x => Number(x.balance) < 0);
+    $('#stockList').innerHTML = arr.map(lotCard).join('') || `<div class="card empty">${icon('search')}<div>ไม่พบรายการ</div></div>`;
+  };
+  $('#stockSearch').addEventListener('input', draw);
+  $('#stockSearchBtn').addEventListener('click', draw);
+  $$('[data-filter]').forEach(b => b.addEventListener('click', () => {
+    filter = b.dataset.filter;
+    $$('[data-filter]').forEach(x => x.classList.toggle('active', x === b));
+    draw();
+  }));
+  draw();
+}
+
+async function printLabel(lotId) {
+  // เปิดหน้าต่างทันทีจากการกดของผู้ใช้ เพื่อไม่ให้ Chrome/Safari บล็อก Pop-up
+  const popup = window.open('about:blank', 'cnmi_inventory_label', 'width=430,height=360');
+  if (!popup) return toast('เบราว์เซอร์บล็อกหน้าพิมพ์ กรุณาอนุญาต Pop-up ของเว็บไซต์นี้', true);
+  popup.document.write('<!doctype html><meta charset="utf-8"><title>กำลังเตรียมสติ๊กเกอร์</title><body style="font-family:system-ui;padding:24px">กำลังเตรียม QR Sticker…</body>');
+  popup.document.close();
+  try {
+    const l = stockCache.find(x => x.lot_id === lotId) || (await getLots(true)).find(x => x.lot_id === lotId);
+    if (!l) {
+      popup.close();
+      return toast('ไม่พบ Lot', true);
+    }
+    const appBase = C.PUBLIC_URL || `${location.origin}${location.pathname.replace(/[^/]*$/, '')}`;
+    const issueUrl = new URL(appBase, location.href);
+    issueUrl.searchParams.set('issue', lotKey(l));
+    const params = new URLSearchParams({
+      code:l.material_code,
+      name:l.label_name || l.material_name,
+      lot:l.lot_no,
+      exp:l.expiry_date ? d(l.expiry_date) : 'ไม่ระบุ',
+      key:lotKey(l),
+      qr:issueUrl.toString(),
+      auto:'1'
+    });
+    const labelUrl = new URL('label.html', location.href);
+    labelUrl.search = params.toString();
+    popup.location.replace(labelUrl.toString());
+    sb.rpc('fn_log_label_print', {p_lot_id:lotId}).catch(() => {});
+  } catch (e) {
+    popup.close();
+    toast(errMsg(e), true);
+  }
+}
+
+async function loadMaterials() {
+  if (materialsCache.length) return materialsCache;
+  const {data, error} = await sb.from('materials').select('*').eq('is_main', true).eq('status', 'Active').order('code');
+  if (error) throw error;
+  materialsCache = data || [];
+  return materialsCache;
+}
+
+async function renderMove(defaultTab = 'receive') {
+  const [mats, lots] = await Promise.all([loadMaterials(), getLots(true)]);
+  page.innerHTML = `
+    <div class="page-head"><div><h2>รับเข้า–เบิกออก</h2><p class="muted small">เลือกงานที่ต้องทำ ระบบเก็บชื่อและเวลาให้อัตโนมัติ</p></div></div>
+    <div class="tabs"><button data-tab="receive">รับเข้า</button><button data-tab="issue">เบิกออก</button></div>
+    <div id="movePane"></div>`;
+
+  const draw = tab => {
+    $$('[data-tab]').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
+    if (tab === 'receive') {
+      $('#movePane').innerHTML = `
+        <form id="receiveForm" class="card form-card form-grid">
+          <label>วัสดุ<select id="rMat" required><option value="">เลือกวัสดุ</option>${mats.map(m => `<option value="${esc(m.code)}">${esc(m.code)} · ${esc(m.name)}</option>`).join('')}</select></label>
+          <div class="form-grid two"><label>Lot<input id="rLot" required autocomplete="off"></label><label>วันหมดอายุ<input id="rExp" type="date"></label></div>
+          <label>จำนวน<input id="rQty" type="number" min="0.01" step="0.01" required inputmode="decimal"></label>
+          <p class="field-hint">หลังบันทึกสามารถกดพิมพ์ QR Sticker และหน้าพิมพ์จะเด้งขึ้นทันที</p>
+          <button class="primary" type="submit">${icon('plus')} บันทึกรับเข้า</button>
+        </form>`;
+      $('#receiveForm').addEventListener('submit', receive);
+    } else {
+      $('#movePane').innerHTML = `
+        <div class="card scan-card">
+          <div class="scan-icon">${icon('qr')}</div>
+          <div><h3>สแกน QR Sticker</h3><p>สแกนด้วยกล้องมือถือ หรือพิมพ์รหัส เช่น BB020-69020</p></div>
+          <button class="secondary scan-action" type="button" data-camera-scan>${icon('camera')} เปิดกล้องสแกน</button>
+        </div>
+        <form id="issueForm" class="card form-card form-grid" style="margin-top:12px">
+          <label>รหัส QR / รหัสล็อต
+            <div class="toolbar" style="margin:0"><input id="issueCode" autocomplete="off" placeholder="เช่น BB020-69020"><button type="button" class="mini" id="findIssueCode">ค้นหา</button></div>
+          </label>
+          <label>เลือก Lot<select id="iLot" required><option value="">เลือก Lot</option>${lots.filter(l => Number(l.balance) > 0).map(l => `<option value="${esc(l.lot_id)}">${esc(lotKey(l))} · ${esc(l.material_name)} · เหลือ ${qty(l.balance)} ${esc(l.unit)}</option>`).join('')}</select></label>
+          <div id="selectedLot"></div>
+          <label>จำนวน<input id="iQty" type="number" min="0.01" step="0.01" value="1" required inputmode="decimal"></label>
+          <label>หมายเหตุ<textarea id="iReason" rows="2" placeholder="ระบุเมื่อต้องการ"></textarea></label>
+          <button class="primary" type="submit">${icon('minus')} ยืนยันเบิกออก</button>
+        </form>`;
+
+      const select = $('#iLot');
+      const showSelected = () => {
+        const l = lots.find(x => x.lot_id === select.value);
+        $('#selectedLot').innerHTML = l ? `<div class="selected-lot"><div><strong>${esc(l.material_code)} · ${esc(l.material_name)}</strong><small>${esc(lotKey(l))} · EXP ${d(l.expiry_date)}</small></div><span class="badge info">เหลือ ${qty(l.balance)} ${esc(l.unit)}</span></div>` : '';
+      };
+      select.addEventListener('change', showSelected);
+      $('#findIssueCode').addEventListener('click', async () => {
+        const l = findLotByCode($('#issueCode').value, lots);
+        if (!l) return toast('ไม่พบ QR Code หรือรหัสล็อตนี้', true);
+        select.value = l.lot_id;
+        showSelected();
+        $('#iQty').focus();
+      });
+      $('#issueCode').addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); $('#findIssueCode').click(); }
+      });
+      $('#issueForm').addEventListener('submit', issue);
+    }
+  };
+
+  $$('[data-tab]').forEach(b => b.addEventListener('click', () => draw(b.dataset.tab)));
+  draw(defaultTab === 'issue' ? 'issue' : 'receive');
+}
+
+async function receive(e) {
+  e.preventDefault();
+  const btn = e.submitter;
+  btn.disabled = true;
+  const p = {
+    p_material_code:$('#rMat').value,
+    p_lot_no:$('#rLot').value.trim(),
+    p_expiry_date:$('#rExp').value || null,
+    p_quantity:Number($('#rQty').value)
+  };
+  const {data, error} = await sb.rpc('fn_receive_stock', p);
+  btn.disabled = false;
+  if (error) return toast(errMsg(error), true);
+  materialsCache = [];
+  stockCache = [];
+  toast('รับเข้าสต๊อกแล้ว');
+  const row = Array.isArray(data) ? data[0] : data;
+  openModal(`
+    <h3>รับเข้าเรียบร้อย</h3>
+    <p class="muted">ยอดใหม่ ${qty(row?.quantity_after)}</p>
+    <div class="actions"><button class="primary" data-print="${esc(row?.lot_id || '')}">${icon('print')} พิมพ์ QR Sticker</button><button class="secondary modal-close">ปิด</button></div>`);
+}
+
+async function issue(e) {
+  e.preventDefault();
+  const btn = e.submitter;
+  btn.disabled = true;
+  const {error} = await sb.rpc('fn_issue_stock', {
+    p_lot_id:$('#iLot').value,
+    p_quantity:Number($('#iQty').value),
+    p_reason_detail:$('#iReason').value.trim() || null
+  });
+  btn.disabled = false;
+  if (error) return toast(errMsg(error), true);
+  stockCache = [];
+  toast('บันทึกเบิกออกแล้ว');
+  navigate('move', {tab:'issue'});
+}
+
+function findLotByCode(raw, lots = stockCache) {
+  let value = String(raw || '').trim();
+  if (!value) return null;
+  try {
+    const u = new URL(value);
+    value = u.searchParams.get('issue') || u.searchParams.get('lot') || u.searchParams.get('code') || value;
+  } catch (_) {}
+  try { value = decodeURIComponent(value); } catch (_) {}
+  value = value.replace(/^INV[:|]/i, '').trim();
+  const norm = value.toUpperCase().replace(/\s+/g, '');
+  return lots.find(l => {
+    const keys = [l.lot_id, lotKey(l), `${l.material_code}-${l.lot_no}`, `${l.material_code}|${l.lot_no}`];
+    return keys.some(k => String(k || '').toUpperCase().replace(/\s+/g, '') === norm);
+  }) || null;
+}
+
+async function resolveIssueCode(code) {
+  const lots = await getLots(true);
+  const l = findLotByCode(code, lots);
+  if (!l) return toast('ไม่พบ Lot จาก QR Code นี้ หรือ Lot ถูกเบิกหมด/หมดอายุแล้ว', true);
+  openIssueModal(l);
+}
+
+function openIssueModal(l) {
+  if (!l || Number(l.balance) <= 0) return toast('Lot นี้ไม่มียอดคงเหลือ', true);
+  openModal(`
+    <h3>เบิกออกจาก QR Sticker</h3>
+    <div class="selected-lot"><div><strong>${esc(l.material_code)} · ${esc(l.material_name)}</strong><small>${esc(lotKey(l))} · EXP ${d(l.expiry_date)}</small></div><span class="badge info">เหลือ ${qty(l.balance)} ${esc(l.unit)}</span></div>
+    <form id="quickIssueForm" class="form-grid" style="margin-top:15px">
+      <label>จำนวน<input id="quickIssueQty" type="number" min="0.01" max="${Number(l.balance)}" step="0.01" value="1" required inputmode="decimal"></label>
+      <label>หมายเหตุ<textarea id="quickIssueReason" rows="2" placeholder="ระบุเมื่อต้องการ"></textarea></label>
+      <button class="primary" type="submit">${icon('minus')} ยืนยันเบิกออก</button>
+    </form>`);
+  $('#quickIssueForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = e.submitter;
+    btn.disabled = true;
+    const {error} = await sb.rpc('fn_issue_stock', {
+      p_lot_id:l.lot_id,
+      p_quantity:Number($('#quickIssueQty').value),
+      p_reason_detail:$('#quickIssueReason').value.trim() || null
+    });
+    btn.disabled = false;
+    if (error) return toast(errMsg(error), true);
+    closeModal();
+    stockCache = [];
+    toast('บันทึกเบิกออกแล้ว');
+    if (route === 'stock') renderStock();
+    else if (route === 'home') renderHome();
+  });
+}
+
+async function openPendingIssue() {
+  const code = pendingIssueCode;
+  pendingIssueCode = null;
+  try {
+    const u = new URL(location.href);
+    u.searchParams.delete('issue');
+    u.searchParams.delete('lot');
+    history.replaceState({}, '', u.pathname + u.search + u.hash);
+  } catch (_) {}
+  if (code) await resolveIssueCode(code);
+}
+
+async function startCameraScanner() {
+  if (!('BarcodeDetector' in window) || !navigator.mediaDevices?.getUserMedia) {
+    openModal(`
+      <h3>สแกน QR บนมือถือ</h3>
+      <p>เบราว์เซอร์นี้ยังไม่รองรับกล้องสแกนภายในแอพ ให้เปิดกล้องปกติของ iPhone หรือ Android แล้วสแกน QR Sticker ระบบจะเปิดหน้าเบิกออกให้อัตโนมัติ</p>
+      <form id="manualScanForm" class="form-grid"><label>หรือพิมพ์รหัส QR<input id="manualScanCode" placeholder="เช่น BB020-69020" autocomplete="off"></label><button class="primary" type="submit">ค้นหา Lot</button></form>`);
+    $('#manualScanForm').addEventListener('submit', e => {
+      e.preventDefault();
+      const code = $('#manualScanCode').value;
+      closeModal();
+      resolveIssueCode(code);
+    });
+    return;
+  }
+
+  openModal(`
+    <h3>สแกน QR Sticker</h3>
+    <div style="position:relative;border-radius:18px;overflow:hidden;background:#111;aspect-ratio:1/1"><video id="scanVideo" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover"></video><div style="position:absolute;inset:18%;border:3px solid #fff;border-radius:18px;box-shadow:0 0 0 999px rgba(0,0,0,.22)"></div></div>
+    <p class="muted small">วาง QR ให้อยู่ในกรอบ ระบบจะค้นหา Lot ให้อัตโนมัติ</p>`);
+
+  try {
+    const detector = new BarcodeDetector({formats:['qr_code']});
+    scannerStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}, audio:false});
+    const video = $('#scanVideo');
+    video.srcObject = scannerStream;
+    await video.play();
+    const scan = async () => {
+      if (!scannerStream || $('#modal').classList.contains('hidden')) return;
+      try {
+        const codes = await detector.detect(video);
+        if (codes?.[0]?.rawValue) {
+          const value = codes[0].rawValue;
+          stopScanner();
+          closeModal();
+          resolveIssueCode(value);
+          return;
+        }
+      } catch (_) {}
+      scannerTimer = setTimeout(scan, 280);
+    };
+    scan();
+  } catch (e) {
+    stopScanner();
+    $('#modalBody').innerHTML = `<h3>เปิดกล้องไม่สำเร็จ</h3><p>${esc(errMsg(e))}</p><p class="muted small">ใช้กล้องปกติของโทรศัพท์สแกน QR Sticker หรือพิมพ์รหัสในหน้าเบิกออกได้</p>`;
+  }
+}
+
+function stopScanner() {
+  if (scannerTimer) clearTimeout(scannerTimer);
+  scannerTimer = null;
+  if (scannerStream) scannerStream.getTracks().forEach(t => t.stop());
+  scannerStream = null;
+}
+
+async function renderWeekly() {
+  const check = await ensureCheck();
+  if (!check) {
+    page.innerHTML = '<div class="card empty">ยังไม่มีรอบตรวจ</div>';
+    return;
+  }
+  const {data, error} = await sb.from('v_weekly_check_items').select('*').eq('check_id', check.id).order('material_code').order('lot_no');
+  if (error) throw error;
+  const items = data || [];
+  const done = items.filter(x => x.checked_at).length;
+  const pct = items.length ? Math.round(done * 100 / items.length) : 100;
+
+  page.innerHTML = `
+    <div class="page-head"><div><h2>ตรวจสต๊อกวันศุกร์</h2><p class="muted small">รอบวันที่ ${d(check.week_friday)}</p></div><span class="badge ${check.status === 'COMPLETED' ? 'ok' : 'info'}">${check.status === 'COMPLETED' ? 'เสร็จแล้ว' : `${done}/${items.length}`}</span></div>
+    <div class="card"><div class="check-info"><div><strong>ความคืบหน้า ${pct}%</strong><div class="muted small">ตรวจครบทุก Lot แล้วจึงปิดรอบได้</div></div></div><div class="progress" style="margin-top:13px"><span style="width:${pct}%"></span></div></div>
+    <div class="filters" style="margin-top:13px"><button class="chip active" data-wf="mine">งานของฉัน</button><button class="chip" data-wf="pending">ยังไม่ตรวจ</button><button class="chip" data-wf="all">ทั้งหมด</button><button class="chip" data-wf="mismatch">เคยไม่ตรง</button></div>
+    <div id="checkList" class="list"></div>
+    ${check.status !== 'COMPLETED' ? '<button id="completeCheck" class="primary" style="width:100%;margin-top:15px">เสร็จสิ้นการตรวจสต๊อก</button>' : ''}`;
+
+  let f = 'mine';
+  const draw = () => {
+    let arr = items;
+    if (f === 'mine') arr = arr.filter(x => x.responsible_email === profile.email || profile.role === 'admin');
+    if (f === 'pending') arr = arr.filter(x => !x.checked_at);
+    if (f === 'mismatch') arr = arr.filter(x => x.result === 'ADJUSTED');
+    $('#checkList').innerHTML = arr.map(x => `
+      <div class="card check-card ${x.checked_at ? (x.result === 'ADJUSTED' ? 'mismatch' : 'checked') : ''}">
+        <div class="check-info"><div><strong>${esc(x.material_code)} · ${esc(x.material_name)}</strong><div class="lot-meta">${esc(lotKey(x))} · ระบบ ${qty(x.current_balance)} ${esc(x.unit)}</div><div class="lot-meta">ผู้ดูแล: ${esc(x.responsible_name || '-')}</div>${x.checked_at ? `<div class="lot-meta">ตรวจโดย ${esc(x.checked_by_name || x.checked_by_email)} · ${dt(x.checked_at)}</div>` : ''}</div>${x.checked_at ? `<span class="badge ${x.result === 'MATCHED' ? 'ok' : 'warn'}">${x.result === 'MATCHED' ? 'ตรง' : 'ปรับแล้ว'}</span>` : `<button class="mini" data-check="${esc(x.item_id)}">ตรวจ</button>`}</div>
+      </div>`).join('') || '<div class="card empty">ไม่มีรายการ</div>';
+  };
+  $$('[data-wf]').forEach(b => b.addEventListener('click', () => {
+    f = b.dataset.wf;
+    $$('[data-wf]').forEach(x => x.classList.toggle('active', x === b));
+    draw();
+  }));
+  draw();
+  if ($('#completeCheck')) $('#completeCheck').onclick = async () => {
+    const {error} = await sb.rpc('fn_complete_weekly_check', {p_check_id:check.id});
+    if (error) return toast(errMsg(error), true);
+    toast('ปิดรอบตรวจสต๊อกแล้ว');
+    renderWeekly();
+  };
+  window._weeklyItems = items;
+}
+
+function openCheck(id) {
+  const x = (window._weeklyItems || []).find(i => i.item_id === id);
+  if (!x) return;
+  const can = x.responsible_email === profile.email || profile.role === 'admin';
+  if (!can) return toast('รายการนี้เป็นความรับผิดชอบของ ' + (x.responsible_name || x.responsible_email), true);
+  openModal(`
+    <h3>${esc(x.material_code)} · ${esc(x.material_name)}</h3>
+    <p class="muted">${esc(lotKey(x))} · ยอดปัจจุบัน ${qty(x.current_balance)} ${esc(x.unit)}</p>
+    <form id="checkForm" class="form-grid">
+      <label>จำนวนที่พบจริง<input id="actualQty" type="number" min="0" step="0.01" value="${Number(x.current_balance)}" required inputmode="decimal"></label>
+      <div id="reasonFields" class="form-grid hidden">
+        <label>เหตุผล<select id="reasonCode"><option value="">เลือกเหตุผล</option><option>เบิกใช้แล้วไม่ได้บันทึก</option><option>รับเข้าหรือเบิกผิดจำนวน</option><option>สูญหายหรือหาไม่พบ</option><option>ชำรุด</option><option>นับครั้งก่อนผิด</option><option>Lot หรือสติ๊กเกอร์ไม่ตรง</option><option>อื่น ๆ</option></select></label>
+        <label>รายละเอียด<textarea id="reasonDetail" rows="3"></textarea></label>
+      </div>
+      <button class="primary" type="submit">บันทึกผลตรวจ</button>
+    </form>`);
+  const toggle = () => $('#reasonFields').classList.toggle('hidden', Number($('#actualQty').value) === Number(x.current_balance));
+  $('#actualQty').addEventListener('input', toggle);
+  $('#checkForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const actual = Number($('#actualQty').value);
+    const diff = actual !== Number(x.current_balance);
+    if (diff && !$('#reasonCode').value) return toast('กรุณาเลือกเหตุผล', true);
+    const {error} = await sb.rpc('fn_save_stock_check', {
+      p_item_id:id,
+      p_actual_qty:actual,
+      p_reason_code:diff ? $('#reasonCode').value : null,
+      p_reason_detail:diff ? $('#reasonDetail').value.trim() || null : null
+    });
+    if (error) return toast(errMsg(error), true);
+    closeModal();
+    stockCache = [];
+    toast('บันทึกผลตรวจแล้ว');
+    renderWeekly();
+  });
+}
+
+function activityCard(a) {
+  const detail = a.summary || {};
+  return `<div class="card activity"><strong>${esc(a.action_label || a.action)}</strong><div>${esc(a.actor_name || a.actor_email || 'SYSTEM')}</div><div class="muted small">${esc(detail.material_code || detail.stock_code || '')} ${detail.lot_no ? '· Lot ' + esc(detail.lot_no) : ''} ${detail.before !== undefined ? '· ' + qty(detail.before) + ' → ' + qty(detail.after) : ''}</div><time>${dt(a.created_at)}</time></div>`;
+}
+
+async function renderActivity() {
+  const {data, error} = await sb.from('v_audit_activity').select('*').limit(200);
+  if (error) throw error;
+  page.innerHTML = `
+    <div class="page-head"><div><h2>ประวัติการทำรายการ</h2><p class="muted small">รวมรับเข้า เบิกออก ปรับยอด พิมพ์ และนำของหมดอายุออก</p></div></div>
+    <div class="toolbar"><div class="search-box">${icon('search')}<input id="activitySearch" placeholder="ค้นหาชื่อ รหัส Lot หรือเหตุผล"></div><button class="mini" id="activitySearchBtn">ค้นหา</button></div>
+    <div id="activityList" class="list"></div>`;
+  const draw = () => {
+    const s = $('#activitySearch').value.toLowerCase();
+    const arr = (data || []).filter(a => !s || JSON.stringify(a).toLowerCase().includes(s));
+    $('#activityList').innerHTML = arr.map(activityCard).join('') || '<div class="card empty">ไม่พบกิจกรรม</div>';
+  };
+  $('#activitySearch').addEventListener('input', draw);
+  $('#activitySearchBtn').addEventListener('click', draw);
+  draw();
+}
+
+async function renderAdmin() {
+  if (profile.role !== 'admin') {
+    page.innerHTML = '<div class="card notice">เฉพาะผู้ดูแลระบบ</div>';
+    return;
+  }
+  const [{data:m, error:me}, {data:s, error:se}] = await Promise.all([
+    sb.from('materials').select('*').eq('is_main', true).order('code'),
+    sb.from('staff_directory').select('*').order('display_name')
+  ]);
+  if (me || se) throw me || se;
+  materialsCache = [];
+  page.innerHTML = `
+    <div class="page-head"><div><h2>ตั้งค่าระบบ</h2><p class="muted small">จัดการผู้ใช้และข้อมูลวัสดุหลัก</p></div></div>
+    <div class="section-title"><h3>ผู้ใช้งาน</h3></div>
+    <div class="table-wrap"><table class="data-table"><thead><tr><th>ชื่อ</th><th>อีเมล</th><th>สิทธิ์</th></tr></thead><tbody>${s.map(x => `<tr><td>${esc(x.display_name)}</td><td>${esc(x.email)}</td><td><select data-role-email="${esc(x.email)}"><option value="staff" ${x.role === 'staff' ? 'selected' : ''}>เจ้าหน้าที่</option><option value="admin" ${x.role === 'admin' ? 'selected' : ''}>ผู้ดูแลระบบ</option></select></td></tr>`).join('')}</tbody></table></div>
+    <div class="section-title"><h3>วัสดุหลัก</h3></div>
+    <div class="list">${m.map(x => `<div class="card lot-card"><div><strong>${esc(x.code)} · ${esc(x.name)}</strong><div class="lot-meta">ขั้นต่ำ ${qty(x.min_qty)} ${esc(x.unit)} · ${esc(x.responsible_email || '-')}</div><div class="lot-meta">ชื่อบนสติ๊กเกอร์: ${esc(x.label_name || x.name)}</div></div><button class="mini" data-edit-material="${esc(x.code)}">แก้ไข</button></div>`).join('')}</div>`;
+  $$('[data-role-email]').forEach(sel => sel.addEventListener('change', async () => {
+    const {error} = await sb.from('staff_directory').update({role:sel.value}).eq('email', sel.dataset.roleEmail);
+    if (error) return toast(errMsg(error), true);
+    toast('บันทึกสิทธิ์แล้ว');
+  }));
+  window._adminMaterials = m;
+}
+
+function openMaterialEditor(code) {
+  const x = (window._adminMaterials || []).find(m => m.code === code);
+  if (!x) return;
+  openModal(`
+    <h3>${esc(x.code)} · ${esc(x.name)}</h3>
+    <form id="matForm" class="form-grid">
+      <label>ชื่อบนสติ๊กเกอร์<input id="matLabel" maxlength="60" value="${esc(x.label_name || x.name)}"></label>
+      <label>จำนวนขั้นต่ำ<input id="matMin" type="number" min="0" step="0.01" value="${Number(x.min_qty || 0)}"></label>
+      <label>ผู้รับผิดชอบ (อีเมล)<input id="matOwner" type="email" value="${esc(x.responsible_email || '')}"></label>
+      <button class="primary" type="submit">บันทึก</button>
+    </form>`);
+  $('#matForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const {error} = await sb.from('materials').update({
+      label_name:$('#matLabel').value.trim(),
+      min_qty:Number($('#matMin').value),
+      responsible_email:$('#matOwner').value.trim().toLowerCase() || null
+    }).eq('code', code);
+    if (error) return toast(errMsg(error), true);
+    closeModal();
+    toast('บันทึกวัสดุแล้ว');
+    renderAdmin();
+  });
+}
+
+function renderHelp() {
+  page.innerHTML = `
+    <div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">ขั้นตอนหลักสำหรับเจ้าหน้าที่</p></div></div>
+    <div class="grid">
+      <div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู รับ–เบิก → รับเข้า</li><li>เลือกวัสดุ ใส่ Lot วันหมดอายุ และจำนวน</li><li>กดบันทึก แล้วกด พิมพ์ QR Sticker</li><li>หน้าพิมพ์จะเปิดทันที ไม่ต้องกดปุ่มพิมพ์ซ้ำ</li></ol></div>
+      <div class="card help-card"><h3>เบิกออกด้วย QR</h3><ol class="help-steps"><li>ใช้กล้อง iPhone/Android สแกน QR บนสติ๊กเกอร์</li><li>ระบบเปิดรายการ Lot ที่ตรงกัน</li><li>ใส่จำนวนและยืนยันเบิกออก</li></ol><p class="muted small">QR ใช้รหัสล็อตแบบเดิม เช่น BB020-69020 และแนบลิงก์เปิดแอพโดยตรง ไม่ใช้ UUID ที่อ่านไม่รู้เรื่อง</p></div>
+      <div class="card help-card"><h3>ของหมดอายุ</h3><p>เมื่อเปิดแอพ ระบบจะทำรายการ EXPIRED นำยอดคงเหลือเป็นศูนย์ ปิด Lot และเก็บประวัติให้อัตโนมัติ เจ้าหน้าที่ไม่ต้องเบิกออกเอง</p></div>
+      <div class="card help-card"><h3>ตรวจทุกวันศุกร์</h3><ol class="help-steps"><li>เปิดเมนู ตรวจศุกร์</li><li>เลือก งานของฉัน</li><li>นับจริงทีละ Lot</li><li>หากไม่ตรงต้องเลือกเหตุผล ระบบปรับยอดและเก็บ Log</li></ol></div>
+      <div class="card help-card"><h3>ตั้งเครื่องพิมพ์ Godex</h3><p>Paper 25 × 20 mm · Scale 100% · Margin None · ปิด Header/Footer</p></div>
+      <div class="card help-card"><h3>ติดตั้งบนมือถือ</h3><p><strong>Android:</strong> เปิด Chrome → เมนู → ติดตั้งแอป<br><strong>iPhone:</strong> เปิด Safari → แชร์ → เพิ่มไปยังหน้าจอโฮม</p></div>
+    </div>`;
+}
+
 init();
 })();
