@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.3.1';
 const C = window.APP_CONFIG || {};
 const configured = C.SUPABASE_URL && !C.SUPABASE_URL.includes('YOUR-PROJECT') && C.SUPABASE_ANON_KEY && !C.SUPABASE_ANON_KEY.includes('YOUR-ANON');
 let sb = null;
@@ -16,6 +16,7 @@ let materialsCache = [];
 let scannerStream = null;
 let scannerTimer = null;
 let pendingIssueCode = new URLSearchParams(location.search).get('issue') || new URLSearchParams(location.search).get('lot');
+let deferredInstallPrompt = null;
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -51,6 +52,85 @@ function closeModal() {
   $('#modal').classList.add('hidden');
   $('#modal').setAttribute('aria-hidden', 'true');
   $('#modalBody').innerHTML = '';
+}
+
+
+function isIosDevice() {
+  return /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+function isAndroidDevice() {
+  return /android/i.test(navigator.userAgent);
+}
+
+function isStandaloneApp() {
+  return window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+
+function refreshInstallUI() {
+  const installed = isStandaloneApp();
+  const status = installed
+    ? 'ติดตั้งแอปในเครื่องนี้แล้ว'
+    : isIosDevice()
+      ? 'เครื่องนี้เป็น iPhone/iPad — ใช้ปุ่มติดตั้ง iOS'
+      : isAndroidDevice()
+        ? (deferredInstallPrompt ? 'พร้อมติดตั้งบน Android แล้ว' : 'เครื่องนี้เป็น Android — เปิดด้วย Chrome')
+        : 'เลือกคู่มือตามอุปกรณ์ที่ต้องการติดตั้ง';
+  $$('[data-install-status]').forEach(el => { el.textContent = status; });
+  $$('[data-install-platform]').forEach(btn => {
+    btn.classList.toggle('installed', installed);
+    const label = btn.querySelector('[data-install-label]');
+    if (!label) return;
+    if (installed) label.textContent = 'ติดตั้งแล้ว';
+    else if (btn.dataset.installPlatform === 'android') label.textContent = deferredInstallPrompt ? 'กดเพื่อติดตั้งทันที' : 'ผ่าน Chrome';
+    else label.textContent = 'เปิดคู่มือ Safari';
+  });
+}
+
+function initPwaInstall() {
+  window.addEventListener('beforeinstallprompt', event => {
+    event.preventDefault();
+    deferredInstallPrompt = event;
+    refreshInstallUI();
+  });
+  window.addEventListener('appinstalled', () => {
+    deferredInstallPrompt = null;
+    refreshInstallUI();
+    toast('ติดตั้ง CNMI Inventory สำเร็จแล้ว');
+  });
+  window.matchMedia?.('(display-mode: standalone)').addEventListener?.('change', refreshInstallUI);
+  refreshInstallUI();
+}
+
+function openInstallChooser() {
+  if (isStandaloneApp()) return toast('เครื่องนี้ติดตั้ง CNMI Inventory แล้ว');
+  openModal(`<div class="install-modal-head"><span>${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory</h3><p>เลือกตามอุปกรณ์ที่กำลังใช้งาน</p></div></div><div class="install-modal-grid"><button class="install-choice android" type="button" data-install-platform="android">${icon('download')}<span><strong>Android</strong><small>${deferredInstallPrompt ? 'พร้อมติดตั้งทันที' : 'Google Chrome'}</small></span></button><button class="install-choice ios" type="button" data-install-platform="ios">${icon('share')}<span><strong>iPhone / iPad</strong><small>Safari · เพิ่มไปยังหน้าจอโฮม</small></span></button></div><p class="install-security-note">ต้องเปิดผ่านโดเมน HTTPS ของระบบ จึงจะติดตั้งและใช้งานแบบ PWA ได้</p>`);
+}
+
+async function installAndroidApp() {
+  if (isStandaloneApp()) return toast('เครื่องนี้ติดตั้ง CNMI Inventory แล้ว');
+  if (deferredInstallPrompt) {
+    const promptEvent = deferredInstallPrompt;
+    deferredInstallPrompt = null;
+    try {
+      await promptEvent.prompt();
+      const choice = await promptEvent.userChoice;
+      refreshInstallUI();
+      if (choice?.outcome === 'accepted') toast('กำลังติดตั้ง CNMI Inventory');
+      else toast('ยังไม่ได้ติดตั้ง สามารถกดปุ่มใหม่ภายหลังได้');
+    } catch (e) {
+      deferredInstallPrompt = promptEvent;
+      refreshInstallUI();
+      toast('เบราว์เซอร์ยังไม่อนุญาตให้ติดตั้งอัตโนมัติ', true);
+    }
+    return;
+  }
+  openModal(`<div class="install-modal-head"><span>${icon('download')}</span><div><h3>ติดตั้งบน Android</h3><p>กรณีปุ่มติดตั้งอัตโนมัติยังไม่ขึ้น ให้ทำตามขั้นตอนนี้</p></div></div><ol class="install-step-list"><li><b>เปิดเว็บด้วย Google Chrome</b><span>ไม่ใช้เบราว์เซอร์ใน LINE, Facebook หรือแอปแชต</span></li><li><b>แตะเมนูจุดสามจุด ⋮</b><span>อยู่มุมขวาบนของ Chrome</span></li><li><b>เลือก “ติดตั้งแอป”</b><span>บางเครื่องจะแสดงว่า “เพิ่มไปยังหน้าจอหลัก”</span></li><li><b>แตะ “ติดตั้ง”</b><span>ไอคอน CNMI Inventory จะอยู่บนหน้าจอแอป</span></li></ol><button class="primary wide-action" type="button" data-modal-close>เข้าใจแล้ว</button>`);
+}
+
+function showIosInstallGuide() {
+  if (isStandaloneApp()) return toast('เครื่องนี้ติดตั้ง CNMI Inventory แล้ว');
+  openModal(`<div class="install-modal-head"><span>${icon('share')}</span><div><h3>ติดตั้งบน iPhone / iPad</h3><p>iOS ไม่อนุญาตให้เว็บไซต์กดติดตั้งแทนผู้ใช้ จึงต้องเพิ่มผ่าน Safari</p></div></div><ol class="install-step-list ios-steps"><li><b>เปิดเว็บนี้ด้วย Safari</b><span>หากเปิดจาก LINE ให้เลือก “เปิดใน Safari” ก่อน</span></li><li><b>แตะปุ่มแชร์</b><span>สัญลักษณ์สี่เหลี่ยมมีลูกศรชี้ขึ้น</span></li><li><b>เลื่อนแล้วเลือก “เพิ่มไปยังหน้าจอโฮม”</b><span>ชื่อเมนูภาษาอังกฤษคือ Add to Home Screen</span></li><li><b>แตะ “เพิ่ม”</b><span>ไอคอน CNMI Inventory จะปรากฏบนหน้าจอโฮม</span></li></ol><div class="install-ios-note"><b>กรณีไม่พบเมนู</b><span>แตะ “แก้ไขการทำงาน” แล้วเพิ่มคำสั่ง “เพิ่มไปยังหน้าจอโฮม”</span></div><button class="primary wide-action" type="button" data-modal-close>เข้าใจแล้ว</button>`);
 }
 
 function loading() {
@@ -119,6 +199,7 @@ async function switchActingMode(mode) {
 }
 
 async function init() {
+  initPwaInstall();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
   if ($('#staffPlannerLink') && C.STAFF_PLANNER_URL) $('#staffPlannerLink').href = C.STAFF_PLANNER_URL;
 
@@ -216,6 +297,25 @@ async function logout() {
 }
 
 function globalClick(e) {
+  const modalCloseBtn = e.target.closest('[data-modal-close]');
+  if (modalCloseBtn) {
+    e.preventDefault();
+    closeModal();
+    return;
+  }
+  const openInstall = e.target.closest('[data-open-install]');
+  if (openInstall) {
+    e.preventDefault();
+    openInstallChooser();
+    return;
+  }
+  const installBtn = e.target.closest('[data-install-platform]');
+  if (installBtn) {
+    e.preventDefault();
+    if (installBtn.dataset.installPlatform === 'android') installAndroidApp();
+    else showIosInstallGuide();
+    return;
+  }
   const roleBtn = e.target.closest('[data-role-mode]');
   if (roleBtn) {
     e.preventDefault();
@@ -945,7 +1045,8 @@ function openMaterialEditor(code) {
 }
 
 function renderHelp() {
-  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><div class="grid help-grid"><div class="card help-card"><h3>บัญชี Admin มี 2 โหมด</h3><p><strong>โหมดเจ้าหน้าที่:</strong> เห็นและตรวจเฉพาะงานของตนเหมือนทุกคน<br><strong>โหมดผู้ดูแลระบบ:</strong> ดูงานรวม ปิดรอบ เปลี่ยนสิทธิ์ และเปลี่ยนผู้ดูแลวัสดุ</p></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>เลือกวัสดุ ใส่ Lot วันหมดอายุ และจำนวน</li><li>บันทึก แล้วกดพิมพ์ QR Sticker</li></ol></div><div class="card help-card"><h3>สติ๊กเกอร์ Old / New</h3><p>ไม่ต้องเปลี่ยนสติ๊กเกอร์เดิมทั้งหมด ระบบ v1.3.0 อ่าน Alias รหัสเก่าและพาไป Lot หลักเดียวกัน สติ๊กเกอร์ที่พิมพ์ใหม่จะใช้รหัสหลักเพื่อไม่ให้เกิดรหัสซ้ำในอนาคต</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบจะไม่ตัดยอดเองโดยไม่มีคนยืนยัน เปิดตรวจวันศุกร์ กด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์หน้า</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมถูกเก็บใน Transaction History เปิดดูได้ใต้หน้าบันทึกนำเข้า–นำออก และในเมนู รายงาน & ส่งออก</p></div><div class="card help-card"><h3>ตั้งเครื่องพิมพ์ Godex</h3><p>Paper 25 × 20 mm · Scale 100% · Margin None · ปิด Header/Footer</p></div></div>`;
+  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>บัญชี Admin มี 2 โหมด</h3><p><strong>โหมดเจ้าหน้าที่:</strong> เห็นและตรวจเฉพาะงานของตนเหมือนทุกคน<br><strong>โหมดผู้ดูแลระบบ:</strong> ดูงานรวม ปิดรอบ เปลี่ยนสิทธิ์ และเปลี่ยนผู้ดูแลวัสดุ</p></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>เลือกวัสดุ ใส่ Lot วันหมดอายุ และจำนวน</li><li>บันทึก แล้วกดพิมพ์ QR Sticker</li></ol></div><div class="card help-card"><h3>สติ๊กเกอร์ Old / New</h3><p>ไม่ต้องเปลี่ยนสติ๊กเกอร์เดิมทั้งหมด ระบบ v1.3.1 อ่าน Alias รหัสเก่าและพาไป Lot หลักเดียวกัน สติ๊กเกอร์ที่พิมพ์ใหม่จะใช้รหัสหลักเพื่อไม่ให้เกิดรหัสซ้ำในอนาคต</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบจะไม่ตัดยอดเองโดยไม่มีคนยืนยัน เปิดตรวจวันศุกร์ กด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์หน้า</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมถูกเก็บใน Transaction History เปิดดูได้ใต้หน้าบันทึกนำเข้า–นำออก และในเมนู รายงาน & ส่งออก</p></div><div class="card help-card"><h3>ตั้งเครื่องพิมพ์ Godex</h3><p>Paper 25 × 20 mm · Scale 100% · Margin None · ปิด Header/Footer</p></div></div>`;
+  refreshInstallUI();
 }
 
 init();

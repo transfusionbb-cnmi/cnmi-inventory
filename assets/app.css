@@ -148,7 +148,7 @@ button.large{min-height:52px;font-size:1rem}
 }
 
 /* =========================================================
-   CNMI Inventory v1.3.0 — screenshot-style responsive UI
+   CNMI Inventory v1.3.1 — screenshot-style responsive UI
    ========================================================= */
 .tiny{font-size:.73rem}.danger-text{color:var(--danger)}
 .sidebar-version{position:absolute;bottom:18px;left:30px;color:#9aa6a3;font-size:.7rem}
@@ -212,3 +212,17 @@ button.large{min-height:52px;font-size:1rem}
   .table-card .data-table th:first-child,.table-card .data-table td:first-child{white-space:normal;min-width:150px}
   .table-card .data-table th,.table-card .data-table td{padding-left:10px;padding-right:10px}
 }
+
+
+/* v1.3.1 PWA install controls */
+.install-panel{margin-top:18px;padding:14px;border:1px solid #cfe5e0;border-radius:18px;background:linear-gradient(145deg,#f2fbf8,#fff)}
+.install-panel-head{display:flex;align-items:center;gap:11px;margin-bottom:11px}.install-panel-head>div{min-width:0}.install-panel-head strong{display:block;color:var(--brand-strong);font-size:.9rem}.install-panel-head small{display:block;color:var(--muted);font-size:.73rem;margin-top:3px;line-height:1.4}
+.install-panel-icon{width:40px;height:40px;flex:0 0 auto;border-radius:12px;background:var(--brand);color:#fff;display:grid;place-items:center}.install-panel-icon .icon{width:21px;height:21px}
+.install-actions{display:grid;grid-template-columns:1fr 1fr;gap:9px}.install-platform-btn{min-width:0;border:1px solid #c8e0db;border-radius:13px;background:#fff;color:var(--brand-strong);padding:10px 11px;display:flex;align-items:center;gap:9px;text-align:left;box-shadow:0 3px 10px rgba(22,52,48,.04)}.install-platform-btn:hover{border-color:var(--brand);background:var(--brand-pale)}.install-platform-btn .icon{width:21px;height:21px;flex:0 0 auto}.install-platform-btn span{min-width:0}.install-platform-btn b,.install-platform-btn small{display:block}.install-platform-btn b{font-size:.78rem;white-space:nowrap}.install-platform-btn small{font-size:.66rem;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.install-platform-btn.ios{color:#27344a}.install-platform-btn.installed{border-color:#a8d7c8;background:var(--ok-soft);color:var(--ok)}
+.help-install-card{margin-bottom:17px;display:flex;align-items:center;justify-content:space-between;gap:18px;background:linear-gradient(135deg,#effaf7,#fff)}.help-install-copy{display:flex;align-items:center;gap:13px}.help-install-copy h3{margin:0;color:var(--brand-strong)}.help-install-copy p{margin:5px 0 0;color:var(--muted);font-size:.8rem}.help-install-actions{width:min(440px,100%);flex:0 0 auto}
+.install-modal-head{display:flex;gap:13px;align-items:flex-start;margin-bottom:18px}.install-modal-head>span{width:48px;height:48px;border-radius:14px;background:var(--brand);color:#fff;display:grid;place-items:center;flex:0 0 auto}.install-modal-head>span .icon{width:25px;height:25px}.install-modal-head h3{margin:2px 0 0;padding:0}.install-modal-head p{margin:6px 0 0;color:var(--muted);font-size:.84rem;line-height:1.55}
+.install-modal-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.install-choice{border:1px solid var(--line);border-radius:17px;background:#fff;padding:16px;display:flex;gap:12px;align-items:center;text-align:left;color:var(--brand-strong)}.install-choice:hover{border-color:var(--brand);background:var(--brand-pale)}.install-choice>.icon{width:27px;height:27px;flex:0 0 auto}.install-choice strong,.install-choice small{display:block}.install-choice strong{font-size:.96rem}.install-choice small{margin-top:3px;color:var(--muted);font-size:.75rem;line-height:1.35}.install-choice.ios{color:#27344a}
+.install-security-note{margin:14px 0 0;padding:10px 12px;border-radius:12px;background:#f4f7f6;color:var(--muted);font-size:.75rem;line-height:1.5}
+.install-step-list{list-style:none;counter-reset:install-step;padding:0;margin:0;display:grid;gap:10px}.install-step-list li{counter-increment:install-step;position:relative;padding:12px 13px 12px 52px;border:1px solid var(--line);border-radius:14px;background:#fbfdfc;min-height:54px}.install-step-list li:before{content:counter(install-step);position:absolute;left:13px;top:12px;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:var(--brand);color:#fff;font-weight:900}.install-step-list b,.install-step-list span{display:block}.install-step-list b{font-size:.87rem}.install-step-list span{margin-top:3px;color:var(--muted);font-size:.76rem;line-height:1.45}.ios-steps li:before{background:#27344a}.install-ios-note{display:grid;gap:3px;margin-top:12px;padding:12px 14px;border-radius:13px;background:#f3f5f8;color:#27344a}.install-ios-note span{font-size:.77rem;color:#687287;line-height:1.45}
+@media(max-width:699px){.help-install-card{align-items:stretch;flex-direction:column}.help-install-actions{width:100%}}
+@media(max-width:420px){.install-actions,.install-modal-grid{grid-template-columns:1fr}.install-platform-btn b{font-size:.82rem}.install-platform-btn small{font-size:.7rem}}
