@@ -1,16 +1,18 @@
 (() => {
 'use strict';
 
+const APP_VERSION = '1.3.0';
 const C = window.APP_CONFIG || {};
 const configured = C.SUPABASE_URL && !C.SUPABASE_URL.includes('YOUR-PROJECT') && C.SUPABASE_ANON_KEY && !C.SUPABASE_ANON_KEY.includes('YOUR-ANON');
 let sb = null;
 let session = null;
 let profile = null;
+let actingMode = 'staff';
 let route = 'home';
 let moveTab = 'receive';
+let reportTab = 'receive';
 let stockCache = [];
 let materialsCache = [];
-let autoExpiryRan = false;
 let scannerStream = null;
 let scannerTimer = null;
 let pendingIssueCode = new URLSearchParams(location.search).get('issue') || new URLSearchParams(location.search).get('lot');
@@ -25,6 +27,8 @@ const qty = v => Number(v || 0).toLocaleString('th-TH', {maximumFractionDigits: 
 const d = v => v ? new Date(v + 'T00:00:00').toLocaleDateString('th-TH', {day:'2-digit',month:'2-digit',year:'numeric'}) : 'ไม่ระบุ';
 const dt = v => v ? new Date(v).toLocaleString('th-TH', {dateStyle:'short',timeStyle:'short'}) : '-';
 const icon = (name, cls = 'icon') => `<svg class="${cls}" aria-hidden="true"><use href="#i-${name}"></use></svg>`;
+const isAdminAccount = () => profile?.role === 'admin';
+const isAdminMode = () => isAdminAccount() && actingMode === 'admin';
 
 function toast(msg, bad = false) {
   const t = $('#toast');
@@ -32,7 +36,7 @@ function toast(msg, bad = false) {
   t.style.background = bad ? '#b42318' : '#17201f';
   t.classList.add('show');
   clearTimeout(t._timer);
-  t._timer = setTimeout(() => t.classList.remove('show'), 3000);
+  t._timer = setTimeout(() => t.classList.remove('show'), 3200);
 }
 
 function openModal(html) {
@@ -63,12 +67,55 @@ function todayStart() {
   return x;
 }
 
+function todayIso() {
+  const x = todayStart();
+  return x.toISOString();
+}
+
 function isExpired(x) {
-  return Boolean(x?.expiry_date && new Date(x.expiry_date + 'T00:00:00') < todayStart());
+  return Boolean(x?.is_expired || (x?.expiry_date && new Date(x.expiry_date + 'T00:00:00') < todayStart()));
 }
 
 function lotKey(l) {
   return l?.lot_key || `${l?.material_code || l?.stock_code || ''}-${l?.lot_no || ''}`;
+}
+
+function pgArray(value) {
+  if (Array.isArray(value)) return value;
+  if (!value) return [];
+  if (typeof value === 'string' && value.startsWith('{') && value.endsWith('}')) {
+    return value.slice(1, -1).split(',').map(x => x.replace(/^"|"$/g, '')).filter(Boolean);
+  }
+  return [];
+}
+
+function updateUrgentBadge(count) {
+  const badge = $('#urgentBadge');
+  if (!badge) return;
+  badge.textContent = count > 99 ? '99+' : String(count || 0);
+  badge.classList.toggle('hidden', !count);
+}
+
+function updateRoleUI() {
+  const adminAccount = isAdminAccount();
+  const adminMode = isAdminMode();
+  $$('.admin-account-only').forEach(el => el.classList.toggle('hidden', !adminAccount));
+  $$('.admin-only').forEach(el => el.classList.toggle('hidden', !adminMode));
+  $$('[data-role-mode]').forEach(btn => btn.classList.toggle('active', btn.dataset.roleMode === actingMode));
+  document.body.classList.toggle('is-admin', adminMode);
+  document.body.classList.toggle('admin-account', adminAccount);
+  const modeText = adminAccount ? (adminMode ? 'โหมดผู้ดูแลระบบ' : 'โหมดเจ้าหน้าที่') : 'เจ้าหน้าที่';
+  if ($('#userBadge')) $('#userBadge').textContent = `${profile?.display_name || ''} · ${modeText}`;
+  if ($('#roleModeLabel')) $('#roleModeLabel').textContent = modeText;
+}
+
+async function switchActingMode(mode) {
+  if (!isAdminAccount()) return;
+  actingMode = mode === 'admin' ? 'admin' : 'staff';
+  localStorage.setItem(`cnmi-inventory-mode:${profile.email}`, actingMode);
+  updateRoleUI();
+  if (!isAdminMode() && route === 'admin') await navigate('home');
+  else await navigate(route === 'admin' ? 'admin' : route);
 }
 
 async function init() {
@@ -138,14 +185,13 @@ async function enterApp() {
     session = data.session;
     if (!session) return showLogin();
     await loadProfile();
+    actingMode = isAdminAccount() ? (localStorage.getItem(`cnmi-inventory-mode:${profile.email}`) || 'staff') : 'staff';
     loginView.classList.add('hidden');
     appView.classList.remove('hidden');
-    $('#userBadge').textContent = `${profile.display_name} · ${profile.role === 'admin' ? 'ผู้ดูแลระบบ' : 'เจ้าหน้าที่'}`;
-    $$('.admin-only').forEach(el => el.classList.toggle('hidden', profile.role !== 'admin'));
-    document.body.classList.toggle('is-admin', profile.role === 'admin');
-    await runAutoExpiry(true);
+    updateRoleUI();
     const hashRoute = location.hash.replace(/^#/, '');
-    const initialRoute = ['home','stock','move','weekly','activity','help','admin'].includes(hashRoute) ? hashRoute : 'home';
+    const allowed = ['home','stock','urgent','move','weekly','activity','reports','help','admin'];
+    const initialRoute = allowed.includes(hashRoute) ? hashRoute : 'home';
     await navigate(initialRoute);
     if (pendingIssueCode) setTimeout(openPendingIssue, 250);
   } catch (e) {
@@ -166,15 +212,20 @@ async function logout() {
   profile = null;
   stockCache = [];
   materialsCache = [];
-  autoExpiryRan = false;
   showLogin();
 }
 
 function globalClick(e) {
+  const roleBtn = e.target.closest('[data-role-mode]');
+  if (roleBtn) {
+    e.preventDefault();
+    switchActingMode(roleBtn.dataset.roleMode);
+    return;
+  }
   const r = e.target.closest('[data-route]');
   if (r) {
     e.preventDefault();
-    navigate(r.dataset.route, {tab:r.dataset.moveTab});
+    navigate(r.dataset.route, {tab:r.dataset.moveTab, filter:r.dataset.stockFilter});
     return;
   }
   const p = e.target.closest('[data-print]');
@@ -198,11 +249,27 @@ function globalClick(e) {
   }
   const c = e.target.closest('[data-check]');
   if (c) {
+    e.preventDefault();
     openCheck(c.dataset.check);
     return;
   }
+  const ex = e.target.closest('[data-expired-remove]');
+  if (ex) {
+    e.preventDefault();
+    openExpiredRemoval(ex.dataset.expiredRemove);
+    return;
+  }
   const edit = e.target.closest('[data-edit-material]');
-  if (edit) openMaterialEditor(edit.dataset.editMaterial);
+  if (edit) {
+    e.preventDefault();
+    openMaterialEditor(edit.dataset.editMaterial);
+    return;
+  }
+  const exp = e.target.closest('[data-export-report]');
+  if (exp) {
+    e.preventDefault();
+    exportReport(exp.dataset.exportReport);
+  }
 }
 
 function navActive() {
@@ -214,16 +281,22 @@ function navActive() {
 }
 
 async function navigate(r, options = {}) {
+  if (r === 'admin' && !isAdminMode()) {
+    r = 'home';
+    toast('สลับเป็นโหมดผู้ดูแลระบบก่อนเข้าหน้าตั้งค่า', true);
+  }
   route = r;
   if (r === 'move') moveTab = options.tab || moveTab || 'receive';
   navActive();
   loading();
   try {
     if (r === 'home') await renderHome();
-    else if (r === 'stock') await renderStock();
+    else if (r === 'stock') await renderStock(options.filter || 'positive');
+    else if (r === 'urgent') await renderUrgent();
     else if (r === 'move') await renderMove(moveTab);
     else if (r === 'weekly') await renderWeekly();
     else if (r === 'activity') await renderActivity();
+    else if (r === 'reports') await renderReports(reportTab);
     else if (r === 'help') renderHelp();
     else if (r === 'admin') await renderAdmin();
     else await renderHome();
@@ -234,53 +307,31 @@ async function navigate(r, options = {}) {
   }
 }
 
-async function runAutoExpiry(showNotice = false) {
-  if (!sb || autoExpiryRan) return 0;
-  autoExpiryRan = true;
-  const {data, error} = await sb.rpc('fn_auto_expire_stock');
-  if (error) {
-    console.warn('fn_auto_expire_stock:', error.message);
-    return 0;
-  }
-  const count = Number(Array.isArray(data) ? data[0] : data) || 0;
-  if (count > 0) {
-    stockCache = [];
-    if (showNotice) toast(`ระบบนำ Lot หมดอายุออกจากสต๊อกอัตโนมัติแล้ว ${count} Lot`);
-  }
-  return count;
-}
-
 async function getLots(force = false) {
-  await runAutoExpiry(false);
   if (!force && stockCache.length) return stockCache;
   const {data, error} = await sb.from('v_lot_balances').select('*').eq('active', true).order('material_code').order('lot_no');
   if (error) throw error;
-  stockCache = (data || []).filter(x => Number(x.balance) !== 0 && !isExpired(x));
+  stockCache = (data || []).filter(x => Number(x.balance) !== 0);
   return stockCache;
 }
 
 async function ensureCheck() {
-  await runAutoExpiry(false);
   const {data, error} = await sb.rpc('fn_ensure_weekly_check');
   if (error) throw error;
   return Array.isArray(data) ? data[0] : data;
 }
 
 function statusBadge(x) {
-  if (Number(x.balance) < 0) return '<span class=\"badge danger\">ยอดติดลบ</span>';
-  if (Number(x.balance) <= Number(x.min_qty)) return '<span class=\"badge warn\">ต่ำกว่าขั้นต่ำ</span>';
-  if (x.days_to_expiry !== null && Number(x.days_to_expiry) <= 90) return '<span class=\"badge warn\">ใกล้หมดอายุ</span>';
-  return '<span class=\"badge ok\">พร้อมใช้</span>';
-}
-
-function todayIso() {
-  const x = new Date();
-  x.setHours(0,0,0,0);
-  return x.toISOString();
+  if (isExpired(x) && Number(x.balance) > 0) return '<span class="badge danger">หมดอายุ · รอนำออก</span>';
+  if (Number(x.balance) < 0) return '<span class="badge danger">ยอดติดลบ</span>';
+  if (Number(x.balance) <= 0) return '<span class="badge danger">หมด</span>';
+  if (Number(x.balance) <= Number(x.min_qty)) return '<span class="badge warn">ต่ำกว่าขั้นต่ำ</span>';
+  if (x.days_to_expiry !== null && Number(x.days_to_expiry) <= 30) return '<span class="badge warn">ใกล้หมดอายุ</span>';
+  return '<span class="badge ok">คงเหลือ</span>';
 }
 
 function ownerOptions(staff = [], selected = '') {
-  return [`<option value=\"\">ยังไม่กำหนด</option>`].concat((staff || []).map(s => `<option value=\"${esc(s.email)}\" ${s.email === selected ? 'selected' : ''}>${esc(s.display_name)}${s.role === 'admin' ? ' (Admin)' : ''}</option>`)).join('');
+  return [`<option value="">ยังไม่กำหนด</option>`].concat((staff || []).map(s => `<option value="${esc(s.email)}" ${s.email === selected ? 'selected' : ''}>${esc(s.display_name)}${s.role === 'admin' ? ' (Admin)' : ''}</option>`)).join('');
 }
 
 function groupByOwner(summaryRows = []) {
@@ -291,42 +342,48 @@ function groupByOwner(summaryRows = []) {
       responsible_email: row.responsible_email || '',
       responsible_name: row.responsible_name || 'ยังไม่กำหนด',
       materials: 0,
-      active_lots: 0,
       low_count: 0,
-      out_count: 0
+      out_count: 0,
+      expired_count: 0
     });
     const item = map.get(key);
     item.materials += 1;
-    item.active_lots += Number(row.active_lots || 0);
     if (Number(row.total_balance || 0) <= 0) item.out_count += 1;
     else if (Number(row.total_balance || 0) <= Number(row.min_qty || 0)) item.low_count += 1;
+    item.expired_count += Number(row.expired_pending_lots || 0);
   });
-  return [...map.values()].sort((a,b) => (b.out_count + b.low_count) - (a.out_count + a.low_count) || a.responsible_name.localeCompare(b.responsible_name, 'th'));
+  return [...map.values()].sort((a,b) => (b.expired_count + b.out_count + b.low_count) - (a.expired_count + a.out_count + a.low_count) || a.responsible_name.localeCompare(b.responsible_name, 'th'));
+}
+
+function activityCard(a) {
+  const detail = a.summary || {};
+  return `<div class="activity-row"><span class="activity-dot">${icon(a.action === 'RECEIVE' ? 'plus' : a.action === 'ISSUE' ? 'minus' : a.action === 'LABEL_PRINT' ? 'print' : 'check')}</span><div><strong>${esc(a.action_label || a.action)}</strong><div class="muted small">${esc(detail.material_code || detail.stock_code || '')}${detail.lot_no ? ' · Lot ' + esc(detail.lot_no) : ''}${detail.before !== undefined ? ' · ' + qty(detail.before) + ' → ' + qty(detail.after) : ''}</div><div class="muted tiny">โดย ${esc(a.actor_name || a.actor_email || 'SYSTEM')} · ${dt(a.created_at)}</div></div></div>`;
 }
 
 async function renderHome() {
-  const [lots, summaryRes, checkRes, activityRes, expiredCountRes] = await Promise.all([
+  const [lots, summaryRes, checkRes, activityRes, todayTxRes] = await Promise.all([
     getLots(true),
     sb.from('v_inventory_summary').select('*').order('material_code'),
     ensureCheck(),
-    sb.from('v_audit_activity').select('*').limit(120),
-    sb.from('audit_logs').select('id', {head:true, count:'exact'}).eq('action', 'AUTO_EXPIRED')
+    sb.from('v_audit_activity').select('*').limit(80),
+    sb.from('v_transaction_history').select('id,tx_type,created_at').gte('created_at', todayIso()).limit(1000)
   ]);
   if (summaryRes.error) throw summaryRes.error;
   if (activityRes.error) throw activityRes.error;
-  if (expiredCountRes.error) throw expiredCountRes.error;
+  if (todayTxRes.error) throw todayTxRes.error;
 
   const summaries = summaryRes.data || [];
   const activities = activityRes.data || [];
-  const startIso = todayIso();
-  const todayActivities = activities.filter(x => x.created_at && new Date(x.created_at).toISOString() >= startIso);
+  const todayTx = todayTxRes.data || [];
+  const validLots = lots.filter(x => !isExpired(x));
+  const expiredPending = lots.filter(x => isExpired(x) && Number(x.balance) > 0);
   const outMaterials = summaries.filter(x => Number(x.total_balance || 0) <= 0);
   const lowMaterials = summaries.filter(x => Number(x.total_balance || 0) > 0 && Number(x.total_balance || 0) <= Number(x.min_qty || 0));
-  const nearExpiry = lots.filter(x => Number(x.balance || 0) > 0 && x.days_to_expiry !== null && Number(x.days_to_expiry) >= 0 && Number(x.days_to_expiry) <= 30);
-  const receiveToday = todayActivities.filter(x => x.action === 'RECEIVE').length;
-  const issueToday = todayActivities.filter(x => x.action === 'ISSUE').length;
-  const expiredRemoved = Number(expiredCountRes.count || 0);
+  const nearExpiry = validLots.filter(x => Number(x.balance || 0) > 0 && x.days_to_expiry !== null && Number(x.days_to_expiry) >= 0 && Number(x.days_to_expiry) <= 30);
+  const receiveToday = todayTx.filter(x => x.tx_type === 'RECEIVE').length;
+  const issueToday = todayTx.filter(x => x.tx_type === 'ISSUE').length;
   const ownerGroups = groupByOwner(summaries);
+  updateUrgentBadge(expiredPending.length + lowMaterials.length + outMaterials.length);
 
   let prog = null;
   if (checkRes) {
@@ -335,62 +392,38 @@ async function renderHome() {
   }
 
   const productRows = [...summaries].sort((a, b) => {
-    const aScore = Number(a.total_balance || 0) <= 0 ? 3 : (Number(a.total_balance || 0) <= Number(a.min_qty || 0) ? 2 : 0);
-    const bScore = Number(b.total_balance || 0) <= 0 ? 3 : (Number(b.total_balance || 0) <= Number(b.min_qty || 0) ? 2 : 0);
-    return bScore - aScore || Number(a.total_balance || 0) - Number(b.total_balance || 0);
+    const score = x => Number(x.expired_pending_lots || 0) ? 4 : Number(x.total_balance || 0) <= 0 ? 3 : Number(x.total_balance || 0) <= Number(x.min_qty || 0) ? 2 : 0;
+    return score(b) - score(a) || Number(a.total_balance || 0) - Number(b.total_balance || 0);
   }).slice(0, 8);
 
   page.innerHTML = `
-    <section class="hero-card">
-      <div>
-        <h2>สวัสดี ${esc(profile.display_name)}</h2>
-        <p>ภาพรวมสต๊อกของวันนี้ ดูได้ทั้งตามสินค้า ตามผู้ดูแล และเข้าหน้านำเข้า/นำออกได้ทันที</p>
-      </div>
-      <div class="hero-icon">${icon('box')}</div>
-    </section>
+    <div class="page-head dashboard-head"><div><h2>หน้าหลัก</h2><p class="muted small">ภาพรวมสถานะสต๊อก วันนี้ ${new Date().toLocaleDateString('th-TH',{day:'numeric',month:'long',year:'numeric'})}</p></div><button class="mini ghost" id="refreshHome">${icon('refresh')} รีเฟรช</button></div>
 
     <div class="grid kpi-grid kpi-grid-6">
-      <div class="card kpi"><div class="kpi-top"><small>สินค้าหมด</small><span class="kpi-icon danger">${icon('box')}</span></div><strong>${outMaterials.length}</strong><small>รายการ</small></div>
-      <div class="card kpi"><div class="kpi-top"><small>ต่ำกว่าขั้นต่ำ</small><span class="kpi-icon warn">${icon('alert')}</span></div><strong>${lowMaterials.length}</strong><small>รายการ</small></div>
-      <div class="card kpi"><div class="kpi-top"><small>นำเข้า (วันนี้)</small><span class="kpi-icon">${icon('plus')}</span></div><strong>${receiveToday}</strong><small>รายการ</small></div>
-      <div class="card kpi"><div class="kpi-top"><small>นำออก (วันนี้)</small><span class="kpi-icon info">${icon('minus')}</span></div><strong>${issueToday}</strong><small>รายการ</small></div>
-      <div class="card kpi"><div class="kpi-top"><small>หมดอายุ (นำออกแล้ว)</small><span class="kpi-icon info">${icon('history')}</span></div><strong>${expiredRemoved}</strong><small>Lot</small></div>
-      <div class="card kpi"><div class="kpi-top"><small>ใกล้หมดอายุ (≤ 30 วัน)</small><span class="kpi-icon warn">${icon('calendar')}</span></div><strong>${nearExpiry.length}</strong><small>Lot</small></div>
+      <button class="card kpi kpi-button" data-route="stock" data-stock-filter="all"><div class="kpi-top"><span class="kpi-icon danger">${icon('box')}</span><small>สินค้าหมด</small></div><strong>${outMaterials.length}</strong><small>รายการ</small></button>
+      <button class="card kpi kpi-button" data-route="stock" data-stock-filter="low"><div class="kpi-top"><span class="kpi-icon warn">${icon('alert')}</span><small>ต่ำกว่าขั้นต่ำ</small></div><strong>${lowMaterials.length}</strong><small>รายการ</small></button>
+      <button class="card kpi kpi-button" data-route="move" data-move-tab="receive"><div class="kpi-top"><span class="kpi-icon">${icon('plus')}</span><small>นำเข้า (วันนี้)</small></div><strong>${receiveToday}</strong><small>รายการ</small></button>
+      <button class="card kpi kpi-button" data-route="move" data-move-tab="issue"><div class="kpi-top"><span class="kpi-icon info">${icon('minus')}</span><small>นำออก (วันนี้)</small></div><strong>${issueToday}</strong><small>รายการ</small></button>
+      <button class="card kpi kpi-button" data-route="urgent"><div class="kpi-top"><span class="kpi-icon danger">${icon('history')}</span><small>หมดอายุ · รอนำออก</small></div><strong>${expiredPending.length}</strong><small>Lot</small></button>
+      <button class="card kpi kpi-button" data-route="stock" data-stock-filter="expiry"><div class="kpi-top"><span class="kpi-icon warn">${icon('calendar')}</span><small>ใกล้หมดอายุ (≤ 30 วัน)</small></div><strong>${nearExpiry.length}</strong><small>Lot</small></button>
     </div>
 
     <div class="overview-grid">
       <section class="card table-card">
-        <div class="section-title compact">
-          <div><h3>ภาพรวมตามสินค้า</h3><p class="muted small">Top สินค้าที่ต้องเฝ้าระวัง</p></div>
-          <div class="segmented"><button id="homeModeProduct" class="seg active" type="button">ดูตามสินค้า</button><button id="homeModeOwner" class="seg" type="button">ดูตามผู้ดูแล</button></div>
-        </div>
+        <div class="section-title compact"><div><h3>Top สินค้าที่ต้องเฝ้าระวัง</h3><p class="muted small">ข้อมูลสต๊อกเดิมและรายการใหม่รวมในหน้าเดียว</p></div><div class="segmented"><button id="homeModeProduct" class="seg active" type="button">ดูตามสินค้า</button><button id="homeModeOwner" class="seg" type="button">ดูตามผู้ดูแล</button></div></div>
         <div id="homeOverviewPane"></div>
       </section>
-
       <section class="card activity-panel">
-        <div class="section-title compact"><div><h3>กิจกรรมล่าสุด</h3><p class="muted small">รายการล่าสุดในระบบ</p></div><button class="mini" data-route="activity">ดูทั้งหมด ${icon('arrow')}</button></div>
-        <div class="activity-list">${activities.slice(0, 6).map(activityCard).join('') || '<div class="card empty">ยังไม่มีกิจกรรม</div>'}</div>
+        <div class="section-title compact"><div><h3>กิจกรรมล่าสุด</h3><p class="muted small">รวมข้อมูลรับเข้า–นำออกเดิมจาก Excel</p></div><button class="mini ghost" data-route="activity">ดูทั้งหมด ${icon('arrow')}</button></div>
+        <div class="activity-list">${activities.slice(0, 6).map(activityCard).join('') || '<div class="empty">ยังไม่มีกิจกรรม</div>'}</div>
       </section>
     </div>
 
-    <div class="grid quick-grid">
-      <button class="quick" data-route="move" data-move-tab="receive"><span class="quick-icon">${icon('plus')}</span><span>นำเข้า</span><small>เพิ่ม Lot ใหม่ และพิมพ์ QR Sticker</small></button>
-      <button class="quick" data-route="move" data-move-tab="issue"><span class="quick-icon">${icon('minus')}</span><span>นำออก</span><small>สแกน QR หรือเลือกรายการที่ต้องใช้</small></button>
-      <button class="quick" data-route="stock"><span class="quick-icon">${icon('search')}</span><span>สต๊อกคงเหลือ</span><small>ค้นหา ดู Lot และดูตามผู้ดูแล</small></button>
-      <button class="quick" data-route="weekly"><span class="quick-icon">${icon('check')}</span><span>ตรวจวันศุกร์</span><small>${prog ? `ความคืบหน้า ${prog.checked_items}/${prog.total_items}` : 'ตรวจสต๊อกประจำสัปดาห์'}</small></button>
-    </div>
-
-    ${prog ? `<div class="card"><div class="check-info"><div><strong>ตรวจสต๊อกวันศุกร์ ${d(prog.week_friday)}</strong><div class="muted small">${prog.status === 'COMPLETED' ? 'ปิดรอบแล้ว' : 'กำลังดำเนินการ'}</div></div><span class="badge ${prog.status === 'COMPLETED' ? 'ok' : 'info'}">${prog.checked_items}/${prog.total_items}</span></div><div class="progress" style="margin-top:13px"><span style="width:${prog.percent_complete}%"></span></div></div>` : ''}
+    ${prog ? `<section class="card weekly-summary"><div class="weekly-ring" style="--pct:${Number(prog.percent_complete || 0)}"><div><strong>${prog.checked_items}/${prog.total_items}</strong><span>${prog.percent_complete}%</span></div></div><div><h3>ตรวจสต๊อกวันศุกร์ ${d(prog.week_friday)}</h3><p class="muted">${prog.status === 'COMPLETED' ? 'ปิดรอบแล้ว' : `ยังเหลือ ${prog.pending_items ?? (prog.total_items-prog.checked_items)} Lot`}</p><button class="mini" data-route="weekly">ดูรายการตรวจทั้งหมด ${icon('arrow')}</button></div></section>` : ''}
   `;
 
-  const productHtml = `
-    <div class="table-wrap"><table class="data-table">
-      <thead><tr><th>รายการสินค้า</th><th>คงเหลือ</th><th>ขั้นต่ำ</th><th>ผู้ดูแล</th><th>สถานะ</th></tr></thead>
-      <tbody>${productRows.map(x => `<tr><td><strong>${esc(x.material_name)}</strong><div class="muted small">${esc(x.material_code)}</div></td><td>${qty(x.total_balance)}</td><td>${qty(x.min_qty)}</td><td>${esc(x.responsible_name || '-')}</td><td>${Number(x.total_balance || 0) <= 0 ? '<span class="badge danger">หมด</span>' : (Number(x.total_balance || 0) <= Number(x.min_qty || 0) ? '<span class="badge warn">ต่ำกว่าขั้นต่ำ</span>' : '<span class="badge ok">พร้อมใช้</span>')}</td></tr>`).join('') || '<tr><td colspan="5">ไม่มีข้อมูล</td></tr>'}</tbody>
-    </table></div>`;
-  const ownerHtml = `
-    <div class="owner-summary-grid">${ownerGroups.map(g => `<div class="owner-box"><strong>${esc(g.responsible_name)}</strong><div class="muted small">${esc(g.responsible_email || 'ยังไม่กำหนด')}</div><div class="owner-stats"><span>ดูแล ${g.materials} รายการ</span><span>ต่ำกว่าขั้นต่ำ ${g.low_count}</span><span>หมด ${g.out_count}</span></div></div>`).join('') || '<div class="card empty">ไม่มีข้อมูลผู้ดูแล</div>'}</div>`;
-
+  const productHtml = `<div class="table-wrap"><table class="data-table"><thead><tr><th>รายการสินค้า</th><th>คงเหลือ</th><th>ขั้นต่ำ</th><th>ผู้ดูแล</th><th>สถานะ</th></tr></thead><tbody>${productRows.map(x => `<tr><td><strong>${esc(x.material_name)}</strong><div class="muted tiny">${esc(x.material_code)}</div></td><td>${qty(x.total_balance)} ${esc(x.unit)}</td><td>${qty(x.min_qty)}</td><td>${esc(x.responsible_name || '-')}</td><td>${Number(x.expired_pending_lots || 0) ? '<span class="badge danger">มี Lot หมดอายุ</span>' : Number(x.total_balance || 0) <= 0 ? '<span class="badge danger">หมด</span>' : Number(x.total_balance || 0) <= Number(x.min_qty || 0) ? '<span class="badge warn">ต่ำกว่าขั้นต่ำ</span>' : '<span class="badge ok">คงเหลือ</span>'}</td></tr>`).join('') || '<tr><td colspan="5">ไม่มีข้อมูล</td></tr>'}</tbody></table></div>`;
+  const ownerHtml = `<div class="owner-summary-grid">${ownerGroups.map(g => `<div class="owner-box"><strong>${esc(g.responsible_name)}</strong><div class="muted tiny">${esc(g.responsible_email || 'ยังไม่กำหนด')}</div><div class="owner-stats"><span>ดูแล ${g.materials} รายการ</span><span>ต่ำกว่าขั้นต่ำ ${g.low_count}</span><span>สินค้าหมด ${g.out_count}</span><span class="danger-text">หมดอายุรอนำออก ${g.expired_count}</span></div></div>`).join('') || '<div class="empty">ไม่มีข้อมูลผู้ดูแล</div>'}</div>`;
   const pane = $('#homeOverviewPane');
   const setMode = mode => {
     $('#homeModeProduct').classList.toggle('active', mode === 'product');
@@ -399,76 +432,61 @@ async function renderHome() {
   };
   $('#homeModeProduct').onclick = () => setMode('product');
   $('#homeModeOwner').onclick = () => setMode('owner');
+  $('#refreshHome').onclick = () => { stockCache = []; renderHome(); };
   setMode('product');
 }
 
 function lotCard(l) {
-  return `
-    <div class="card lot-card">
-      <div class="lot-main">
-        <div class="lot-code">${icon('qr')} ${esc(lotKey(l))}</div>
-        <div class="lot-title">${esc(l.material_code)} · ${esc(l.material_name)}</div>
-        <div class="lot-meta">Lot ${esc(l.lot_no)} · EXP ${d(l.expiry_date)}</div>
-        <div class="lot-meta">ผู้ดูแล: ${esc(l.responsible_name || '-')}</div>
-        <div style="margin-top:8px">${statusBadge(l)}</div>
-        <div class="actions">
-          <button class="mini" data-print="${esc(l.lot_id)}">${icon('print')} พิมพ์ QR</button>
-          ${Number(l.balance) > 0 ? `<button class="mini ghost" data-issue-lot="${esc(l.lot_id)}">${icon('minus')} เบิกออก</button>` : ''}
-        </div>
-      </div>
-      <div class="qty-wrap"><div class="qty">${qty(l.balance)}</div><div class="muted small">${esc(l.unit)}</div></div>
-    </div>`;
+  const aliases = pgArray(l.legacy_lot_keys);
+  return `<div class="card lot-card ${isExpired(l) ? 'expired-card' : ''}"><div class="lot-main"><div class="lot-code">${icon('qr')} ${esc(lotKey(l))}</div><div class="lot-title">${esc(l.material_name)}</div><div class="lot-meta">${esc(l.material_code)} · Lot ${esc(l.lot_no)} · EXP ${d(l.expiry_date)}</div><div class="lot-meta">ผู้ดูแล: ${esc(l.responsible_name || '-')}</div>${aliases.length ? `<div class="legacy-note">สติ๊กเกอร์รหัสเดิมยังใช้ได้: ${aliases.map(esc).join(', ')}</div>` : ''}<div style="margin-top:8px">${statusBadge(l)}</div><div class="actions">${!isExpired(l) ? `<button class="mini" data-print="${esc(l.lot_id)}">${icon('print')} พิมพ์ QR</button>${Number(l.balance) > 0 ? `<button class="mini ghost" data-issue-lot="${esc(l.lot_id)}">${icon('minus')} นำออก</button>` : ''}` : `<button class="mini danger" data-route="weekly">${icon('check')} ยืนยันนำออกในตรวจวันศุกร์</button>`}</div></div><div class="qty-wrap"><div class="qty">${qty(l.balance)}</div><div class="muted small">${esc(l.unit)}</div></div></div>`;
 }
 
-async function renderStock() {
-  const lots = await getLots(true);
-  page.innerHTML = `
-    <div class="page-head"><div><h2>สต๊อกตาม Lot</h2><p class="muted small">แสดงเฉพาะ Lot ที่ยังใช้งาน ไม่รวมของหมดอายุ</p></div><span class="badge info">${lots.length} Lot</span></div>
-    <div class="toolbar">
-      <div class="search-box">${icon('search')}<input id="stockSearch" placeholder="ค้นหารหัส ชื่อ Lot หรือ QR Code"></div>
-      <button class="mini" id="stockSearchBtn">ค้นหา</button>
-    </div>
-    <div class="filters">
-      <button class="chip active" data-filter="positive">คงเหลือ</button>
-      <button class="chip" data-filter="all">ทั้งหมด</button>
-      <button class="chip" data-filter="low">ต่ำกว่าขั้นต่ำ</button>
-      <button class="chip" data-filter="expiry">ใกล้หมดอายุ</button>
-      <button class="chip" data-filter="negative">ยอดติดลบ</button>
-    </div>
-    <div id="stockList" class="list"></div>`;
+function lotTableRows(lots) {
+  return lots.map(l => `<tr class="${isExpired(l) ? 'expired-row' : ''}"><td><strong>${esc(l.material_name)}</strong><div class="muted tiny">${esc(l.material_code)}</div></td><td><span class="code-pill">${esc(lotKey(l))}</span></td><td>${qty(l.balance)} ${esc(l.unit)}</td><td>${d(l.expiry_date)}</td><td>${esc(l.responsible_name || '-')}</td><td>${statusBadge(l)}</td><td><div class="row-actions">${!isExpired(l) ? `<button class="icon-mini" title="พิมพ์ QR" data-print="${esc(l.lot_id)}">${icon('print')}</button><button class="icon-mini" title="นำออก" data-issue-lot="${esc(l.lot_id)}">${icon('minus')}</button>` : `<button class="icon-mini danger" title="ไปตรวจวันศุกร์" data-route="weekly">${icon('check')}</button>`}</div></td></tr>`).join('');
+}
 
-  let filter = 'positive';
+async function renderStock(initialFilter = 'positive') {
+  const lots = await getLots(true);
+  page.innerHTML = `<div class="page-head"><div><h2>สต๊อกคงเหลือ</h2><p class="muted small">ค้นหาด้วยชื่อ รหัส Lot หรือ QR เดิมได้</p></div><span class="badge info">${lots.length} Lot</span></div><div class="stock-toolbar"><div class="search-box">${icon('search')}<input id="stockSearch" placeholder="ค้นหาสินค้า / Lot / QR Code"></div><div class="filters" id="stockFilters"><button class="chip" data-filter="all">ทั้งหมด</button><button class="chip" data-filter="positive">คงเหลือ</button><button class="chip" data-filter="low">ต่ำกว่าขั้นต่ำ</button><button class="chip" data-filter="expiry">ใกล้หมดอายุ</button><button class="chip" data-filter="expired">หมดอายุ</button><button class="chip" data-filter="negative">ยอดติดลบ</button></div></div><div class="desktop-stock table-wrap"><table class="data-table"><thead><tr><th>สินค้า</th><th>Lot / QR</th><th>คงเหลือ</th><th>EXP</th><th>ผู้ดูแล</th><th>สถานะ</th><th>จัดการ</th></tr></thead><tbody id="stockTableBody"></tbody></table></div><div id="stockList" class="mobile-stock list"></div>`;
+  let filter = initialFilter || 'positive';
   const draw = () => {
     const s = $('#stockSearch').value.trim().toLowerCase();
-    let arr = lots.filter(x => !s || `${x.material_code} ${x.material_name} ${x.lot_no} ${lotKey(x)}`.toLowerCase().includes(s));
-    if (filter === 'positive') arr = arr.filter(x => Number(x.balance) > 0);
-    if (filter === 'low') arr = arr.filter(x => Number(x.balance) > 0 && Number(x.balance) <= Number(x.min_qty));
-    if (filter === 'expiry') arr = arr.filter(x => x.days_to_expiry !== null && Number(x.days_to_expiry) <= 90 && Number(x.balance) > 0);
+    let arr = lots.filter(x => {
+      const aliases = [...pgArray(x.legacy_codes), ...pgArray(x.legacy_lot_keys)].join(' ');
+      return !s || `${x.material_code} ${x.material_name} ${x.lot_no} ${lotKey(x)} ${aliases}`.toLowerCase().includes(s);
+    });
+    if (filter === 'positive') arr = arr.filter(x => Number(x.balance) > 0 && !isExpired(x));
+    if (filter === 'low') arr = arr.filter(x => Number(x.balance) > 0 && !isExpired(x) && Number(x.balance) <= Number(x.min_qty));
+    if (filter === 'expiry') arr = arr.filter(x => !isExpired(x) && x.days_to_expiry !== null && Number(x.days_to_expiry) <= 30 && Number(x.balance) > 0);
+    if (filter === 'expired') arr = arr.filter(x => isExpired(x) && Number(x.balance) > 0);
     if (filter === 'negative') arr = arr.filter(x => Number(x.balance) < 0);
+    $('#stockTableBody').innerHTML = lotTableRows(arr) || '<tr><td colspan="7" class="empty">ไม่พบรายการ</td></tr>';
     $('#stockList').innerHTML = arr.map(lotCard).join('') || `<div class="card empty">${icon('search')}<div>ไม่พบรายการ</div></div>`;
+    $$('[data-filter]').forEach(x => x.classList.toggle('active', x.dataset.filter === filter));
   };
   $('#stockSearch').addEventListener('input', draw);
-  $('#stockSearchBtn').addEventListener('click', draw);
-  $$('[data-filter]').forEach(b => b.addEventListener('click', () => {
-    filter = b.dataset.filter;
-    $$('[data-filter]').forEach(x => x.classList.toggle('active', x === b));
-    draw();
-  }));
+  $$('[data-filter]').forEach(b => b.addEventListener('click', () => { filter = b.dataset.filter; draw(); }));
   draw();
 }
 
+async function renderUrgent() {
+  const [lots, summaryRes] = await Promise.all([getLots(true), sb.from('v_inventory_summary').select('*').order('material_code')]);
+  if (summaryRes.error) throw summaryRes.error;
+  const expired = lots.filter(x => isExpired(x) && Number(x.balance) > 0);
+  const low = (summaryRes.data || []).filter(x => Number(x.total_balance || 0) > 0 && Number(x.total_balance || 0) <= Number(x.min_qty || 0));
+  const out = (summaryRes.data || []).filter(x => Number(x.total_balance || 0) <= 0);
+  updateUrgentBadge(expired.length + low.length + out.length);
+  page.innerHTML = `<div class="page-head"><div><h2>ติดตามเร่งด่วน</h2><p class="muted small">จัดการของหมดอายุและรายการต่ำกว่าขั้นต่ำก่อน</p></div><span class="badge danger">${expired.length + low.length + out.length} รายการ</span></div><section class="urgent-banner"><div>${icon('alert')}<strong>ของหมดอายุจะไม่ถูกตัดยอดเอง</strong><p>ให้ผู้ดูแลยืนยันว่าได้นำออกจากพื้นที่แล้วในเมนูตรวจวันศุกร์ จากนั้นสัปดาห์ถัดไปจะไม่แสดงซ้ำ</p></div><button class="primary" data-route="weekly">ไปตรวจวันศุกร์</button></section><div class="section-title"><h3>หมดอายุ · รอนำออก (${expired.length})</h3></div><div class="list">${expired.map(lotCard).join('') || '<div class="card empty">ไม่มี Lot หมดอายุค้าง</div>'}</div><div class="section-title"><h3>ต่ำกว่าขั้นต่ำ / หมด (${low.length + out.length})</h3></div><div class="table-wrap"><table class="data-table"><thead><tr><th>สินค้า</th><th>คงเหลือ</th><th>ขั้นต่ำ</th><th>ผู้ดูแล</th><th>สถานะ</th></tr></thead><tbody>${[...out,...low].map(x => `<tr><td><strong>${esc(x.material_name)}</strong><div class="muted tiny">${esc(x.material_code)}</div></td><td>${qty(x.total_balance)} ${esc(x.unit)}</td><td>${qty(x.min_qty)}</td><td>${esc(x.responsible_name || '-')}</td><td>${Number(x.total_balance) <= 0 ? '<span class="badge danger">หมด</span>' : '<span class="badge warn">ต่ำกว่าขั้นต่ำ</span>'}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">ไม่มีรายการ</td></tr>'}</tbody></table></div>`;
+}
+
 async function printLabel(lotId) {
-  // เปิดหน้าต่างทันทีจากการกดของผู้ใช้ เพื่อไม่ให้ Chrome/Safari บล็อก Pop-up
-  const popup = window.open('about:blank', 'cnmi_inventory_label', 'width=430,height=360');
+  const popup = window.open('about:blank', 'cnmi_inventory_label', 'width=470,height=390');
   if (!popup) return toast('เบราว์เซอร์บล็อกหน้าพิมพ์ กรุณาอนุญาต Pop-up ของเว็บไซต์นี้', true);
   popup.document.write('<!doctype html><meta charset="utf-8"><title>กำลังเตรียมสติ๊กเกอร์</title><body style="font-family:system-ui;padding:24px">กำลังเตรียม QR Sticker…</body>');
   popup.document.close();
   try {
     const l = stockCache.find(x => x.lot_id === lotId) || (await getLots(true)).find(x => x.lot_id === lotId);
-    if (!l) {
-      popup.close();
-      return toast('ไม่พบ Lot', true);
-    }
+    if (!l) { popup.close(); return toast('ไม่พบ Lot', true); }
     const appBase = C.PUBLIC_URL || `${location.origin}${location.pathname.replace(/[^/]*$/, '')}`;
     const issueUrl = new URL(appBase, location.href);
     issueUrl.searchParams.set('issue', lotKey(l));
@@ -478,6 +496,9 @@ async function printLabel(lotId) {
       lot:l.lot_no,
       exp:l.expiry_date ? d(l.expiry_date) : 'ไม่ระบุ',
       key:lotKey(l),
+      qty:qty(l.balance),
+      unit:l.unit || '',
+      owner:l.responsible_name || '-',
       qr:issueUrl.toString(),
       auto:'1'
     });
@@ -499,63 +520,48 @@ async function loadMaterials() {
   return materialsCache;
 }
 
+function transactionRows(rows) {
+  return (rows || []).map(x => `<tr><td>${dt(x.created_at)}</td><td><strong>${esc(x.material_name)}</strong><div class="muted tiny">${esc(x.canonical_code)}${x.legacy_material_code ? ` · รหัสเดิม ${esc(x.legacy_material_code)}` : ''}</div></td><td><span class="code-pill">${esc(x.lot_key)}</span></td><td>${x.tx_type === 'RECEIVE' ? '+' : ''}${qty(x.quantity_delta)} ${esc(x.unit)}</td><td>${qty(x.quantity_after)}</td><td>${esc(x.created_by_name || x.created_by_email || 'SYSTEM')}</td></tr>`).join('');
+}
+
 async function renderMove(defaultTab = 'receive') {
-  const [mats, lots] = await Promise.all([loadMaterials(), getLots(true)]);
-  page.innerHTML = `
-    <div class="page-head"><div><h2>นำเข้า–นำออก</h2><p class="muted small">เลือกงานที่ต้องทำ ระบบจะบันทึกผู้ทำรายการและเวลาอัตโนมัติ</p></div></div>
-    <div class="tabs"><button data-tab="receive">นำเข้า</button><button data-tab="issue">นำออก</button></div>
-    <div id="movePane"></div>`;
+  const [mats, lots, historyRes] = await Promise.all([
+    loadMaterials(),
+    getLots(true),
+    sb.from('v_transaction_history').select('*').in('tx_type', ['RECEIVE','ISSUE']).limit(120)
+  ]);
+  if (historyRes.error) throw historyRes.error;
+  const history = historyRes.data || [];
+  page.innerHTML = `<div class="page-head"><div><h2>นำเข้า–นำออก</h2><p class="muted small">ข้อมูลเดิมจากแท็บ In / Out แสดงต่อเนื่องกับรายการใหม่</p></div></div><div class="tabs move-tabs"><button data-tab="receive">${icon('plus')} นำเข้า</button><button data-tab="issue">${icon('minus')} นำออก</button></div><div id="movePane"></div>`;
 
   const draw = tab => {
+    moveTab = tab;
+    navActive();
     $$('[data-tab]').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
+    const historyRows = history.filter(x => x.tx_type === (tab === 'receive' ? 'RECEIVE' : 'ISSUE'));
     if (tab === 'receive') {
-      $('#movePane').innerHTML = `
-        <form id="receiveForm" class="card form-card form-grid">
-          <label>วัสดุ<select id="rMat" required><option value="">เลือกวัสดุ</option>${mats.map(m => `<option value="${esc(m.code)}">${esc(m.code)} · ${esc(m.name)}</option>`).join('')}</select></label>
-          <div class="form-grid two"><label>Lot<input id="rLot" required autocomplete="off"></label><label>วันหมดอายุ<input id="rExp" type="date"></label></div>
-          <label>จำนวน<input id="rQty" type="number" min="0.01" step="0.01" required inputmode="decimal"></label>
-          <p class="field-hint">หลังบันทึกสามารถกดพิมพ์ QR Sticker และหน้าพิมพ์จะเด้งขึ้นทันที</p>
-          <button class="primary" type="submit">${icon('plus')} บันทึกนำเข้า</button>
-        </form>`;
+      $('#movePane').innerHTML = `<div class="move-layout"><form id="receiveForm" class="card form-card form-grid"><div class="form-title"><span>${icon('plus')}</span><div><h3>บันทึกนำเข้า</h3><p>เพิ่ม Lot ใหม่หรือเพิ่มจำนวนใน Lot เดิม</p></div></div><label>วัสดุ<select id="rMat" required><option value="">เลือกวัสดุ</option>${mats.map(m => `<option value="${esc(m.code)}">${esc(m.code)} · ${esc(m.name)}</option>`).join('')}</select></label><div class="form-grid two"><label>Lot<input id="rLot" required autocomplete="off"></label><label>วันหมดอายุ<input id="rExp" type="date"></label></div><label>จำนวน<input id="rQty" type="number" min="0.01" step="0.01" required inputmode="decimal"></label><p class="field-hint">หลังบันทึกกดพิมพ์ QR Sticker ได้ทันที สติ๊กเกอร์ใหม่ใช้รหัสหลัก แต่รหัสเดิมยังสแกนได้</p><button class="primary" type="submit">${icon('plus')} บันทึกนำเข้า</button></form><section class="card history-card"><div class="section-title compact"><div><h3>ประวัตินำเข้า</h3><p class="muted small">รวมรายการจาก Excel เดิม</p></div><button class="mini ghost" data-route="reports">ดูทั้งหมด</button></div><div class="table-wrap"><table class="data-table"><thead><tr><th>วันเวลา</th><th>สินค้า</th><th>Lot</th><th>จำนวน</th><th>ยอดหลังทำ</th><th>ผู้บันทึก</th></tr></thead><tbody>${transactionRows(historyRows.slice(0,30)) || '<tr><td colspan="6" class="empty">ไม่มีรายการ</td></tr>'}</tbody></table></div></section></div>`;
       $('#receiveForm').addEventListener('submit', receive);
     } else {
-      $('#movePane').innerHTML = `
-        <div class="card scan-card">
-          <div class="scan-icon">${icon('qr')}</div>
-          <div><h3>สแกน QR Sticker</h3><p>สแกนด้วยกล้องมือถือ หรือพิมพ์รหัส เช่น BB020-69020</p></div>
-          <button class="secondary scan-action" type="button" data-camera-scan>${icon('camera')} เปิดกล้องสแกน</button>
-        </div>
-        <form id="issueForm" class="card form-card form-grid" style="margin-top:12px">
-          <label>รหัส QR / รหัสล็อต
-            <div class="toolbar" style="margin:0"><input id="issueCode" autocomplete="off" placeholder="เช่น BB020-69020"><button type="button" class="mini" id="findIssueCode">ค้นหา</button></div>
-          </label>
-          <label>เลือก Lot<select id="iLot" required><option value="">เลือก Lot</option>${lots.filter(l => Number(l.balance) > 0).map(l => `<option value="${esc(l.lot_id)}">${esc(lotKey(l))} · ${esc(l.material_name)} · เหลือ ${qty(l.balance)} ${esc(l.unit)}</option>`).join('')}</select></label>
-          <div id="selectedLot"></div>
-          <label>จำนวน<input id="iQty" type="number" min="0.01" step="0.01" value="1" required inputmode="decimal"></label>
-          <label>หมายเหตุ<textarea id="iReason" rows="2" placeholder="ระบุเมื่อต้องการ"></textarea></label>
-          <button class="primary" type="submit">${icon('minus')} ยืนยันนำออก</button>
-        </form>`;
-
+      const usableLots = lots.filter(l => Number(l.balance) > 0 && !isExpired(l));
+      $('#movePane').innerHTML = `<div class="move-layout"><div><div class="card scan-card"><div class="scan-icon">${icon('qr')}</div><div><h3>สแกน QR Sticker</h3><p>รองรับทั้งรหัสหลักใหม่และสติ๊กเกอร์ Old code ที่ติดอยู่เดิม</p></div><button class="secondary scan-action" type="button" data-camera-scan>${icon('camera')} เปิดกล้องสแกน</button></div><form id="issueForm" class="card form-card form-grid" style="margin-top:12px"><label>รหัส QR / รหัสล็อต<div class="toolbar" style="margin:0"><input id="issueCode" autocomplete="off" placeholder="เช่น BB020-69020"><button type="button" class="mini" id="findIssueCode">ค้นหา</button></div></label><label>เลือก Lot<select id="iLot" required><option value="">เลือก Lot</option>${usableLots.map(l => `<option value="${esc(l.lot_id)}">${esc(lotKey(l))} · ${esc(l.material_name)} · เหลือ ${qty(l.balance)} ${esc(l.unit)}</option>`).join('')}</select></label><div id="selectedLot"></div><label>จำนวน<input id="iQty" type="number" min="0.01" step="0.01" value="1" required inputmode="decimal"></label><label>หมายเหตุ<textarea id="iReason" rows="2" placeholder="ระบุเมื่อต้องการ"></textarea></label><button class="primary" type="submit">${icon('minus')} ยืนยันนำออก</button></form></div><section class="card history-card"><div class="section-title compact"><div><h3>ประวัตินำออก</h3><p class="muted small">รวมรายการจาก Excel เดิม</p></div><button class="mini ghost" data-route="reports">ดูทั้งหมด</button></div><div class="table-wrap"><table class="data-table"><thead><tr><th>วันเวลา</th><th>สินค้า</th><th>Lot</th><th>จำนวน</th><th>ยอดหลังทำ</th><th>ผู้บันทึก</th></tr></thead><tbody>${transactionRows(historyRows.slice(0,30)) || '<tr><td colspan="6" class="empty">ไม่มีรายการ</td></tr>'}</tbody></table></div></section></div>`;
       const select = $('#iLot');
       const showSelected = () => {
-        const l = lots.find(x => x.lot_id === select.value);
+        const l = usableLots.find(x => x.lot_id === select.value);
         $('#selectedLot').innerHTML = l ? `<div class="selected-lot"><div><strong>${esc(l.material_code)} · ${esc(l.material_name)}</strong><small>${esc(lotKey(l))} · EXP ${d(l.expiry_date)}</small></div><span class="badge info">เหลือ ${qty(l.balance)} ${esc(l.unit)}</span></div>` : '';
       };
       select.addEventListener('change', showSelected);
-      $('#findIssueCode').addEventListener('click', async () => {
-        const l = findLotByCode($('#issueCode').value, lots);
-        if (!l) return toast('ไม่พบ QR Code หรือรหัสล็อตนี้', true);
+      $('#findIssueCode').addEventListener('click', () => {
+        const l = findLotByCode($('#issueCode').value, usableLots);
+        if (!l) return toast('ไม่พบ QR Code นี้ หรือ Lot ถูกนำออกหมด/หมดอายุแล้ว', true);
         select.value = l.lot_id;
         showSelected();
         $('#iQty').focus();
       });
-      $('#issueCode').addEventListener('keydown', e => {
-        if (e.key === 'Enter') { e.preventDefault(); $('#findIssueCode').click(); }
-      });
+      $('#issueCode').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('#findIssueCode').click(); } });
       $('#issueForm').addEventListener('submit', issue);
     }
   };
-
   $$('[data-tab]').forEach(b => b.addEventListener('click', () => draw(b.dataset.tab)));
   draw(defaultTab === 'issue' ? 'issue' : 'receive');
 }
@@ -564,23 +570,19 @@ async function receive(e) {
   e.preventDefault();
   const btn = e.submitter;
   btn.disabled = true;
-  const p = {
+  const {data, error} = await sb.rpc('fn_receive_stock', {
     p_material_code:$('#rMat').value,
     p_lot_no:$('#rLot').value.trim(),
     p_expiry_date:$('#rExp').value || null,
     p_quantity:Number($('#rQty').value)
-  };
-  const {data, error} = await sb.rpc('fn_receive_stock', p);
+  });
   btn.disabled = false;
   if (error) return toast(errMsg(error), true);
   materialsCache = [];
   stockCache = [];
   toast('รับเข้าสต๊อกแล้ว');
   const row = Array.isArray(data) ? data[0] : data;
-  openModal(`
-    <h3>รับเข้าเรียบร้อย</h3>
-    <p class="muted">ยอดใหม่ ${qty(row?.quantity_after)}</p>
-    <div class="actions"><button class="primary" data-print="${esc(row?.lot_id || '')}">${icon('print')} พิมพ์ QR Sticker</button><button class="secondary modal-close">ปิด</button></div>`);
+  openModal(`<h3>รับเข้าเรียบร้อย</h3><p class="muted">ยอดใหม่ ${qty(row?.quantity_after)}</p><div class="actions"><button class="primary" data-print="${esc(row?.lot_id || '')}">${icon('print')} พิมพ์ QR Sticker</button><button class="secondary modal-close">ปิด</button></div>`);
 }
 
 async function issue(e) {
@@ -595,7 +597,7 @@ async function issue(e) {
   btn.disabled = false;
   if (error) return toast(errMsg(error), true);
   stockCache = [];
-  toast('บันทึกเบิกออกแล้ว');
+  toast('บันทึกนำออกแล้ว');
   navigate('move', {tab:'issue'});
 }
 
@@ -610,7 +612,8 @@ function findLotByCode(raw, lots = stockCache) {
   value = value.replace(/^INV[:|]/i, '').trim();
   const norm = value.toUpperCase().replace(/\s+/g, '');
   return lots.find(l => {
-    const keys = [l.lot_id, lotKey(l), `${l.material_code}-${l.lot_no}`, `${l.material_code}|${l.lot_no}`];
+    const aliases = [...pgArray(l.legacy_codes), ...pgArray(l.legacy_lot_keys)];
+    const keys = [l.lot_id, lotKey(l), `${l.material_code}-${l.lot_no}`, `${l.material_code}|${l.lot_no}`, ...aliases];
     return keys.some(k => String(k || '').toUpperCase().replace(/\s+/g, '') === norm);
   }) || null;
 }
@@ -618,20 +621,15 @@ function findLotByCode(raw, lots = stockCache) {
 async function resolveIssueCode(code) {
   const lots = await getLots(true);
   const l = findLotByCode(code, lots);
-  if (!l) return toast('ไม่พบ Lot จาก QR Code นี้ หรือ Lot ถูกเบิกหมด/หมดอายุแล้ว', true);
+  if (!l) return toast('ไม่พบ Lot จาก QR Code นี้ หรือ Lot ถูกนำออกหมดแล้ว', true);
+  if (isExpired(l)) return toast('Lot นี้หมดอายุแล้ว ให้ยืนยันนำออกจากพื้นที่ในเมนูตรวจวันศุกร์', true);
   openIssueModal(l);
 }
 
 function openIssueModal(l) {
   if (!l || Number(l.balance) <= 0) return toast('Lot นี้ไม่มียอดคงเหลือ', true);
-  openModal(`
-    <h3>เบิกออกจาก QR Sticker</h3>
-    <div class="selected-lot"><div><strong>${esc(l.material_code)} · ${esc(l.material_name)}</strong><small>${esc(lotKey(l))} · EXP ${d(l.expiry_date)}</small></div><span class="badge info">เหลือ ${qty(l.balance)} ${esc(l.unit)}</span></div>
-    <form id="quickIssueForm" class="form-grid" style="margin-top:15px">
-      <label>จำนวน<input id="quickIssueQty" type="number" min="0.01" max="${Number(l.balance)}" step="0.01" value="1" required inputmode="decimal"></label>
-      <label>หมายเหตุ<textarea id="quickIssueReason" rows="2" placeholder="ระบุเมื่อต้องการ"></textarea></label>
-      <button class="primary" type="submit">${icon('minus')} ยืนยันนำออก</button>
-    </form>`);
+  if (isExpired(l)) return toast('Lot นี้หมดอายุแล้ว ให้ยืนยันนำออกจากพื้นที่ในเมนูตรวจวันศุกร์', true);
+  openModal(`<h3>นำออกจาก QR Sticker</h3><div class="selected-lot"><div><strong>${esc(l.material_code)} · ${esc(l.material_name)}</strong><small>${esc(lotKey(l))} · EXP ${d(l.expiry_date)}</small></div><span class="badge info">เหลือ ${qty(l.balance)} ${esc(l.unit)}</span></div><form id="quickIssueForm" class="form-grid" style="margin-top:15px"><label>จำนวน<input id="quickIssueQty" type="number" min="0.01" max="${Number(l.balance)}" step="0.01" value="1" required inputmode="decimal"></label><label>หมายเหตุ<textarea id="quickIssueReason" rows="2" placeholder="ระบุเมื่อต้องการ"></textarea></label><button class="primary" type="submit">${icon('minus')} ยืนยันนำออก</button></form>`);
   $('#quickIssueForm').addEventListener('submit', async e => {
     e.preventDefault();
     const btn = e.submitter;
@@ -645,9 +643,8 @@ function openIssueModal(l) {
     if (error) return toast(errMsg(error), true);
     closeModal();
     stockCache = [];
-    toast('บันทึกเบิกออกแล้ว');
-    if (route === 'stock') renderStock();
-    else if (route === 'home') renderHome();
+    toast('บันทึกนำออกแล้ว');
+    navigate(route === 'home' ? 'home' : 'stock');
   });
 }
 
@@ -665,24 +662,11 @@ async function openPendingIssue() {
 
 async function startCameraScanner() {
   if (!('BarcodeDetector' in window) || !navigator.mediaDevices?.getUserMedia) {
-    openModal(`
-      <h3>สแกน QR บนมือถือ</h3>
-      <p>เบราว์เซอร์นี้ยังไม่รองรับกล้องสแกนภายในแอพ ให้เปิดกล้องปกติของ iPhone หรือ Android แล้วสแกน QR Sticker ระบบจะเปิดหน้าเบิกออกให้อัตโนมัติ</p>
-      <form id="manualScanForm" class="form-grid"><label>หรือพิมพ์รหัส QR<input id="manualScanCode" placeholder="เช่น BB020-69020" autocomplete="off"></label><button class="primary" type="submit">ค้นหา Lot</button></form>`);
-    $('#manualScanForm').addEventListener('submit', e => {
-      e.preventDefault();
-      const code = $('#manualScanCode').value;
-      closeModal();
-      resolveIssueCode(code);
-    });
+    openModal(`<h3>สแกน QR บนมือถือ</h3><p>เบราว์เซอร์นี้ยังไม่รองรับกล้องสแกนภายในแอป ให้เปิดกล้องปกติของ iPhone หรือ Android แล้วสแกน QR Sticker</p><form id="manualScanForm" class="form-grid"><label>หรือพิมพ์รหัส QR<input id="manualScanCode" placeholder="เช่น BB020-69020" autocomplete="off"></label><button class="primary" type="submit">ค้นหา Lot</button></form>`);
+    $('#manualScanForm').addEventListener('submit', e => { e.preventDefault(); const code = $('#manualScanCode').value; closeModal(); resolveIssueCode(code); });
     return;
   }
-
-  openModal(`
-    <h3>สแกน QR Sticker</h3>
-    <div style="position:relative;border-radius:18px;overflow:hidden;background:#111;aspect-ratio:1/1"><video id="scanVideo" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover"></video><div style="position:absolute;inset:18%;border:3px solid #fff;border-radius:18px;box-shadow:0 0 0 999px rgba(0,0,0,.22)"></div></div>
-    <p class="muted small">วาง QR ให้อยู่ในกรอบ ระบบจะค้นหา Lot ให้อัตโนมัติ</p>`);
-
+  openModal(`<h3>สแกน QR Sticker</h3><div class="scan-video-wrap"><video id="scanVideo" autoplay playsinline muted></video><div class="scan-frame"></div></div><p class="muted small">วาง QR ให้อยู่ในกรอบ ระบบรองรับทั้งรหัสใหม่และ Old code เดิม</p>`);
   try {
     const detector = new BarcodeDetector({formats:['qr_code']});
     scannerStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}, audio:false});
@@ -717,12 +701,25 @@ function stopScanner() {
   scannerStream = null;
 }
 
+function canHandleItem(x) {
+  return isAdminMode() || x.responsible_email === profile.email;
+}
+
+function weeklyItemCard(x) {
+  const expired = isExpired(x) && x.checked_at == null;
+  const resultText = x.result === 'MATCHED' ? 'ตรง' : x.result === 'ADJUSTED' ? 'ปรับแล้ว' : x.result === 'EXPIRED_REMOVED' ? 'นำหมดอายุออกแล้ว' : '';
+  const resultClass = x.result === 'MATCHED' ? 'ok' : x.result === 'EXPIRED_REMOVED' ? 'danger' : 'warn';
+  let action = '';
+  if (x.checked_at) action = `<span class="badge ${resultClass}">${resultText}</span>`;
+  else if (!canHandleItem(x)) action = `<span class="badge">รอ ${esc(x.responsible_name || 'ผู้ดูแล')}</span>`;
+  else if (expired) action = `<button class="mini danger" data-expired-remove="${esc(x.item_id)}">ยืนยันนำออก</button>`;
+  else action = `<button class="mini" data-check="${esc(x.item_id)}">ตรวจ</button>`;
+  return `<div class="card check-card ${x.checked_at ? (x.result === 'ADJUSTED' ? 'mismatch' : x.result === 'EXPIRED_REMOVED' ? 'expired-done' : 'checked') : expired ? 'expired-card' : ''}"><div class="check-info"><div><strong>${esc(x.material_code)} · ${esc(x.material_name)}</strong><div class="lot-meta">${esc(lotKey(x))} · ระบบ ${qty(x.current_balance)} ${esc(x.unit)} · EXP ${d(x.expiry_date)}</div><div class="lot-meta">ผู้ดูแล: ${esc(x.responsible_name || '-')}</div>${expired ? '<div class="expired-callout">หมดอายุแล้ว: ไม่ต้องนับ ให้ตรวจว่านำออกจากพื้นที่จริงแล้ว</div>' : ''}${x.checked_at ? `<div class="lot-meta">ดำเนินการโดย ${esc(x.checked_by_name || x.checked_by_email)} · ${dt(x.checked_at)}</div>` : ''}</div>${action}</div></div>`;
+}
+
 async function renderWeekly() {
   const check = await ensureCheck();
-  if (!check) {
-    page.innerHTML = '<div class="card empty">ยังไม่มีรอบตรวจ</div>';
-    return;
-  }
+  if (!check) { page.innerHTML = '<div class="card empty">ยังไม่มีรอบตรวจ</div>'; return; }
   const [{data, error}, staffRes] = await Promise.all([
     sb.from('v_weekly_check_items').select('*').eq('check_id', check.id).order('material_code').order('lot_no'),
     sb.from('staff_directory').select('*').eq('active', true).order('display_name')
@@ -730,52 +727,35 @@ async function renderWeekly() {
   if (error) throw error;
   if (staffRes.error) throw staffRes.error;
   const items = data || [];
-  const staffList = staffRes.data || [];
   const done = items.filter(x => x.checked_at).length;
   const pct = items.length ? Math.round(done * 100 / items.length) : 100;
-
+  const expiredPending = items.filter(x => !x.checked_at && isExpired(x)).length;
   const ownerSet = new Map();
-  items.forEach(i => {
-    if (i.responsible_email && !ownerSet.has(i.responsible_email)) ownerSet.set(i.responsible_email, i.responsible_name || i.responsible_email);
-  });
-  const ownerOptions = ['<option value="mine">ของฉัน</option>', '<option value="all">ทุกคน</option>'].concat([...ownerSet.entries()].sort((a,b)=>String(a[1]).localeCompare(String(b[1]), 'th')).map(([email, name]) => `<option value="${esc(email)}">${esc(name)}</option>`)).join('');
+  items.forEach(i => { if (i.responsible_email && !ownerSet.has(i.responsible_email)) ownerSet.set(i.responsible_email, i.responsible_name || i.responsible_email); });
+  const ownerSelect = ['<option value="mine">ของฉัน</option>', '<option value="all">ทุกคน</option>'].concat([...ownerSet.entries()].sort((a,b)=>String(a[1]).localeCompare(String(b[1]), 'th')).map(([email, name]) => `<option value="${esc(email)}">${esc(name)}</option>`)).join('');
 
-  page.innerHTML = `
-    <div class="page-head"><div><h2>ตรวจสต๊อกวันศุกร์</h2><p class="muted small">รอบวันที่ ${d(check.week_friday)}</p></div><span class="badge ${check.status === 'COMPLETED' ? 'ok' : 'info'}">${check.status === 'COMPLETED' ? 'เสร็จแล้ว' : `${done}/${items.length}`}</span></div>
-    <div class="card"><div class="check-info"><div><strong>ความคืบหน้า ${pct}%</strong><div class="muted small">กรองดูตามเจ้าหน้าที่แต่ละคนได้</div></div></div><div class="progress" style="margin-top:13px"><span style="width:${pct}%"></span></div></div>
-    <div class="weekly-tools">
-      <label>กรองเจ้าหน้าที่<select id="weeklyOwnerFilter">${ownerOptions}</select></label>
-      <div class="filters" style="margin-bottom:0"><button class="chip active" data-wf="pending">ยังไม่ตรวจ</button><button class="chip" data-wf="mine">งานของฉัน</button><button class="chip" data-wf="all">ทั้งหมด</button><button class="chip" data-wf="mismatch">เคยไม่ตรง</button></div>
-    </div>
-    <div id="checkList" class="list"></div>
-    ${check.status !== 'COMPLETED' ? '<button id="completeCheck" class="primary" style="width:100%;margin-top:15px">เสร็จสิ้นการตรวจสต๊อก</button>' : ''}`;
+  page.innerHTML = `<div class="page-head"><div><h2>ตรวจสต๊อกวันศุกร์</h2><p class="muted small">รอบวันที่ ${d(check.week_friday)} · กรองเจ้าหน้าที่แต่ละคนได้</p></div><span class="badge ${check.status === 'COMPLETED' ? 'ok' : 'info'}">${check.status === 'COMPLETED' ? 'เสร็จแล้ว' : `${done}/${items.length}`}</span></div><section class="card weekly-header"><div class="weekly-ring small-ring" style="--pct:${pct}"><div><strong>${pct}%</strong><span>${done}/${items.length}</span></div></div><div><h3>ความคืบหน้า</h3><p class="muted">ยังไม่ตรวจ ${items.length-done} Lot · หมดอายุรอยืนยัน ${expiredPending} Lot</p></div></section><div class="weekly-tools"><label>กรองเจ้าหน้าที่<select id="weeklyOwnerFilter">${ownerSelect}</select></label><div class="filters" style="margin-bottom:0"><button class="chip active" data-wf="pending">ยังไม่ตรวจ</button><button class="chip" data-wf="mine">งานของฉัน</button><button class="chip" data-wf="expired">หมดอายุ</button><button class="chip" data-wf="mismatch">ไม่ตรง</button><button class="chip" data-wf="done">ตรวจแล้ว</button><button class="chip" data-wf="all">ทั้งหมด</button></div></div><div id="checkList" class="list"></div>${check.status !== 'COMPLETED' && isAdminMode() ? '<button id="completeCheck" class="primary wide-action">เสร็จสิ้นและปิดรอบตรวจ</button>' : ''}`;
 
   let f = 'pending';
   const ownerFilter = $('#weeklyOwnerFilter');
-  ownerFilter.value = profile.role === 'admin' ? 'all' : 'mine';
-
+  ownerFilter.value = isAdminMode() ? 'all' : 'mine';
   const draw = () => {
     let arr = items;
     const owner = ownerFilter.value;
-    if (owner === 'mine') arr = arr.filter(x => x.responsible_email === profile.email || x.checked_by_email === profile.email || profile.role === 'admin');
+    if (owner === 'mine') arr = arr.filter(x => x.responsible_email === profile.email || x.checked_by_email === profile.email);
     else if (owner !== 'all') arr = arr.filter(x => x.responsible_email === owner);
-    if (f === 'mine') arr = arr.filter(x => x.responsible_email === profile.email || x.checked_by_email === profile.email || profile.role === 'admin');
+    if (f === 'mine') arr = arr.filter(x => x.responsible_email === profile.email || x.checked_by_email === profile.email);
     if (f === 'pending') arr = arr.filter(x => !x.checked_at);
+    if (f === 'expired') arr = arr.filter(x => isExpired(x) || x.result === 'EXPIRED_REMOVED');
     if (f === 'mismatch') arr = arr.filter(x => x.result === 'ADJUSTED');
-    $('#checkList').innerHTML = arr.map(x => `
-      <div class="card check-card ${x.checked_at ? (x.result === 'ADJUSTED' ? 'mismatch' : 'checked') : ''}">
-        <div class="check-info"><div><strong>${esc(x.material_code)} · ${esc(x.material_name)}</strong><div class="lot-meta">${esc(lotKey(x))} · ระบบ ${qty(x.current_balance)} ${esc(x.unit)}</div><div class="lot-meta">ผู้ดูแล: ${esc(x.responsible_name || '-')}</div>${x.checked_at ? `<div class="lot-meta">ตรวจโดย ${esc(x.checked_by_name || x.checked_by_email)} · ${dt(x.checked_at)}</div>` : ''}</div>${x.checked_at ? `<span class="badge ${x.result === 'MATCHED' ? 'ok' : 'warn'}">${x.result === 'MATCHED' ? 'ตรง' : 'ปรับแล้ว'}</span>` : `<button class="mini" data-check="${esc(x.item_id)}">ตรวจ</button>`}</div>
-      </div>`).join('') || '<div class="card empty">ไม่มีรายการตามตัวกรองนี้</div>';
+    if (f === 'done') arr = arr.filter(x => x.checked_at);
+    $('#checkList').innerHTML = arr.map(weeklyItemCard).join('') || '<div class="card empty">ไม่มีรายการตามตัวกรองนี้</div>';
   };
   ownerFilter.addEventListener('change', draw);
-  $$('[data-wf]').forEach(b => b.addEventListener('click', () => {
-    f = b.dataset.wf;
-    $$('[data-wf]').forEach(x => x.classList.toggle('active', x === b));
-    draw();
-  }));
+  $$('[data-wf]').forEach(b => b.addEventListener('click', () => { f = b.dataset.wf; $$('[data-wf]').forEach(x => x.classList.toggle('active', x === b)); draw(); }));
   draw();
   if ($('#completeCheck')) $('#completeCheck').onclick = async () => {
-    const {error} = await sb.rpc('fn_complete_weekly_check', {p_check_id:check.id});
+    const {error} = await sb.rpc('fn_complete_weekly_check', {p_check_id:check.id, p_acting_mode:actingMode});
     if (error) return toast(errMsg(error), true);
     toast('ปิดรอบตรวจสต๊อกแล้ว');
     renderWeekly();
@@ -786,19 +766,9 @@ async function renderWeekly() {
 function openCheck(id) {
   const x = (window._weeklyItems || []).find(i => i.item_id === id);
   if (!x) return;
-  const can = x.responsible_email === profile.email || profile.role === 'admin';
-  if (!can) return toast('รายการนี้เป็นความรับผิดชอบของ ' + (x.responsible_name || x.responsible_email), true);
-  openModal(`
-    <h3>${esc(x.material_code)} · ${esc(x.material_name)}</h3>
-    <p class="muted">${esc(lotKey(x))} · ยอดปัจจุบัน ${qty(x.current_balance)} ${esc(x.unit)}</p>
-    <form id="checkForm" class="form-grid">
-      <label>จำนวนที่พบจริง<input id="actualQty" type="number" min="0" step="0.01" value="${Number(x.current_balance)}" required inputmode="decimal"></label>
-      <div id="reasonFields" class="form-grid hidden">
-        <label>เหตุผล<select id="reasonCode"><option value="">เลือกเหตุผล</option><option>เบิกใช้แล้วไม่ได้บันทึก</option><option>รับเข้าหรือเบิกผิดจำนวน</option><option>สูญหายหรือหาไม่พบ</option><option>ชำรุด</option><option>นับครั้งก่อนผิด</option><option>Lot หรือสติ๊กเกอร์ไม่ตรง</option><option>อื่น ๆ</option></select></label>
-        <label>รายละเอียด<textarea id="reasonDetail" rows="3"></textarea></label>
-      </div>
-      <button class="primary" type="submit">บันทึกผลตรวจ</button>
-    </form>`);
+  if (!canHandleItem(x)) return toast('รายการนี้เป็นความรับผิดชอบของ ' + (x.responsible_name || x.responsible_email), true);
+  if (isExpired(x)) return openExpiredRemoval(id);
+  openModal(`<h3>${esc(x.material_code)} · ${esc(x.material_name)}</h3><p class="muted">${esc(lotKey(x))} · ยอดปัจจุบัน ${qty(x.current_balance)} ${esc(x.unit)}</p><form id="checkForm" class="form-grid"><label>จำนวนที่พบจริง<input id="actualQty" type="number" min="0" step="0.01" value="${Number(x.current_balance)}" required inputmode="decimal"></label><div id="reasonFields" class="form-grid hidden"><label>เหตุผล<select id="reasonCode"><option value="">เลือกเหตุผล</option><option>นำออกแล้วไม่ได้บันทึก</option><option>รับเข้าหรือนำออกผิดจำนวน</option><option>สูญหายหรือหาไม่พบ</option><option>ชำรุด</option><option>นับครั้งก่อนผิด</option><option>Lot หรือสติ๊กเกอร์ไม่ตรง</option><option>อื่น ๆ</option></select></label><label>รายละเอียด<textarea id="reasonDetail" rows="3"></textarea></label></div><button class="primary" type="submit">บันทึกผลตรวจ</button></form>`);
   const toggle = () => $('#reasonFields').classList.toggle('hidden', Number($('#actualQty').value) === Number(x.current_balance));
   $('#actualQty').addEventListener('input', toggle);
   $('#checkForm').addEventListener('submit', async e => {
@@ -810,7 +780,8 @@ function openCheck(id) {
       p_item_id:id,
       p_actual_qty:actual,
       p_reason_code:diff ? $('#reasonCode').value : null,
-      p_reason_detail:diff ? $('#reasonDetail').value.trim() || null : null
+      p_reason_detail:diff ? $('#reasonDetail').value.trim() || null : null,
+      p_acting_mode:actingMode
     });
     if (error) return toast(errMsg(error), true);
     closeModal();
@@ -820,61 +791,135 @@ function openCheck(id) {
   });
 }
 
-function activityCard(a) {
-  const detail = a.summary || {};
-  return `<div class="card activity"><strong>${esc(a.action_label || a.action)}</strong><div>${esc(a.actor_name || a.actor_email || 'SYSTEM')}</div><div class="muted small">${esc(detail.material_code || detail.stock_code || '')} ${detail.lot_no ? '· Lot ' + esc(detail.lot_no) : ''} ${detail.before !== undefined ? '· ' + qty(detail.before) + ' → ' + qty(detail.after) : ''}</div><time>${dt(a.created_at)}</time></div>`;
+function openExpiredRemoval(id) {
+  const x = (window._weeklyItems || []).find(i => i.item_id === id);
+  if (!x) return;
+  if (!canHandleItem(x)) return toast('รายการนี้เป็นความรับผิดชอบของ ' + (x.responsible_name || x.responsible_email), true);
+  openModal(`<h3>ยืนยันนำ Lot หมดอายุออกจากพื้นที่</h3><div class="expired-confirm-card"><strong>${esc(x.material_code)} · ${esc(x.material_name)}</strong><span>${esc(lotKey(x))}</span><span>EXP ${d(x.expiry_date)} · คงเหลือในระบบ ${qty(x.current_balance)} ${esc(x.unit)}</span></div><form id="expiredForm" class="form-grid"><label class="confirm-check"><input id="expiredConfirm" type="checkbox" required><span>ตรวจแล้วว่า Lot นี้ถูกนำออกจากชั้น/ตู้/พื้นที่ใช้งานจริง</span></label><label>หมายเหตุ<textarea id="expiredNote" rows="3" placeholder="เช่น นำไปจุดพักของหมดอายุแล้ว"></textarea></label><p class="notice">เมื่อยืนยัน ระบบจะตัดยอดเป็น 0 ปิด Lot และสัปดาห์หน้าจะไม่ต้องตรวจซ้ำ</p><button class="danger" type="submit">${icon('check')} ยืนยันนำออกจากพื้นที่แล้ว</button></form>`);
+  $('#expiredForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    if (!$('#expiredConfirm').checked) return toast('กรุณายืนยันว่าได้นำออกจากพื้นที่จริงแล้ว', true);
+    const btn = e.submitter;
+    btn.disabled = true;
+    const {error} = await sb.rpc('fn_confirm_expired_removal', {
+      p_item_id:id,
+      p_note:$('#expiredNote').value.trim() || null,
+      p_acting_mode:actingMode
+    });
+    btn.disabled = false;
+    if (error) return toast(errMsg(error), true);
+    closeModal();
+    stockCache = [];
+    toast('นำ Lot หมดอายุออกจากสต๊อกแล้ว สัปดาห์หน้าจะไม่แสดงซ้ำ');
+    renderWeekly();
+  });
 }
 
 async function renderActivity() {
-  const {data, error} = await sb.from('v_audit_activity').select('*').limit(200);
+  const {data, error} = await sb.from('v_audit_activity').select('*').limit(300);
   if (error) throw error;
-  page.innerHTML = `
-    <div class="page-head"><div><h2>ประวัติการทำรายการ</h2><p class="muted small">รวมรับเข้า เบิกออก ปรับยอด พิมพ์ และนำของหมดอายุออก</p></div></div>
-    <div class="toolbar"><div class="search-box">${icon('search')}<input id="activitySearch" placeholder="ค้นหาชื่อ รหัส Lot หรือเหตุผล"></div><button class="mini" id="activitySearchBtn">ค้นหา</button></div>
-    <div id="activityList" class="list"></div>`;
+  page.innerHTML = `<div class="page-head"><div><h2>ประวัติการทำรายการ</h2><p class="muted small">รวมรับเข้า นำออก ตรวจ ปรับยอด พิมพ์ และยืนยันของหมดอายุ</p></div></div><div class="toolbar"><div class="search-box">${icon('search')}<input id="activitySearch" placeholder="ค้นหาชื่อ รหัส Lot หรือเหตุผล"></div><button class="mini" id="activitySearchBtn">ค้นหา</button></div><div id="activityList" class="activity-page-list"></div>`;
   const draw = () => {
     const s = $('#activitySearch').value.toLowerCase();
     const arr = (data || []).filter(a => !s || JSON.stringify(a).toLowerCase().includes(s));
-    $('#activityList').innerHTML = arr.map(activityCard).join('') || '<div class="card empty">ไม่พบกิจกรรม</div>';
+    $('#activityList').innerHTML = arr.map(a => `<div class="card">${activityCard(a)}</div>`).join('') || '<div class="card empty">ไม่พบกิจกรรม</div>';
   };
   $('#activitySearch').addEventListener('input', draw);
   $('#activitySearchBtn').addEventListener('click', draw);
   draw();
 }
 
-async function renderAdmin() {
-  if (profile.role !== 'admin') {
-    page.innerHTML = '<div class="card notice">เฉพาะผู้ดูแลระบบ</div>';
-    return;
+function csvCell(v) {
+  const s = String(v ?? '');
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s;
+}
+
+function saveCsv(filename, rows) {
+  const text = '\ufeff' + rows.map(r => r.map(csvCell).join(',')).join('\r\n');
+  const blob = new Blob([text], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportReport(kind) {
+  const stamp = new Date().toISOString().slice(0,10);
+  if (kind === 'stock') {
+    const rows = window._reportStock || [];
+    saveCsv(`CNMI_Inventory_Stock_${stamp}.csv`, [['รหัสวัสดุ','ชื่อวัสดุ','Lot','วันหมดอายุ','คงเหลือ','หน่วย','ผู้ดูแล','สถานะ','รหัสเดิมที่สแกนได้'], ...rows.map(x => [x.material_code,x.material_name,x.lot_no,x.expiry_date || '',x.balance,x.unit,x.responsible_name || '',isExpired(x)?'หมดอายุรอนำออก':'ใช้งาน',pgArray(x.legacy_lot_keys).join(' | ')])]);
+  } else {
+    const rows = (window._reportRows || []).filter(x => kind === 'receive' ? x.tx_type === 'RECEIVE' : kind === 'issue' ? x.tx_type === 'ISSUE' : x.tx_type === 'EXPIRED');
+    saveCsv(`CNMI_Inventory_${kind}_${stamp}.csv`, [['วันเวลา','ประเภท','รหัสหลัก','รหัสเดิม','ชื่อวัสดุ','Lot','วันหมดอายุ','จำนวนเปลี่ยนแปลง','ยอดก่อน','ยอดหลัง','หน่วย','ผู้บันทึก','เหตุผล'], ...rows.map(x => [x.created_at,x.tx_type,x.canonical_code,x.legacy_material_code || '',x.material_name,x.lot_no,x.expiry_date || '',x.quantity_delta,x.quantity_before,x.quantity_after,x.unit,x.created_by_name || x.created_by_email || 'SYSTEM',x.reason_detail || x.reason_code || ''])]);
   }
+  toast('ส่งออก CSV แล้ว');
+}
+
+async function renderReports(defaultTab = 'receive') {
+  const [historyRes, lots] = await Promise.all([
+    sb.from('v_transaction_history').select('*').limit(1500),
+    getLots(true)
+  ]);
+  if (historyRes.error) throw historyRes.error;
+  const rows = historyRes.data || [];
+  window._reportRows = rows;
+  window._reportStock = lots;
+  page.innerHTML = `<div class="page-head"><div><h2>รายงาน & ส่งออก</h2><p class="muted small">ดูข้อมูลเดิมจากแท็บ In / Out และส่งออก CSV ได้</p></div></div><div class="tabs report-tabs"><button data-report-tab="receive">นำเข้า</button><button data-report-tab="issue">นำออก</button><button data-report-tab="expired">หมดอายุ</button><button data-report-tab="stock">สต๊อกคงเหลือ</button></div><div id="reportPane"></div>`;
+  const draw = tab => {
+    reportTab = tab;
+    $$('[data-report-tab]').forEach(x => x.classList.toggle('active', x.dataset.reportTab === tab));
+    if (tab === 'stock') {
+      $('#reportPane').innerHTML = `<div class="report-actions"><span class="muted">แสดง ${lots.length} Lot ที่ยัง Active</span><button class="primary" data-export-report="stock">${icon('download')} ส่งออกสต๊อก CSV</button></div><div class="table-wrap"><table class="data-table"><thead><tr><th>สินค้า</th><th>Lot</th><th>คงเหลือ</th><th>EXP</th><th>ผู้ดูแล</th><th>สถานะ</th></tr></thead><tbody>${lots.map(x => `<tr><td><strong>${esc(x.material_name)}</strong><div class="muted tiny">${esc(x.material_code)}</div></td><td>${esc(lotKey(x))}</td><td>${qty(x.balance)} ${esc(x.unit)}</td><td>${d(x.expiry_date)}</td><td>${esc(x.responsible_name || '-')}</td><td>${statusBadge(x)}</td></tr>`).join('')}</tbody></table></div>`;
+      return;
+    }
+    const type = tab === 'receive' ? 'RECEIVE' : tab === 'issue' ? 'ISSUE' : 'EXPIRED';
+    const filtered = rows.filter(x => x.tx_type === type);
+    $('#reportPane').innerHTML = `<div class="report-actions"><span class="muted">แสดง ${filtered.length} รายการล่าสุด</span><button class="primary" data-export-report="${tab}">${icon('download')} ส่งออก CSV</button></div><div class="table-wrap"><table class="data-table"><thead><tr><th>วันเวลา</th><th>สินค้า</th><th>Lot</th><th>จำนวน</th><th>ยอดหลังทำ</th><th>ผู้บันทึก</th></tr></thead><tbody>${transactionRows(filtered) || '<tr><td colspan="6" class="empty">ไม่มีรายการ</td></tr>'}</tbody></table></div>`;
+  };
+  $$('[data-report-tab]').forEach(b => b.addEventListener('click', () => draw(b.dataset.reportTab)));
+  draw(defaultTab || 'receive');
+}
+
+async function renderAdmin() {
+  if (!isAdminMode()) { page.innerHTML = '<div class="card notice">สลับเป็นโหมดผู้ดูแลระบบก่อน</div>'; return; }
   const [{data:m, error:me}, {data:s, error:se}] = await Promise.all([
-    sb.from('materials').select('*').eq('is_main', true).order('code'),
+    sb.from('materials').select('*').eq('is_main', true).eq('status','Active').order('code'),
     sb.from('staff_directory').select('*').order('display_name')
   ]);
   if (me || se) throw me || se;
   materialsCache = [];
-  window._adminMaterials = m;
-  window._adminStaff = s;
-  page.innerHTML = `
-    <div class="page-head"><div><h2>ตั้งค่าระบบ</h2><p class="muted small">แอดมินสามารถเปลี่ยนสิทธิ์และเปลี่ยนผู้ดูแลสินค้าได้ตลอด</p></div></div>
-    <div class="section-title"><h3>ผู้ใช้งาน</h3></div>
-    <div class="table-wrap"><table class="data-table"><thead><tr><th>ชื่อ</th><th>อีเมล</th><th>สิทธิ์</th></tr></thead><tbody>${s.map(x => `<tr><td>${esc(x.display_name)}</td><td>${esc(x.email)}</td><td><select data-role-email="${esc(x.email)}"><option value="staff" ${x.role === 'staff' ? 'selected' : ''}>เจ้าหน้าที่</option><option value="admin" ${x.role === 'admin' ? 'selected' : ''}>ผู้ดูแลระบบ</option></select></td></tr>`).join('')}</tbody></table></div>
-
-    <div class="section-title"><h3>กำหนดผู้ดูแลวัสดุหลัก</h3></div>
-    <div class="table-wrap"><table class="data-table"><thead><tr><th>รหัส</th><th>ชื่อวัสดุ</th><th>ขั้นต่ำ</th><th>ผู้ดูแล</th><th>จัดการ</th></tr></thead><tbody>${m.map(x => `<tr><td>${esc(x.code)}</td><td><strong>${esc(x.name)}</strong><div class="muted small">ชื่อบนสติ๊กเกอร์: ${esc(x.label_name || x.name)}</div></td><td>${qty(x.min_qty)} ${esc(x.unit)}</td><td><select data-owner-code="${esc(x.code)}">${ownerOptions(s, x.responsible_email || '')}</select></td><td><button class="mini" data-edit-material="${esc(x.code)}">แก้ไข</button></td></tr>`).join('')}</tbody></table></div>`;
-
+  window._adminMaterials = m || [];
+  window._adminStaff = s || [];
+  page.innerHTML = `<div class="page-head"><div><h2>ตั้งค่าผู้ดูแลระบบ</h2><p class="muted small">เปลี่ยนคนดูแลวัสดุได้ตลอด และกำหนดสิทธิ์ผู้ใช้</p></div><span class="badge info">โหมด Admin</span></div><section class="admin-note"><strong>การทำงาน 2 โหมด</strong><p>บัญชี Admin สามารถสลับเป็น “เจ้าหน้าที่” เพื่อทำงานเหมือนทุกคน หรือ “ผู้ดูแลระบบ” เมื่อต้องตั้งค่าและดูงานรวม</p></section><div class="section-title"><h3>ผู้ใช้งาน</h3></div><div class="table-wrap"><table class="data-table"><thead><tr><th>ชื่อ</th><th>อีเมล</th><th>สิทธิ์บัญชี</th></tr></thead><tbody>${(s || []).map(x => `<tr><td>${esc(x.display_name)}</td><td>${esc(x.email)}</td><td><select data-role-email="${esc(x.email)}"><option value="staff" ${x.role === 'staff' ? 'selected' : ''}>เจ้าหน้าที่</option><option value="admin" ${x.role === 'admin' ? 'selected' : ''}>Admin (สลับได้ 2 โหมด)</option></select></td></tr>`).join('')}</tbody></table></div><div class="section-title admin-owner-head"><div><h3>กำหนดผู้ดูแลวัสดุหลัก</h3><p class="muted small">เปลี่ยนแล้วมีผลกับตัวกรองตรวจวันศุกร์ทันที</p></div><div class="search-box">${icon('search')}<input id="adminMaterialSearch" placeholder="ค้นหารหัส ชื่อ หรือผู้ดูแล"></div></div><div class="table-wrap"><table class="data-table"><thead><tr><th>รหัส</th><th>ชื่อวัสดุ</th><th>ขั้นต่ำ</th><th>ผู้ดูแล</th><th>จัดการ</th></tr></thead><tbody id="adminMaterialBody"></tbody></table></div>`;
+  const drawMaterials = () => {
+    const q = $('#adminMaterialSearch').value.toLowerCase();
+    const arr = (m || []).filter(x => !q || `${x.code} ${x.name} ${x.responsible_email}`.toLowerCase().includes(q));
+    $('#adminMaterialBody').innerHTML = arr.map(x => `<tr><td>${esc(x.code)}</td><td><strong>${esc(x.name)}</strong><div class="muted tiny">ชื่อบนสติ๊กเกอร์: ${esc(x.label_name || x.name)}</div></td><td>${qty(x.min_qty)} ${esc(x.unit)}</td><td><select data-owner-code="${esc(x.code)}">${ownerOptions(s, x.responsible_email || '')}</select></td><td><button class="mini" data-edit-material="${esc(x.code)}">แก้ไข</button></td></tr>`).join('');
+    bindAdminOwnerEvents();
+  };
+  $('#adminMaterialSearch').addEventListener('input', drawMaterials);
   $$('[data-role-email]').forEach(sel => sel.addEventListener('change', async () => {
     const {error} = await sb.from('staff_directory').update({role:sel.value}).eq('email', sel.dataset.roleEmail);
     if (error) return toast(errMsg(error), true);
     toast('บันทึกสิทธิ์แล้ว');
+    if (sel.dataset.roleEmail === profile.email) { await loadProfile(); actingMode = profile.role === 'admin' ? actingMode : 'staff'; updateRoleUI(); }
   }));
+  drawMaterials();
+}
 
+function bindAdminOwnerEvents() {
   $$('[data-owner-code]').forEach(sel => sel.addEventListener('change', async () => {
     const {error} = await sb.from('materials').update({responsible_email: sel.value || null}).eq('code', sel.dataset.ownerCode);
     if (error) return toast(errMsg(error), true);
     stockCache = [];
     materialsCache = [];
-    toast('เปลี่ยนผู้ดูแลแล้ว');
+    const row = (window._adminMaterials || []).find(x => x.code === sel.dataset.ownerCode);
+    if (row) row.responsible_email = sel.value || null;
+    toast('เปลี่ยนผู้ดูแลแล้ว มีผลกับตรวจวันศุกร์ทันที');
   }));
 }
 
@@ -882,14 +927,7 @@ function openMaterialEditor(code) {
   const x = (window._adminMaterials || []).find(m => m.code === code);
   const staff = window._adminStaff || [];
   if (!x) return;
-  openModal(`
-    <h3>${esc(x.code)} · ${esc(x.name)}</h3>
-    <form id="matForm" class="form-grid">
-      <label>ชื่อบนสติ๊กเกอร์<input id="matLabel" maxlength="60" value="${esc(x.label_name || x.name)}"></label>
-      <label>จำนวนขั้นต่ำ<input id="matMin" type="number" min="0" step="0.01" value="${Number(x.min_qty || 0)}"></label>
-      <label>ผู้รับผิดชอบ<select id="matOwner">${ownerOptions(staff, x.responsible_email || '')}</select></label>
-      <button class="primary" type="submit">บันทึก</button>
-    </form>`);
+  openModal(`<h3>${esc(x.code)} · ${esc(x.name)}</h3><form id="matForm" class="form-grid"><label>ชื่อบนสติ๊กเกอร์<input id="matLabel" maxlength="80" value="${esc(x.label_name || x.name)}"></label><label>จำนวนขั้นต่ำ<input id="matMin" type="number" min="0" step="0.01" value="${Number(x.min_qty || 0)}"></label><label>ผู้รับผิดชอบ<select id="matOwner">${ownerOptions(staff, x.responsible_email || '')}</select></label><button class="primary" type="submit">บันทึก</button></form>`);
   $('#matForm').addEventListener('submit', async e => {
     e.preventDefault();
     const {error} = await sb.from('materials').update({
@@ -907,16 +945,7 @@ function openMaterialEditor(code) {
 }
 
 function renderHelp() {
-  page.innerHTML = `
-    <div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">ขั้นตอนหลักสำหรับเจ้าหน้าที่</p></div></div>
-    <div class="grid">
-      <div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู รับ–เบิก → รับเข้า</li><li>เลือกวัสดุ ใส่ Lot วันหมดอายุ และจำนวน</li><li>กดบันทึก แล้วกด พิมพ์ QR Sticker</li><li>หน้าพิมพ์จะเปิดทันที ไม่ต้องกดปุ่มพิมพ์ซ้ำ</li></ol></div>
-      <div class="card help-card"><h3>เบิกออกด้วย QR</h3><ol class="help-steps"><li>ใช้กล้อง iPhone/Android สแกน QR บนสติ๊กเกอร์</li><li>ระบบเปิดรายการ Lot ที่ตรงกัน</li><li>ใส่จำนวนและยืนยันเบิกออก</li></ol><p class="muted small">QR ใช้รหัสล็อตแบบเดิม เช่น BB020-69020 และแนบลิงก์เปิดแอพโดยตรง ไม่ใช้ UUID ที่อ่านไม่รู้เรื่อง</p></div>
-      <div class="card help-card"><h3>ของหมดอายุ</h3><p>เมื่อเปิดแอพ ระบบจะทำรายการ EXPIRED นำยอดคงเหลือเป็นศูนย์ ปิด Lot และเก็บประวัติให้อัตโนมัติ เจ้าหน้าที่ไม่ต้องเบิกออกเอง</p></div>
-      <div class="card help-card"><h3>ตรวจทุกวันศุกร์</h3><ol class="help-steps"><li>เปิดเมนู ตรวจศุกร์</li><li>เลือก งานของฉัน</li><li>นับจริงทีละ Lot</li><li>หากไม่ตรงต้องเลือกเหตุผล ระบบปรับยอดและเก็บ Log</li></ol></div>
-      <div class="card help-card"><h3>ตั้งเครื่องพิมพ์ Godex</h3><p>Paper 25 × 20 mm · Scale 100% · Margin None · ปิด Header/Footer</p></div>
-      <div class="card help-card"><h3>ติดตั้งบนมือถือ</h3><p><strong>Android:</strong> เปิด Chrome → เมนู → ติดตั้งแอป<br><strong>iPhone:</strong> เปิด Safari → แชร์ → เพิ่มไปยังหน้าจอโฮม</p></div>
-    </div>`;
+  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><div class="grid help-grid"><div class="card help-card"><h3>บัญชี Admin มี 2 โหมด</h3><p><strong>โหมดเจ้าหน้าที่:</strong> เห็นและตรวจเฉพาะงานของตนเหมือนทุกคน<br><strong>โหมดผู้ดูแลระบบ:</strong> ดูงานรวม ปิดรอบ เปลี่ยนสิทธิ์ และเปลี่ยนผู้ดูแลวัสดุ</p></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>เลือกวัสดุ ใส่ Lot วันหมดอายุ และจำนวน</li><li>บันทึก แล้วกดพิมพ์ QR Sticker</li></ol></div><div class="card help-card"><h3>สติ๊กเกอร์ Old / New</h3><p>ไม่ต้องเปลี่ยนสติ๊กเกอร์เดิมทั้งหมด ระบบ v1.3.0 อ่าน Alias รหัสเก่าและพาไป Lot หลักเดียวกัน สติ๊กเกอร์ที่พิมพ์ใหม่จะใช้รหัสหลักเพื่อไม่ให้เกิดรหัสซ้ำในอนาคต</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบจะไม่ตัดยอดเองโดยไม่มีคนยืนยัน เปิดตรวจวันศุกร์ กด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์หน้า</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมถูกเก็บใน Transaction History เปิดดูได้ใต้หน้าบันทึกนำเข้า–นำออก และในเมนู รายงาน & ส่งออก</p></div><div class="card help-card"><h3>ตั้งเครื่องพิมพ์ Godex</h3><p>Paper 25 × 20 mm · Scale 100% · Margin None · ปิด Header/Footer</p></div></div>`;
 }
 
 init();

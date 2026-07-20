@@ -9,16 +9,19 @@
 *{box-sizing:border-box}
 html,body{width:25mm;height:20mm;margin:0;padding:0;background:#fff}
 body{font-family:Tahoma,"Noto Sans Thai",Arial,sans-serif;color:#000;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.label{width:25mm;height:20mm;padding:1mm;display:grid;grid-template-columns:minmax(0,1fr) 10mm;gap:.5mm;overflow:hidden;background:#fff}
-.text{min-width:0;display:flex;flex-direction:column;justify-content:space-between;line-height:1.02;overflow:hidden}
-.code{font-size:6.8pt;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.name{font-size:4.9pt;font-weight:800;line-height:1.08;max-height:6.5mm;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow-wrap:anywhere}
-.meta{font-size:4.9pt;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.qr-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:0;overflow:hidden}
-#qr{width:9.2mm;height:9.2mm;display:grid;place-items:center}
+.label{width:25mm;height:20mm;padding:.75mm .7mm;display:grid;grid-template-columns:minmax(0,1fr) 9.2mm;gap:.5mm;overflow:hidden;background:#fff;border:.15mm solid #000}
+.text{min-width:0;display:flex;flex-direction:column;line-height:1.02;overflow:hidden}
+.code{font-size:7pt;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-bottom:.2mm solid #000;padding-bottom:.35mm;margin-bottom:.35mm}
+.name{font-size:5.2pt;font-weight:900;line-height:1.08;max-height:5.8mm;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow-wrap:anywhere;margin-bottom:.2mm}
+.meta{font-size:4.5pt;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:.15mm}
+.qty{font-size:4.7pt;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:auto}
+.owner{font-size:3.9pt;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:.15mm}
+.qr-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:0;overflow:hidden;border-left:.15mm solid #000;padding-left:.45mm}
+#qr{width:8.5mm;height:8.5mm;display:grid;place-items:center}
 #qr svg{width:100%;height:100%;display:block}
-.key{font-size:3.4pt;font-weight:900;line-height:1;text-align:center;max-width:9.5mm;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:.3mm}
-.fallback{position:fixed;left:29mm;top:4mm;width:230px;padding:14px;border-radius:12px;background:#fff;box-shadow:0 8px 28px rgba(0,0,0,.16);font-family:Arial,sans-serif}
+.key{font-size:3.4pt;font-weight:900;line-height:1.05;text-align:center;max-width:8.6mm;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:.2mm}
+.mark{font-size:3pt;font-weight:800;margin-top:.2mm;white-space:nowrap}
+.fallback{position:fixed;left:29mm;top:4mm;width:245px;padding:14px;border-radius:12px;background:#fff;box-shadow:0 8px 28px rgba(0,0,0,.16);font-family:Arial,sans-serif}
 .fallback button{width:100%;padding:11px 14px;border:0;border-radius:9px;background:#087b6f;color:#fff;font-weight:700;cursor:pointer}
 .fallback p{font-size:12px;color:#555;line-height:1.45;margin:10px 0 0}
 @media print{.fallback{display:none!important}}
@@ -31,11 +34,17 @@ body{font-family:Tahoma,"Noto Sans Thai",Arial,sans-serif;color:#000;-webkit-pri
     <div class="name" id="name"></div>
     <div class="meta" id="lot"></div>
     <div class="meta" id="exp"></div>
+    <div class="qty" id="qty"></div>
+    <div class="owner" id="owner"></div>
   </div>
-  <div class="qr-wrap"><div id="qr"></div><div class="key" id="key"></div></div>
+  <div class="qr-wrap">
+    <div id="qr"></div>
+    <div class="key" id="key"></div>
+    <div class="mark">CNMI</div>
+  </div>
 </div>
 <div class="fallback"><button id="printAgain">พิมพ์ QR Sticker</button><p>Paper 25 × 20 mm<br>Scale 100% · Margin None<br>ปิด Header/Footer</p></div>
-<script src="assets/qr-lite.js?v=1.1.0"></script>
+<script src="assets/qr-lite.js?v=1.3.0"></script>
 <script>
 const p=new URLSearchParams(location.search);
 const safe=(v,f='-')=>v&&v!=='null'?v:f;
@@ -47,8 +56,10 @@ document.getElementById('code').textContent=code;
 document.getElementById('name').textContent=safe(p.get('name'));
 document.getElementById('lot').textContent='LOT '+lot;
 document.getElementById('exp').textContent='EXP '+safe(p.get('exp'),'ไม่ระบุ');
+document.getElementById('qty').textContent='คงเหลือ '+safe(p.get('qty'),'0')+' '+safe(p.get('unit'),'');
+document.getElementById('owner').textContent='ผู้ดูแล: '+safe(p.get('owner'));
 document.getElementById('key').textContent=key;
-try{document.getElementById('qr').innerHTML=window.CNMIQRCode.svg(qrText,{level:'L',margin:2});}catch(e){document.getElementById('qr').textContent='QR';}
+try{document.getElementById('qr').innerHTML=window.CNMIQRCode.svg(qrText,{level:'L',margin:1});}catch(e){document.getElementById('qr').textContent='QR';}
 document.getElementById('printAgain').addEventListener('click',()=>window.print());
 window.addEventListener('afterprint',()=>setTimeout(()=>window.close(),150));
 if(p.get('auto')==='1')setTimeout(()=>{window.focus();window.print();},450);
