@@ -7,9 +7,10 @@
 <style>
 @page{size:25mm 20mm;margin:0}
 *{box-sizing:border-box}
-html,body{width:25mm;height:20mm;margin:0;padding:0;background:#fff}
-body{font-family:Tahoma,"Noto Sans Thai",Arial,sans-serif;color:#000;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.label{width:25mm;height:20mm;padding:.75mm .7mm;display:grid;grid-template-columns:minmax(0,1fr) 9.2mm;gap:.5mm;overflow:hidden;background:#fff;border:.15mm solid #000}
+html{margin:0;padding:0;background:#edf1f3}
+body{margin:0;padding:0;min-height:100vh;font-family:Tahoma,"Noto Sans Thai",Arial,sans-serif;color:#000;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.preview{width:25mm;height:20mm;background:#fff}
+.label{width:25mm;height:20mm;padding:.75mm .7mm;display:grid;grid-template-columns:minmax(0,1fr) 9.2mm;gap:.5mm;overflow:hidden;background:#fff;border:.15mm solid #000;break-inside:avoid;page-break-inside:avoid}
 .text{min-width:0;display:flex;flex-direction:column;line-height:1.02;overflow:hidden}
 .code{font-size:7pt;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-bottom:.2mm solid #000;padding-bottom:.35mm;margin-bottom:.35mm}
 .name{font-size:5.2pt;font-weight:900;line-height:1.08;max-height:5.8mm;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow-wrap:anywhere;margin-bottom:.2mm}
@@ -21,37 +22,54 @@ body{font-family:Tahoma,"Noto Sans Thai",Arial,sans-serif;color:#000;-webkit-pri
 #qr svg{width:100%;height:100%;display:block}
 .key{font-size:3.4pt;font-weight:900;line-height:1.05;text-align:center;max-width:8.6mm;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:.2mm}
 .mark{font-size:3pt;font-weight:800;margin-top:.2mm;white-space:nowrap}
-.fallback{position:fixed;left:29mm;top:4mm;width:245px;padding:14px;border-radius:12px;background:#fff;box-shadow:0 8px 28px rgba(0,0,0,.16);font-family:Arial,sans-serif}
-.fallback button{width:100%;padding:11px 14px;border:0;border-radius:9px;background:#087b6f;color:#fff;font-weight:700;cursor:pointer}
-.fallback p{font-size:12px;color:#555;line-height:1.45;margin:10px 0 0}
-@media print{.fallback{display:none!important}}
+.print-panel{position:fixed;left:30mm;top:4mm;width:260px;padding:15px;border-radius:12px;background:#fff;box-shadow:0 8px 28px rgba(0,0,0,.18);font-family:Arial,"Noto Sans Thai",sans-serif}
+.print-panel button{width:100%;padding:11px 14px;border:0;border-radius:9px;background:#087b6f;color:#fff;font-weight:700;cursor:pointer}
+.print-panel button:disabled{opacity:.65;cursor:wait}
+.print-panel p{font-size:12px;color:#555;line-height:1.45;margin:10px 0 0}
+#printStatus{display:block;font-size:12px;font-weight:700;color:#087b6f;margin-bottom:10px}
+@media print{
+  html,body{width:25mm!important;height:20mm!important;min-height:0!important;margin:0!important;padding:0!important;overflow:hidden!important;background:#fff!important}
+  .preview,.label{width:25mm!important;height:20mm!important;margin:0!important}
+  .print-panel{display:none!important}
+}
 </style>
 </head>
 <body>
-<div class="label">
-  <div class="text">
-    <div class="code" id="code"></div>
-    <div class="name" id="name"></div>
-    <div class="meta" id="lot"></div>
-    <div class="meta" id="exp"></div>
-    <div class="qty" id="qty"></div>
-    <div class="owner" id="owner"></div>
-  </div>
-  <div class="qr-wrap">
-    <div id="qr"></div>
-    <div class="key" id="key"></div>
-    <div class="mark">CNMI</div>
+<div class="preview">
+  <div class="label" id="label">
+    <div class="text">
+      <div class="code" id="code"></div>
+      <div class="name" id="name"></div>
+      <div class="meta" id="lot"></div>
+      <div class="meta" id="exp"></div>
+      <div class="qty" id="qty"></div>
+      <div class="owner" id="owner"></div>
+    </div>
+    <div class="qr-wrap">
+      <div id="qr"></div>
+      <div class="key" id="key"></div>
+      <div class="mark">CNMI</div>
+    </div>
   </div>
 </div>
-<div class="fallback"><button id="printAgain">พิมพ์ QR Sticker</button><p>Paper 25 × 20 mm<br>Scale 100% · Margin None<br>ปิด Header/Footer</p></div>
-<script src="assets/qr-lite.js?v=1.3.0"></script>
+<div class="print-panel">
+  <span id="printStatus">กำลังเตรียมสติ๊กเกอร์…</span>
+  <button id="printAgain" type="button">พิมพ์ QR Sticker</button>
+  <p>ตั้งกระดาษใน Godex เป็น 25 × 20 mm<br>Scale 100% · Margin None<br>ปิด Header/Footer</p>
+</div>
+<script src="assets/qr-lite.js?v=1.3.2"></script>
 <script>
+'use strict';
 const p=new URLSearchParams(location.search);
 const safe=(v,f='-')=>v&&v!=='null'?v:f;
 const code=safe(p.get('code'));
 const lot=safe(p.get('lot'));
 const key=safe(p.get('key'),`${code}-${lot}`);
 const qrText=safe(p.get('qr'),key);
+const statusEl=document.getElementById('printStatus');
+const printBtn=document.getElementById('printAgain');
+let printBusy=false;
+
 document.getElementById('code').textContent=code;
 document.getElementById('name').textContent=safe(p.get('name'));
 document.getElementById('lot').textContent='LOT '+lot;
@@ -59,10 +77,43 @@ document.getElementById('exp').textContent='EXP '+safe(p.get('exp'),'ไม่�
 document.getElementById('qty').textContent='คงเหลือ '+safe(p.get('qty'),'0')+' '+safe(p.get('unit'),'');
 document.getElementById('owner').textContent='ผู้ดูแล: '+safe(p.get('owner'));
 document.getElementById('key').textContent=key;
-try{document.getElementById('qr').innerHTML=window.CNMIQRCode.svg(qrText,{level:'L',margin:1});}catch(e){document.getElementById('qr').textContent='QR';}
-document.getElementById('printAgain').addEventListener('click',()=>window.print());
-window.addEventListener('afterprint',()=>setTimeout(()=>window.close(),150));
-if(p.get('auto')==='1')setTimeout(()=>{window.focus();window.print();},450);
+try{
+  document.getElementById('qr').innerHTML=window.CNMIQRCode.svg(qrText,{level:'L',margin:1});
+}catch(e){
+  document.getElementById('qr').textContent='QR';
+  console.error('QR render failed',e);
+}
+
+function nextFrame(){return new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));}
+async function waitUntilPrintable(){
+  if(document.readyState!=='complete')await new Promise(resolve=>window.addEventListener('load',resolve,{once:true}));
+  if(document.fonts&&document.fonts.ready){try{await document.fonts.ready;}catch(_){}}
+  await nextFrame();
+  await new Promise(resolve=>setTimeout(resolve,250));
+}
+async function startPrint(){
+  if(printBusy)return;
+  printBusy=true;
+  printBtn.disabled=true;
+  statusEl.textContent='กำลังเปิดหน้าพิมพ์…';
+  try{
+    await waitUntilPrintable();
+    window.focus();
+    window.print();
+    statusEl.textContent='หน้าพิมพ์เปิดแล้ว หากยังไม่พิมพ์ให้กดปุ่มอีกครั้ง';
+  }catch(e){
+    console.error('Print failed',e);
+    statusEl.textContent='เปิดหน้าพิมพ์ไม่สำเร็จ กรุณากดปุ่มพิมพ์อีกครั้ง';
+  }finally{
+    setTimeout(()=>{printBusy=false;printBtn.disabled=false;},800);
+  }
+}
+printBtn.addEventListener('click',startPrint);
+window.addEventListener('afterprint',()=>{statusEl.textContent='พิมพ์เสร็จแล้ว หรือปิดหน้าพิมพ์แล้ว';});
+window.addEventListener('load',()=>{
+  statusEl.textContent='สติ๊กเกอร์พร้อมพิมพ์';
+  if(p.get('auto')==='1')setTimeout(startPrint,300);
+},{once:true});
 </script>
 </body>
 </html>
