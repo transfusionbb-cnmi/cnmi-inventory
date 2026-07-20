@@ -7,6 +7,7 @@ let sb = null;
 let session = null;
 let profile = null;
 let route = 'home';
+let moveTab = 'receive';
 let stockCache = [];
 let materialsCache = [];
 let autoExpiryRan = false;
@@ -140,6 +141,8 @@ async function enterApp() {
     loginView.classList.add('hidden');
     appView.classList.remove('hidden');
     $('#userBadge').textContent = `${profile.display_name} · ${profile.role === 'admin' ? 'ผู้ดูแลระบบ' : 'เจ้าหน้าที่'}`;
+    $$('.admin-only').forEach(el => el.classList.toggle('hidden', profile.role !== 'admin'));
+    document.body.classList.toggle('is-admin', profile.role === 'admin');
     await runAutoExpiry(true);
     const hashRoute = location.hash.replace(/^#/, '');
     const initialRoute = ['home','stock','move','weekly','activity','help','admin'].includes(hashRoute) ? hashRoute : 'home';
@@ -203,22 +206,28 @@ function globalClick(e) {
 }
 
 function navActive() {
-  $$('.bottom-nav button').forEach(b => b.classList.toggle('active', b.dataset.route === route));
+  $$('.bottom-nav button, .side-nav button').forEach(b => {
+    const sameRoute = b.dataset.route === route;
+    const active = sameRoute && (route !== 'move' ? true : ((b.dataset.moveTab || '') === moveTab || !b.dataset.moveTab));
+    b.classList.toggle('active', active);
+  });
 }
 
 async function navigate(r, options = {}) {
   route = r;
+  if (r === 'move') moveTab = options.tab || moveTab || 'receive';
   navActive();
   loading();
   try {
     if (r === 'home') await renderHome();
     else if (r === 'stock') await renderStock();
-    else if (r === 'move') await renderMove(options.tab || 'receive');
+    else if (r === 'move') await renderMove(moveTab);
     else if (r === 'weekly') await renderWeekly();
     else if (r === 'activity') await renderActivity();
     else if (r === 'help') renderHelp();
     else if (r === 'admin') await renderAdmin();
     else await renderHome();
+    try { history.replaceState({}, '', `${location.pathname}${location.search}#${r}`); } catch (_) {}
     window.scrollTo({top:0, behavior:'smooth'});
   } catch (e) {
     page.innerHTML = `<div class="card notice">${esc(errMsg(e))}</div>`;
@@ -258,65 +267,139 @@ async function ensureCheck() {
 }
 
 function statusBadge(x) {
-  if (Number(x.balance) < 0) return '<span class="badge danger">ยอดติดลบ</span>';
-  if (Number(x.balance) <= Number(x.min_qty)) return '<span class="badge warn">ต่ำกว่าขั้นต่ำ</span>';
-  if (x.days_to_expiry !== null && Number(x.days_to_expiry) <= 90) return '<span class="badge warn">ใกล้หมดอายุ</span>';
-  return '<span class="badge ok">พร้อมใช้</span>';
+  if (Number(x.balance) < 0) return '<span class=\"badge danger\">ยอดติดลบ</span>';
+  if (Number(x.balance) <= Number(x.min_qty)) return '<span class=\"badge warn\">ต่ำกว่าขั้นต่ำ</span>';
+  if (x.days_to_expiry !== null && Number(x.days_to_expiry) <= 90) return '<span class=\"badge warn\">ใกล้หมดอายุ</span>';
+  return '<span class=\"badge ok\">พร้อมใช้</span>';
+}
+
+function todayIso() {
+  const x = new Date();
+  x.setHours(0,0,0,0);
+  return x.toISOString();
+}
+
+function ownerOptions(staff = [], selected = '') {
+  return [`<option value=\"\">ยังไม่กำหนด</option>`].concat((staff || []).map(s => `<option value=\"${esc(s.email)}\" ${s.email === selected ? 'selected' : ''}>${esc(s.display_name)}${s.role === 'admin' ? ' (Admin)' : ''}</option>`)).join('');
+}
+
+function groupByOwner(summaryRows = []) {
+  const map = new Map();
+  summaryRows.forEach(row => {
+    const key = row.responsible_email || 'unassigned';
+    if (!map.has(key)) map.set(key, {
+      responsible_email: row.responsible_email || '',
+      responsible_name: row.responsible_name || 'ยังไม่กำหนด',
+      materials: 0,
+      active_lots: 0,
+      low_count: 0,
+      out_count: 0
+    });
+    const item = map.get(key);
+    item.materials += 1;
+    item.active_lots += Number(row.active_lots || 0);
+    if (Number(row.total_balance || 0) <= 0) item.out_count += 1;
+    else if (Number(row.total_balance || 0) <= Number(row.min_qty || 0)) item.low_count += 1;
+  });
+  return [...map.values()].sort((a,b) => (b.out_count + b.low_count) - (a.out_count + a.low_count) || a.responsible_name.localeCompare(b.responsible_name, 'th'));
 }
 
 async function renderHome() {
-  const [lots, checkRes, activityRes] = await Promise.all([
+  const [lots, summaryRes, checkRes, activityRes, expiredCountRes] = await Promise.all([
     getLots(true),
+    sb.from('v_inventory_summary').select('*').order('material_code'),
     ensureCheck(),
-    sb.from('v_audit_activity').select('*').limit(6)
+    sb.from('v_audit_activity').select('*').limit(120),
+    sb.from('audit_logs').select('id', {head:true, count:'exact'}).eq('action', 'AUTO_EXPIRED')
   ]);
+  if (summaryRes.error) throw summaryRes.error;
   if (activityRes.error) throw activityRes.error;
+  if (expiredCountRes.error) throw expiredCountRes.error;
 
-  const positive = lots.filter(x => Number(x.balance) > 0);
-  const low = lots.filter(x => Number(x.balance) > 0 && Number(x.balance) <= Number(x.min_qty));
-  const exp = lots.filter(x => x.days_to_expiry !== null && Number(x.days_to_expiry) >= 0 && Number(x.days_to_expiry) <= 90 && Number(x.balance) > 0);
-  const neg = lots.filter(x => Number(x.balance) < 0);
+  const summaries = summaryRes.data || [];
+  const activities = activityRes.data || [];
+  const startIso = todayIso();
+  const todayActivities = activities.filter(x => x.created_at && new Date(x.created_at).toISOString() >= startIso);
+  const outMaterials = summaries.filter(x => Number(x.total_balance || 0) <= 0);
+  const lowMaterials = summaries.filter(x => Number(x.total_balance || 0) > 0 && Number(x.total_balance || 0) <= Number(x.min_qty || 0));
+  const nearExpiry = lots.filter(x => Number(x.balance || 0) > 0 && x.days_to_expiry !== null && Number(x.days_to_expiry) >= 0 && Number(x.days_to_expiry) <= 30);
+  const receiveToday = todayActivities.filter(x => x.action === 'RECEIVE').length;
+  const issueToday = todayActivities.filter(x => x.action === 'ISSUE').length;
+  const expiredRemoved = Number(expiredCountRes.count || 0);
+  const ownerGroups = groupByOwner(summaries);
+
   let prog = null;
   if (checkRes) {
     const q = await sb.from('v_weekly_check_progress').select('*').eq('check_id', checkRes.id).maybeSingle();
     prog = q.data;
   }
-  const urgentMap = new Map();
-  [...neg, ...exp, ...low].forEach(x => urgentMap.set(x.lot_id, x));
-  const urgent = [...urgentMap.values()].slice(0, 8);
+
+  const productRows = [...summaries].sort((a, b) => {
+    const aScore = Number(a.total_balance || 0) <= 0 ? 3 : (Number(a.total_balance || 0) <= Number(a.min_qty || 0) ? 2 : 0);
+    const bScore = Number(b.total_balance || 0) <= 0 ? 3 : (Number(b.total_balance || 0) <= Number(b.min_qty || 0) ? 2 : 0);
+    return bScore - aScore || Number(a.total_balance || 0) - Number(b.total_balance || 0);
+  }).slice(0, 8);
 
   page.innerHTML = `
     <section class="hero-card">
       <div>
         <h2>สวัสดี ${esc(profile.display_name)}</h2>
-        <p>สต๊อกที่ใช้งานจริงอยู่ตรงนี้ ส่วน Lot ที่หมดอายุระบบนำออกให้อัตโนมัติแล้ว</p>
+        <p>ภาพรวมสต๊อกของวันนี้ ดูได้ทั้งตามสินค้า ตามผู้ดูแล และเข้าหน้านำเข้า/นำออกได้ทันที</p>
       </div>
       <div class="hero-icon">${icon('box')}</div>
     </section>
 
-    <div class="grid kpi-grid">
-      <div class="card kpi"><div class="kpi-top"><small>Lot คงเหลือ</small><span class="kpi-icon">${icon('box')}</span></div><strong>${positive.length}</strong></div>
-      <div class="card kpi"><div class="kpi-top"><small>ต่ำกว่าขั้นต่ำ</small><span class="kpi-icon warn">${icon('alert')}</span></div><strong>${low.length}</strong></div>
-      <div class="card kpi"><div class="kpi-top"><small>ใกล้หมดอายุ</small><span class="kpi-icon warn">${icon('calendar')}</span></div><strong>${exp.length}</strong></div>
-      <div class="card kpi"><div class="kpi-top"><small>ยอดติดลบ</small><span class="kpi-icon danger">${icon('minus')}</span></div><strong>${neg.length}</strong></div>
-      <div class="card kpi"><div class="kpi-top"><small>ตรวจวันศุกร์</small><span class="kpi-icon info">${icon('check')}</span></div><strong>${prog ? `${prog.checked_items}/${prog.total_items}` : '-'}</strong></div>
+    <div class="grid kpi-grid kpi-grid-6">
+      <div class="card kpi"><div class="kpi-top"><small>สินค้าหมด</small><span class="kpi-icon danger">${icon('box')}</span></div><strong>${outMaterials.length}</strong><small>รายการ</small></div>
+      <div class="card kpi"><div class="kpi-top"><small>ต่ำกว่าขั้นต่ำ</small><span class="kpi-icon warn">${icon('alert')}</span></div><strong>${lowMaterials.length}</strong><small>รายการ</small></div>
+      <div class="card kpi"><div class="kpi-top"><small>นำเข้า (วันนี้)</small><span class="kpi-icon">${icon('plus')}</span></div><strong>${receiveToday}</strong><small>รายการ</small></div>
+      <div class="card kpi"><div class="kpi-top"><small>นำออก (วันนี้)</small><span class="kpi-icon info">${icon('minus')}</span></div><strong>${issueToday}</strong><small>รายการ</small></div>
+      <div class="card kpi"><div class="kpi-top"><small>หมดอายุ (นำออกแล้ว)</small><span class="kpi-icon info">${icon('history')}</span></div><strong>${expiredRemoved}</strong><small>Lot</small></div>
+      <div class="card kpi"><div class="kpi-top"><small>ใกล้หมดอายุ (≤ 30 วัน)</small><span class="kpi-icon warn">${icon('calendar')}</span></div><strong>${nearExpiry.length}</strong><small>Lot</small></div>
+    </div>
+
+    <div class="overview-grid">
+      <section class="card table-card">
+        <div class="section-title compact">
+          <div><h3>ภาพรวมตามสินค้า</h3><p class="muted small">Top สินค้าที่ต้องเฝ้าระวัง</p></div>
+          <div class="segmented"><button id="homeModeProduct" class="seg active" type="button">ดูตามสินค้า</button><button id="homeModeOwner" class="seg" type="button">ดูตามผู้ดูแล</button></div>
+        </div>
+        <div id="homeOverviewPane"></div>
+      </section>
+
+      <section class="card activity-panel">
+        <div class="section-title compact"><div><h3>กิจกรรมล่าสุด</h3><p class="muted small">รายการล่าสุดในระบบ</p></div><button class="mini" data-route="activity">ดูทั้งหมด ${icon('arrow')}</button></div>
+        <div class="activity-list">${activities.slice(0, 6).map(activityCard).join('') || '<div class="card empty">ยังไม่มีกิจกรรม</div>'}</div>
+      </section>
     </div>
 
     <div class="grid quick-grid">
-      <button class="quick" data-route="move" data-move-tab="receive"><span class="quick-icon">${icon('plus')}</span><span>รับเข้าสต๊อก</span><small>เพิ่ม Lot และพิมพ์ QR Sticker</small></button>
-      <button class="quick" data-route="move" data-move-tab="issue"><span class="quick-icon">${icon('minus')}</span><span>เบิกออก</span><small>สแกน QR หรือเลือกรายการ</small></button>
-      <button class="quick" data-route="weekly"><span class="quick-icon">${icon('check')}</span><span>ตรวจสต๊อก</span><small>ตรวจทีละ Lot ทุกวันศุกร์</small></button>
-      <button class="quick" data-route="stock"><span class="quick-icon">${icon('search')}</span><span>ค้นหาสต๊อก</span><small>ดูจำนวน Lot และวันหมดอายุ</small></button>
+      <button class="quick" data-route="move" data-move-tab="receive"><span class="quick-icon">${icon('plus')}</span><span>นำเข้า</span><small>เพิ่ม Lot ใหม่ และพิมพ์ QR Sticker</small></button>
+      <button class="quick" data-route="move" data-move-tab="issue"><span class="quick-icon">${icon('minus')}</span><span>นำออก</span><small>สแกน QR หรือเลือกรายการที่ต้องใช้</small></button>
+      <button class="quick" data-route="stock"><span class="quick-icon">${icon('search')}</span><span>สต๊อกคงเหลือ</span><small>ค้นหา ดู Lot และดูตามผู้ดูแล</small></button>
+      <button class="quick" data-route="weekly"><span class="quick-icon">${icon('check')}</span><span>ตรวจวันศุกร์</span><small>${prog ? `ความคืบหน้า ${prog.checked_items}/${prog.total_items}` : 'ตรวจสต๊อกประจำสัปดาห์'}</small></button>
     </div>
 
-    ${prog ? `<div class="card"><div class="check-info"><div><strong>ตรวจสต๊อกวันศุกร์ ${d(prog.week_friday)}</strong><div class="muted small">${prog.status === 'COMPLETED' ? 'เสร็จแล้ว' : 'กำลังดำเนินการ'}</div></div><span class="badge ${prog.status === 'COMPLETED' ? 'ok' : 'info'}">${prog.percent_complete}%</span></div><div class="progress" style="margin-top:13px"><span style="width:${prog.percent_complete}%"></span></div></div>` : ''}
-
-    <div class="section-title"><h3>รายการที่ควรดู</h3></div>
-    <div class="list">${urgent.map(lotCard).join('') || `<div class="card empty">${icon('check')}<div>ไม่มีรายการเร่งด่วน</div></div>`}</div>
-
-    <div class="section-title"><h3>กิจกรรมล่าสุด</h3><button class="mini" data-route="activity">ดูทั้งหมด ${icon('arrow')}</button></div>
-    <div class="list">${(activityRes.data || []).map(activityCard).join('') || '<div class="card empty">ยังไม่มีกิจกรรม</div>'}</div>
+    ${prog ? `<div class="card"><div class="check-info"><div><strong>ตรวจสต๊อกวันศุกร์ ${d(prog.week_friday)}</strong><div class="muted small">${prog.status === 'COMPLETED' ? 'ปิดรอบแล้ว' : 'กำลังดำเนินการ'}</div></div><span class="badge ${prog.status === 'COMPLETED' ? 'ok' : 'info'}">${prog.checked_items}/${prog.total_items}</span></div><div class="progress" style="margin-top:13px"><span style="width:${prog.percent_complete}%"></span></div></div>` : ''}
   `;
+
+  const productHtml = `
+    <div class="table-wrap"><table class="data-table">
+      <thead><tr><th>รายการสินค้า</th><th>คงเหลือ</th><th>ขั้นต่ำ</th><th>ผู้ดูแล</th><th>สถานะ</th></tr></thead>
+      <tbody>${productRows.map(x => `<tr><td><strong>${esc(x.material_name)}</strong><div class="muted small">${esc(x.material_code)}</div></td><td>${qty(x.total_balance)}</td><td>${qty(x.min_qty)}</td><td>${esc(x.responsible_name || '-')}</td><td>${Number(x.total_balance || 0) <= 0 ? '<span class="badge danger">หมด</span>' : (Number(x.total_balance || 0) <= Number(x.min_qty || 0) ? '<span class="badge warn">ต่ำกว่าขั้นต่ำ</span>' : '<span class="badge ok">พร้อมใช้</span>')}</td></tr>`).join('') || '<tr><td colspan="5">ไม่มีข้อมูล</td></tr>'}</tbody>
+    </table></div>`;
+  const ownerHtml = `
+    <div class="owner-summary-grid">${ownerGroups.map(g => `<div class="owner-box"><strong>${esc(g.responsible_name)}</strong><div class="muted small">${esc(g.responsible_email || 'ยังไม่กำหนด')}</div><div class="owner-stats"><span>ดูแล ${g.materials} รายการ</span><span>ต่ำกว่าขั้นต่ำ ${g.low_count}</span><span>หมด ${g.out_count}</span></div></div>`).join('') || '<div class="card empty">ไม่มีข้อมูลผู้ดูแล</div>'}</div>`;
+
+  const pane = $('#homeOverviewPane');
+  const setMode = mode => {
+    $('#homeModeProduct').classList.toggle('active', mode === 'product');
+    $('#homeModeOwner').classList.toggle('active', mode === 'owner');
+    pane.innerHTML = mode === 'owner' ? ownerHtml : productHtml;
+  };
+  $('#homeModeProduct').onclick = () => setMode('product');
+  $('#homeModeOwner').onclick = () => setMode('owner');
+  setMode('product');
 }
 
 function lotCard(l) {
@@ -401,7 +484,7 @@ async function printLabel(lotId) {
     const labelUrl = new URL('label.html', location.href);
     labelUrl.search = params.toString();
     popup.location.replace(labelUrl.toString());
-    sb.rpc('fn_log_label_print', {p_lot_id:lotId}).catch(() => {});
+    (async () => { try { await sb.rpc('fn_log_label_print', {p_lot_id:lotId}); } catch (_) {} })();
   } catch (e) {
     popup.close();
     toast(errMsg(e), true);
@@ -419,8 +502,8 @@ async function loadMaterials() {
 async function renderMove(defaultTab = 'receive') {
   const [mats, lots] = await Promise.all([loadMaterials(), getLots(true)]);
   page.innerHTML = `
-    <div class="page-head"><div><h2>รับเข้า–เบิกออก</h2><p class="muted small">เลือกงานที่ต้องทำ ระบบเก็บชื่อและเวลาให้อัตโนมัติ</p></div></div>
-    <div class="tabs"><button data-tab="receive">รับเข้า</button><button data-tab="issue">เบิกออก</button></div>
+    <div class="page-head"><div><h2>นำเข้า–นำออก</h2><p class="muted small">เลือกงานที่ต้องทำ ระบบจะบันทึกผู้ทำรายการและเวลาอัตโนมัติ</p></div></div>
+    <div class="tabs"><button data-tab="receive">นำเข้า</button><button data-tab="issue">นำออก</button></div>
     <div id="movePane"></div>`;
 
   const draw = tab => {
@@ -432,7 +515,7 @@ async function renderMove(defaultTab = 'receive') {
           <div class="form-grid two"><label>Lot<input id="rLot" required autocomplete="off"></label><label>วันหมดอายุ<input id="rExp" type="date"></label></div>
           <label>จำนวน<input id="rQty" type="number" min="0.01" step="0.01" required inputmode="decimal"></label>
           <p class="field-hint">หลังบันทึกสามารถกดพิมพ์ QR Sticker และหน้าพิมพ์จะเด้งขึ้นทันที</p>
-          <button class="primary" type="submit">${icon('plus')} บันทึกรับเข้า</button>
+          <button class="primary" type="submit">${icon('plus')} บันทึกนำเข้า</button>
         </form>`;
       $('#receiveForm').addEventListener('submit', receive);
     } else {
@@ -450,7 +533,7 @@ async function renderMove(defaultTab = 'receive') {
           <div id="selectedLot"></div>
           <label>จำนวน<input id="iQty" type="number" min="0.01" step="0.01" value="1" required inputmode="decimal"></label>
           <label>หมายเหตุ<textarea id="iReason" rows="2" placeholder="ระบุเมื่อต้องการ"></textarea></label>
-          <button class="primary" type="submit">${icon('minus')} ยืนยันเบิกออก</button>
+          <button class="primary" type="submit">${icon('minus')} ยืนยันนำออก</button>
         </form>`;
 
       const select = $('#iLot');
@@ -547,7 +630,7 @@ function openIssueModal(l) {
     <form id="quickIssueForm" class="form-grid" style="margin-top:15px">
       <label>จำนวน<input id="quickIssueQty" type="number" min="0.01" max="${Number(l.balance)}" step="0.01" value="1" required inputmode="decimal"></label>
       <label>หมายเหตุ<textarea id="quickIssueReason" rows="2" placeholder="ระบุเมื่อต้องการ"></textarea></label>
-      <button class="primary" type="submit">${icon('minus')} ยืนยันเบิกออก</button>
+      <button class="primary" type="submit">${icon('minus')} ยืนยันนำออก</button>
     </form>`);
   $('#quickIssueForm').addEventListener('submit', async e => {
     e.preventDefault();
@@ -640,30 +723,51 @@ async function renderWeekly() {
     page.innerHTML = '<div class="card empty">ยังไม่มีรอบตรวจ</div>';
     return;
   }
-  const {data, error} = await sb.from('v_weekly_check_items').select('*').eq('check_id', check.id).order('material_code').order('lot_no');
+  const [{data, error}, staffRes] = await Promise.all([
+    sb.from('v_weekly_check_items').select('*').eq('check_id', check.id).order('material_code').order('lot_no'),
+    sb.from('staff_directory').select('*').eq('active', true).order('display_name')
+  ]);
   if (error) throw error;
+  if (staffRes.error) throw staffRes.error;
   const items = data || [];
+  const staffList = staffRes.data || [];
   const done = items.filter(x => x.checked_at).length;
   const pct = items.length ? Math.round(done * 100 / items.length) : 100;
 
+  const ownerSet = new Map();
+  items.forEach(i => {
+    if (i.responsible_email && !ownerSet.has(i.responsible_email)) ownerSet.set(i.responsible_email, i.responsible_name || i.responsible_email);
+  });
+  const ownerOptions = ['<option value="mine">ของฉัน</option>', '<option value="all">ทุกคน</option>'].concat([...ownerSet.entries()].sort((a,b)=>String(a[1]).localeCompare(String(b[1]), 'th')).map(([email, name]) => `<option value="${esc(email)}">${esc(name)}</option>`)).join('');
+
   page.innerHTML = `
     <div class="page-head"><div><h2>ตรวจสต๊อกวันศุกร์</h2><p class="muted small">รอบวันที่ ${d(check.week_friday)}</p></div><span class="badge ${check.status === 'COMPLETED' ? 'ok' : 'info'}">${check.status === 'COMPLETED' ? 'เสร็จแล้ว' : `${done}/${items.length}`}</span></div>
-    <div class="card"><div class="check-info"><div><strong>ความคืบหน้า ${pct}%</strong><div class="muted small">ตรวจครบทุก Lot แล้วจึงปิดรอบได้</div></div></div><div class="progress" style="margin-top:13px"><span style="width:${pct}%"></span></div></div>
-    <div class="filters" style="margin-top:13px"><button class="chip active" data-wf="mine">งานของฉัน</button><button class="chip" data-wf="pending">ยังไม่ตรวจ</button><button class="chip" data-wf="all">ทั้งหมด</button><button class="chip" data-wf="mismatch">เคยไม่ตรง</button></div>
+    <div class="card"><div class="check-info"><div><strong>ความคืบหน้า ${pct}%</strong><div class="muted small">กรองดูตามเจ้าหน้าที่แต่ละคนได้</div></div></div><div class="progress" style="margin-top:13px"><span style="width:${pct}%"></span></div></div>
+    <div class="weekly-tools">
+      <label>กรองเจ้าหน้าที่<select id="weeklyOwnerFilter">${ownerOptions}</select></label>
+      <div class="filters" style="margin-bottom:0"><button class="chip active" data-wf="pending">ยังไม่ตรวจ</button><button class="chip" data-wf="mine">งานของฉัน</button><button class="chip" data-wf="all">ทั้งหมด</button><button class="chip" data-wf="mismatch">เคยไม่ตรง</button></div>
+    </div>
     <div id="checkList" class="list"></div>
     ${check.status !== 'COMPLETED' ? '<button id="completeCheck" class="primary" style="width:100%;margin-top:15px">เสร็จสิ้นการตรวจสต๊อก</button>' : ''}`;
 
-  let f = 'mine';
+  let f = 'pending';
+  const ownerFilter = $('#weeklyOwnerFilter');
+  ownerFilter.value = profile.role === 'admin' ? 'all' : 'mine';
+
   const draw = () => {
     let arr = items;
-    if (f === 'mine') arr = arr.filter(x => x.responsible_email === profile.email || profile.role === 'admin');
+    const owner = ownerFilter.value;
+    if (owner === 'mine') arr = arr.filter(x => x.responsible_email === profile.email || x.checked_by_email === profile.email || profile.role === 'admin');
+    else if (owner !== 'all') arr = arr.filter(x => x.responsible_email === owner);
+    if (f === 'mine') arr = arr.filter(x => x.responsible_email === profile.email || x.checked_by_email === profile.email || profile.role === 'admin');
     if (f === 'pending') arr = arr.filter(x => !x.checked_at);
     if (f === 'mismatch') arr = arr.filter(x => x.result === 'ADJUSTED');
     $('#checkList').innerHTML = arr.map(x => `
       <div class="card check-card ${x.checked_at ? (x.result === 'ADJUSTED' ? 'mismatch' : 'checked') : ''}">
         <div class="check-info"><div><strong>${esc(x.material_code)} · ${esc(x.material_name)}</strong><div class="lot-meta">${esc(lotKey(x))} · ระบบ ${qty(x.current_balance)} ${esc(x.unit)}</div><div class="lot-meta">ผู้ดูแล: ${esc(x.responsible_name || '-')}</div>${x.checked_at ? `<div class="lot-meta">ตรวจโดย ${esc(x.checked_by_name || x.checked_by_email)} · ${dt(x.checked_at)}</div>` : ''}</div>${x.checked_at ? `<span class="badge ${x.result === 'MATCHED' ? 'ok' : 'warn'}">${x.result === 'MATCHED' ? 'ตรง' : 'ปรับแล้ว'}</span>` : `<button class="mini" data-check="${esc(x.item_id)}">ตรวจ</button>`}</div>
-      </div>`).join('') || '<div class="card empty">ไม่มีรายการ</div>';
+      </div>`).join('') || '<div class="card empty">ไม่มีรายการตามตัวกรองนี้</div>';
   };
+  ownerFilter.addEventListener('change', draw);
   $$('[data-wf]').forEach(b => b.addEventListener('click', () => {
     f = b.dataset.wf;
     $$('[data-wf]').forEach(x => x.classList.toggle('active', x === b));
@@ -749,29 +853,41 @@ async function renderAdmin() {
   ]);
   if (me || se) throw me || se;
   materialsCache = [];
+  window._adminMaterials = m;
+  window._adminStaff = s;
   page.innerHTML = `
-    <div class="page-head"><div><h2>ตั้งค่าระบบ</h2><p class="muted small">จัดการผู้ใช้และข้อมูลวัสดุหลัก</p></div></div>
+    <div class="page-head"><div><h2>ตั้งค่าระบบ</h2><p class="muted small">แอดมินสามารถเปลี่ยนสิทธิ์และเปลี่ยนผู้ดูแลสินค้าได้ตลอด</p></div></div>
     <div class="section-title"><h3>ผู้ใช้งาน</h3></div>
     <div class="table-wrap"><table class="data-table"><thead><tr><th>ชื่อ</th><th>อีเมล</th><th>สิทธิ์</th></tr></thead><tbody>${s.map(x => `<tr><td>${esc(x.display_name)}</td><td>${esc(x.email)}</td><td><select data-role-email="${esc(x.email)}"><option value="staff" ${x.role === 'staff' ? 'selected' : ''}>เจ้าหน้าที่</option><option value="admin" ${x.role === 'admin' ? 'selected' : ''}>ผู้ดูแลระบบ</option></select></td></tr>`).join('')}</tbody></table></div>
-    <div class="section-title"><h3>วัสดุหลัก</h3></div>
-    <div class="list">${m.map(x => `<div class="card lot-card"><div><strong>${esc(x.code)} · ${esc(x.name)}</strong><div class="lot-meta">ขั้นต่ำ ${qty(x.min_qty)} ${esc(x.unit)} · ${esc(x.responsible_email || '-')}</div><div class="lot-meta">ชื่อบนสติ๊กเกอร์: ${esc(x.label_name || x.name)}</div></div><button class="mini" data-edit-material="${esc(x.code)}">แก้ไข</button></div>`).join('')}</div>`;
+
+    <div class="section-title"><h3>กำหนดผู้ดูแลวัสดุหลัก</h3></div>
+    <div class="table-wrap"><table class="data-table"><thead><tr><th>รหัส</th><th>ชื่อวัสดุ</th><th>ขั้นต่ำ</th><th>ผู้ดูแล</th><th>จัดการ</th></tr></thead><tbody>${m.map(x => `<tr><td>${esc(x.code)}</td><td><strong>${esc(x.name)}</strong><div class="muted small">ชื่อบนสติ๊กเกอร์: ${esc(x.label_name || x.name)}</div></td><td>${qty(x.min_qty)} ${esc(x.unit)}</td><td><select data-owner-code="${esc(x.code)}">${ownerOptions(s, x.responsible_email || '')}</select></td><td><button class="mini" data-edit-material="${esc(x.code)}">แก้ไข</button></td></tr>`).join('')}</tbody></table></div>`;
+
   $$('[data-role-email]').forEach(sel => sel.addEventListener('change', async () => {
     const {error} = await sb.from('staff_directory').update({role:sel.value}).eq('email', sel.dataset.roleEmail);
     if (error) return toast(errMsg(error), true);
     toast('บันทึกสิทธิ์แล้ว');
   }));
-  window._adminMaterials = m;
+
+  $$('[data-owner-code]').forEach(sel => sel.addEventListener('change', async () => {
+    const {error} = await sb.from('materials').update({responsible_email: sel.value || null}).eq('code', sel.dataset.ownerCode);
+    if (error) return toast(errMsg(error), true);
+    stockCache = [];
+    materialsCache = [];
+    toast('เปลี่ยนผู้ดูแลแล้ว');
+  }));
 }
 
 function openMaterialEditor(code) {
   const x = (window._adminMaterials || []).find(m => m.code === code);
+  const staff = window._adminStaff || [];
   if (!x) return;
   openModal(`
     <h3>${esc(x.code)} · ${esc(x.name)}</h3>
     <form id="matForm" class="form-grid">
       <label>ชื่อบนสติ๊กเกอร์<input id="matLabel" maxlength="60" value="${esc(x.label_name || x.name)}"></label>
       <label>จำนวนขั้นต่ำ<input id="matMin" type="number" min="0" step="0.01" value="${Number(x.min_qty || 0)}"></label>
-      <label>ผู้รับผิดชอบ (อีเมล)<input id="matOwner" type="email" value="${esc(x.responsible_email || '')}"></label>
+      <label>ผู้รับผิดชอบ<select id="matOwner">${ownerOptions(staff, x.responsible_email || '')}</select></label>
       <button class="primary" type="submit">บันทึก</button>
     </form>`);
   $('#matForm').addEventListener('submit', async e => {
@@ -779,10 +895,12 @@ function openMaterialEditor(code) {
     const {error} = await sb.from('materials').update({
       label_name:$('#matLabel').value.trim(),
       min_qty:Number($('#matMin').value),
-      responsible_email:$('#matOwner').value.trim().toLowerCase() || null
+      responsible_email:$('#matOwner').value || null
     }).eq('code', code);
     if (error) return toast(errMsg(error), true);
     closeModal();
+    stockCache = [];
+    materialsCache = [];
     toast('บันทึกวัสดุแล้ว');
     renderAdmin();
   });

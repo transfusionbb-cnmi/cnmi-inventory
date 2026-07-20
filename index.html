@@ -79,30 +79,53 @@
   </main>
 
   <div id="appView" class="app hidden">
-    <header class="topbar">
-      <div class="topbar-brand">
-        <img src="icons/icon-72.png" alt="" class="topbar-logo">
+    <aside class="desktop-sidebar" aria-label="เมนูหลักสำหรับคอมพิวเตอร์">
+      <div class="sidebar-brand">
+        <img src="icons/icon-72.png" alt="" class="sidebar-logo">
         <div>
           <strong>CNMI Inventory</strong>
-          <small id="userBadge"></small>
+          <small>ระบบบริหารจัดการสต๊อกวัสดุ</small>
         </div>
       </div>
-      <div class="top-actions">
-        <a class="app-switch-link" id="staffPlannerLink" href="https://staff.cnmiblood.com" target="_blank" rel="noopener noreferrer" title="เปิด Staff Planner">
-          <span>Staff Planner</span><svg class="icon"><use href="#i-external"></use></svg>
-        </a>
-        <button class="icon-button" data-route="help" title="คู่มือ" aria-label="คู่มือ"><svg class="icon"><use href="#i-help"></use></svg></button>
-        <button class="icon-button" id="logoutBtn" title="ออกจากระบบ" aria-label="ออกจากระบบ"><svg class="icon"><use href="#i-logout"></use></svg></button>
-      </div>
-    </header>
-    <main id="page" class="page"></main>
-    <nav class="bottom-nav" aria-label="เมนูหลัก">
-      <button data-route="home"><svg class="nav-icon"><use href="#i-home"></use></svg><small>หน้าหลัก</small></button>
-      <button data-route="stock"><svg class="nav-icon"><use href="#i-box"></use></svg><small>สต๊อก</small></button>
-      <button data-route="move"><svg class="nav-icon"><use href="#i-swap"></use></svg><small>รับ–เบิก</small></button>
-      <button data-route="weekly"><svg class="nav-icon"><use href="#i-check"></use></svg><small>ตรวจศุกร์</small></button>
-      <button data-route="activity"><svg class="nav-icon"><use href="#i-history"></use></svg><small>ประวัติ</small></button>
-    </nav>
+      <nav class="side-nav" aria-label="เมนูคอมพิวเตอร์">
+        <button class="side-link" data-route="home"><svg class="nav-icon"><use href="#i-home"></use></svg><span>หน้าหลัก</span></button>
+        <button class="side-link" data-route="stock"><svg class="nav-icon"><use href="#i-box"></use></svg><span>สต๊อกคงเหลือ</span></button>
+        <button class="side-link" data-route="move" data-move-tab="receive"><svg class="nav-icon"><use href="#i-plus"></use></svg><span>นำเข้า</span></button>
+        <button class="side-link" data-route="move" data-move-tab="issue"><svg class="nav-icon"><use href="#i-minus"></use></svg><span>นำออก</span></button>
+        <button class="side-link" data-route="weekly"><svg class="nav-icon"><use href="#i-check"></use></svg><span>ตรวจวันศุกร์</span></button>
+        <button class="side-link" data-route="activity"><svg class="nav-icon"><use href="#i-history"></use></svg><span>ประวัติ</span></button>
+        <button class="side-link admin-only hidden" data-route="admin"><svg class="nav-icon"><use href="#i-settings"></use></svg><span>ตั้งค่า</span></button>
+        <button class="side-link" data-route="help"><svg class="nav-icon"><use href="#i-help"></use></svg><span>คู่มือ</span></button>
+      </nav>
+    </aside>
+
+    <div class="content-shell">
+      <header class="topbar">
+        <div class="topbar-brand">
+          <img src="icons/icon-72.png" alt="" class="topbar-logo">
+          <div>
+            <strong>CNMI Inventory</strong>
+            <small id="userBadge"></small>
+          </div>
+        </div>
+        <div class="top-actions">
+          <a class="app-switch-link" id="staffPlannerLink" href="https://staff.cnmiblood.com" target="_blank" rel="noopener noreferrer" title="เปิด Staff Planner">
+            <span>Staff Planner</span><svg class="icon"><use href="#i-external"></use></svg>
+          </a>
+          <button class="icon-button admin-only hidden" data-route="admin" title="ตั้งค่า" aria-label="ตั้งค่า"><svg class="icon"><use href="#i-settings"></use></svg></button>
+          <button class="icon-button" data-route="help" title="คู่มือ" aria-label="คู่มือ"><svg class="icon"><use href="#i-help"></use></svg></button>
+          <button class="icon-button" id="logoutBtn" title="ออกจากระบบ" aria-label="ออกจากระบบ"><svg class="icon"><use href="#i-logout"></use></svg></button>
+        </div>
+      </header>
+      <main id="page" class="page"></main>
+      <nav class="bottom-nav" aria-label="เมนูหลัก">
+        <button data-route="home"><svg class="nav-icon"><use href="#i-home"></use></svg><small>หน้าหลัก</small></button>
+        <button data-route="stock"><svg class="nav-icon"><use href="#i-box"></use></svg><small>สต๊อก</small></button>
+        <button data-route="move" data-move-tab="receive"><svg class="nav-icon"><use href="#i-plus"></use></svg><small>นำเข้า</small></button>
+        <button data-route="move" data-move-tab="issue"><svg class="nav-icon"><use href="#i-minus"></use></svg><small>นำออก</small></button>
+        <button data-route="weekly"><svg class="nav-icon"><use href="#i-check"></use></svg><small>ตรวจศุกร์</small></button>
+      </nav>
+    </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>

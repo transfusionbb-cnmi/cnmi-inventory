@@ -103,3 +103,46 @@ button.large{min-height:52px;font-size:1rem}
   .card{padding:15px;border-radius:19px}.lot-card{grid-template-columns:minmax(0,1fr) auto}.qty{font-size:1.35rem}.actions{gap:6px}.mini{padding:8px 10px}
   .modal{padding:8px 8px calc(8px + var(--safe-bottom))}.modal-card{padding:21px 17px}
 }
+
+
+/* v1.2.0 desktop sidebar + overview improvements */
+.app{padding-bottom:calc(88px + var(--safe-bottom))}
+.content-shell{min-width:0}
+.desktop-sidebar{display:none}
+.overview-grid{display:grid;gap:14px;margin-top:16px}
+.table-card,.activity-panel{min-width:0}
+.section-title.compact{margin:0 0 12px}
+.segmented{display:inline-flex;gap:6px;background:#eef5f3;padding:4px;border-radius:999px}
+.seg{border:0;background:transparent;color:#53605d;padding:8px 12px;border-radius:999px;font-weight:800}
+.seg.active{background:#fff;color:var(--brand-strong);box-shadow:0 3px 10px rgba(0,0,0,.08)}
+.owner-summary-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+.owner-box{border:1px solid var(--line);border-radius:18px;padding:14px;background:linear-gradient(180deg,#fff,#f9fcfb)}
+.owner-box strong{display:block;margin-bottom:4px}
+.owner-stats{display:grid;gap:6px;margin-top:10px;font-size:.86rem;color:#42504d}
+.activity-panel .activity-list{display:grid;gap:10px}
+.weekly-tools{display:grid;gap:12px;align-items:end;margin:14px 0}
+.kpi-grid-6{grid-template-columns:repeat(2,minmax(0,1fr))}
+.side-nav{display:grid;gap:8px}
+.side-link{display:flex;align-items:center;gap:10px;width:100%;border:0;background:transparent;color:#52615e;border-radius:14px;padding:11px 12px;font-weight:800;text-align:left}
+.side-link:hover{background:#edf6f4;color:var(--brand-strong)}
+.side-link.active{background:var(--brand);color:#fff;box-shadow:0 10px 20px rgba(8,123,111,.16)}
+.sidebar-brand{display:flex;align-items:center;gap:12px;margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid var(--line)}
+.sidebar-logo{width:46px;height:46px;border-radius:14px;box-shadow:0 7px 16px rgba(4,94,85,.18)}
+.sidebar-brand strong{display:block}
+.sidebar-brand small{display:block;color:var(--muted);margin-top:3px}
+
+@media(min-width:980px){
+  .app{display:grid;grid-template-columns:280px minmax(0,1fr);padding-bottom:0}
+  .desktop-sidebar{display:block;position:sticky;top:0;height:100vh;padding:22px 18px;background:rgba(255,255,255,.95);border-right:1px solid var(--line);backdrop-filter:blur(18px)}
+  .content-shell{min-height:100vh}
+  .topbar{padding-left:22px;padding-right:22px}
+  .page{max-width:none;padding:24px 22px 34px}
+  .bottom-nav{display:none}
+  .overview-grid{grid-template-columns:minmax(0,1.45fr) minmax(320px,.9fr)}
+  .kpi-grid-6{grid-template-columns:repeat(6,minmax(0,1fr))}
+  .weekly-tools{grid-template-columns:280px 1fr}
+}
+
+@media(max-width:979px){
+  .desktop-sidebar{display:none!important}
+}
