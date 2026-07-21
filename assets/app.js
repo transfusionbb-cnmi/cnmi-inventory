@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.2';
+const APP_VERSION = '1.4.3';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const C = window.APP_CONFIG || {};
 const configured = C.SUPABASE_URL && !C.SUPABASE_URL.includes('YOUR-PROJECT') && C.SUPABASE_ANON_KEY && !C.SUPABASE_ANON_KEY.includes('YOUR-ANON');
@@ -1304,6 +1304,82 @@ async function confirmScannedCheck(itemId) {
   closeModal();stockCache=[]; scanLotsCache=[]; scanLotsLoadedAt=0;inventorySummaryCache=[];toast('ยืนยันตรวจแล้ว ยอดตรงกับระบบ');
 }
 
+
+function defaultLotFromToday(now = new Date()) {
+  const dd = String(now.getDate()).padStart(2,'0');
+  const mm = String(now.getMonth() + 1).padStart(2,'0');
+  const yyyy = String(now.getFullYear());
+  return `${dd}${mm}${yyyy}`;
+}
+
+function sanitizeLotValue(value) {
+  return String(value ?? '').normalize('NFKC').toUpperCase().replace(/[^A-Z0-9]/g,'');
+}
+
+function normalizeScannedCode(value) {
+  return String(value ?? '')
+    .normalize('NFKC')
+    .toUpperCase()
+    .replace(/[‐‑‒–—−]+/g,'-')
+    .replace(/\|+/g,'-')
+    .replace(/\s+/g,'')
+    .trim();
+}
+
+function prepareLotInput(input, {autoFillBlank = false, showFallbackHint = false} = {}) {
+  if (!input) return '';
+  const original = String(input.value ?? '');
+  let value = sanitizeLotValue(original);
+  const removedInvalid = value !== original.trim().toUpperCase();
+  if (!value && autoFillBlank) value = defaultLotFromToday();
+  input.value = value;
+  const ruleEl = $('#lotRule');
+  if (!value) {
+    input.setCustomValidity('');
+    if (ruleEl) {
+      ruleEl.classList.remove('invalid');
+      ruleEl.textContent = showFallbackHint ? `ยังไม่ระบุ Lot · ระบบจะใช้วันที่นำเข้า ${defaultLotFromToday()}` : 'กรอกได้เฉพาะตัวเลข 0–9 และภาษาอังกฤษ A–Z';
+    }
+    return value;
+  }
+  if (!/^[A-Z0-9]+$/.test(value)) {
+    input.setCustomValidity('Lot ต้องเป็นตัวเลขและ/หรือตัวอักษรภาษาอังกฤษเท่านั้น');
+    if (ruleEl) {
+      ruleEl.classList.add('invalid');
+      ruleEl.textContent = 'Lot ต้องมีเฉพาะตัวเลข 0–9 และภาษาอังกฤษ A–Z เท่านั้น';
+    }
+    return value;
+  }
+  input.setCustomValidity('');
+  if (ruleEl) {
+    ruleEl.classList.remove('invalid');
+    ruleEl.textContent = removedInvalid
+      ? 'ระบบลบอักขระที่ไม่อนุญาตออกให้อัตโนมัติแล้ว'
+      : 'กรอกได้เฉพาะตัวเลข 0–9 และภาษาอังกฤษ A–Z · ถ้าว่าง ระบบจะใช้วันที่นำเข้า';
+  }
+  return value;
+}
+
+function openIssueLookupNotFound(code, source = 'manual') {
+  const normalized = normalizeScannedCode(code);
+  const looksLikeInventory = /^[A-Z0-9]+(?:-[A-Z0-9]+)*$/.test(normalized);
+  const title = looksLikeInventory ? 'ไม่พบข้อมูลรหัสนี้ในระบบ' : 'QR Code นี้ไม่ใช่รูปแบบสติ๊กเกอร์ Inventory';
+  const body = looksLikeInventory
+    ? `<p>กรุณาตรวจสอบว่ารหัสถูกต้อง หรือรายการนี้อาจถูกนำเข้าข้อมูลไม่ครบ/ไม่ถูกต้อง</p><div class="notice">รหัสที่ระบบอ่านได้: <b>${esc(normalized || String(code || '').trim() || '-')}</b></div><ul class="field-hint" style="margin:10px 0 0 18px"><li>รายการนี้อาจยังไม่ถูกนำเข้า</li><li>Lot อาจถูกกรอกผิดรูปแบบ เช่น มีอักขระพิเศษ</li><li>Lot อาจถูกปิดหรือคงเหลือเป็น 0 แล้ว</li></ul>`
+    : `<p>กรุณาตรวจสอบว่ากำลังสแกนสติ๊กเกอร์ของระบบนี้อยู่</p><div class="notice">ค่าที่ระบบอ่านได้: <b>${esc(normalized || String(code || '').trim() || '-')}</b></div>`;
+  openModal(`<h3>${title}</h3>${body}<form id="retryLookupForm" class="form-grid" style="margin-top:14px"><label>ลองพิมพ์/แก้ไขรหัสอีกครั้ง<input id="retryLookupCode" autocomplete="off" placeholder="เช่น BB020-69020" value="${esc(normalized || String(code || '').trim())}"></label><div class="actions"><button class="primary" type="submit">ค้นหาอีกครั้ง</button><button class="secondary" type="button" id="retryScanBtn">${icon('camera')} สแกนใหม่</button><button class="ghost modal-close" type="button">ปิด</button></div></form>`);
+  $('#retryLookupForm')?.addEventListener('submit', e => {
+    e.preventDefault();
+    const retry = $('#retryLookupCode')?.value || '';
+    closeModal();
+    resolveIssueCode(retry, 'manual');
+  });
+  $('#retryScanBtn')?.addEventListener('click', () => {
+    closeModal();
+    startCameraScanner();
+  });
+}
+
 async function renderMove(defaultTab = 'receive') {
   page.innerHTML = `<div class="page-head"><div><h2>นำเข้า–นำออก</h2></div></div><div class="tabs move-tabs"><button data-tab="receive">${icon('plus')} นำเข้า</button><button data-tab="issue">${icon('minus')} นำออก</button></div><div id="movePane"></div>`;
 
@@ -1324,22 +1400,11 @@ async function renderMove(defaultTab = 'receive') {
       const ownerOptions='<option value="">ทุกคน</option>'+(staffRes.data||[]).map(x=>`<option value="${esc(x.email)}">${esc(x.display_name)}</option>`).join('');
       if (historyRes.error) throw historyRes.error;
       const historyRows=historyRes.data || [];
-      $('#movePane').innerHTML = `<div class="move-layout"><form id="receiveForm" class="card form-card form-grid"><div class="form-title"><span>${icon('plus')}</span><div><h3>บันทึกนำเข้า</h3></div></div><label>กรองผู้ดูแล<select id="rOwnerFilter">${ownerOptions}</select></label>${materialComboboxMarkup({id:'rMat',label:'วัสดุ',placeholder:'พิมพ์ชื่อวัสดุ เช่น Panel, Papain',materials:mats})}<div class="form-grid two"><label>Lot<input id="rLot" required autocomplete="off" autocapitalize="characters" maxlength="60" pattern="[A-Za-z0-9]+" placeholder="เช่น 8A145"><small id="lotRule" class="field-hint lot-rule">เฉพาะตัวเลขและภาษาอังกฤษ</small></label><label>วันหมดอายุ<input id="rExp" type="date"></label></div><label>จำนวน<input id="rQty" type="number" min="0.01" step="0.01" required inputmode="decimal"></label><button class="primary" type="submit">${icon('plus')} บันทึกนำเข้า</button></form><section class="card history-card"><div class="section-title compact"><div><h3>ประวัตินำเข้าล่าสุด</h3></div><button class="mini ghost" data-route="reports">ดูรายงาน</button></div><div class="table-wrap"><table class="data-table"><thead><tr><th>วันเวลา</th><th>สินค้า</th><th>Lot</th><th>จำนวน</th><th>ยอดหลังทำ</th><th>ผู้บันทึก</th></tr></thead><tbody>${transactionRows(historyRows.slice(0,30)) || '<tr><td colspan="6" class="empty">ไม่มีรายการ</td></tr>'}</tbody></table></div></section></div>`;
+      $('#movePane').innerHTML = `<div class="move-layout"><form id="receiveForm" class="card form-card form-grid"><div class="form-title"><span>${icon('plus')}</span><div><h3>บันทึกนำเข้า</h3></div></div><label>กรองผู้ดูแล<select id="rOwnerFilter">${ownerOptions}</select></label>${materialComboboxMarkup({id:'rMat',label:'วัสดุ',placeholder:'พิมพ์ชื่อวัสดุ เช่น Panel, Papain',materials:mats})}<div class="form-grid two"><label>Lot<input id="rLot" autocomplete="off" autocapitalize="characters" maxlength="60" inputmode="latin" pattern="[A-Za-z0-9]*" placeholder="เช่น 8A145 หรือเว้นว่างเพื่อใช้วันที่นำเข้า"><small id="lotRule" class="field-hint lot-rule">กรอกได้เฉพาะตัวเลข 0–9 และภาษาอังกฤษ A–Z · ถ้าว่าง ระบบจะใช้วันที่นำเข้า</small></label><label>วันหมดอายุ<input id="rExp" type="date"><small class="field-hint">ถ้าไม่มีวันหมดอายุ สามารถเว้นว่างได้</small></label></div><label>จำนวน<input id="rQty" type="number" min="0.01" step="0.01" required inputmode="decimal"></label><button class="primary" type="submit">${icon('plus')} บันทึกนำเข้า</button></form><section class="card history-card"><div class="section-title compact"><div><h3>ประวัตินำเข้าล่าสุด</h3></div><button class="mini ghost" data-route="reports">ดูรายงาน</button></div><div class="table-wrap"><table class="data-table"><thead><tr><th>วันเวลา</th><th>สินค้า</th><th>Lot</th><th>จำนวน</th><th>ยอดหลังทำ</th><th>ผู้บันทึก</th></tr></thead><tbody>${transactionRows(historyRows.slice(0,30)) || '<tr><td colspan="6" class="empty">ไม่มีรายการ</td></tr>'}</tbody></table></div></section></div>`;
       setupMaterialCombobox('rMat',mats,{ownerSelectId:'rOwnerFilter',maxResults:20});
       const lotInput=$('#rLot');
-      const validateLot=()=>{
-        const value=lotInput.value.trim();
-        if (value && !/^[A-Za-z0-9]+$/.test(value)) {
-          lotInput.setCustomValidity('Lot ต้องเป็นตัวเลขและ/หรือตัวอักษรภาษาอังกฤษเท่านั้น');
-          $('#lotRule').classList.add('invalid');
-        } else {
-          lotInput.setCustomValidity('');
-          $('#lotRule').classList.remove('invalid');
-          if (value) lotInput.value=value.toUpperCase();
-        }
-      };
-      lotInput.addEventListener('input',validateLot);
-      lotInput.addEventListener('blur',validateLot);
+      lotInput.addEventListener('input',()=>prepareLotInput(lotInput));
+      lotInput.addEventListener('blur',()=>prepareLotInput(lotInput,{autoFillBlank:true,showFallbackHint:true}));
       $('#receiveForm').addEventListener('submit', receive);
     } else {
       const historyRes = await sb.from('v_transaction_history').select('*').eq('tx_type','ISSUE').limit(60);
@@ -1360,12 +1425,14 @@ async function receive(e) {
     $('#rMatSearch')?.focus();
     return toast('กรุณาพิมพ์ชื่อและเลือกวัสดุจากรายการ', true);
   }
-  const lot=$('#rLot').value.trim().toUpperCase();
-  if (!/^[A-Za-z0-9]+$/.test(lot)) {
-    $('#rLot').focus();
-    return toast('Lot กรอกได้เฉพาะตัวเลขและ/หรือตัวอักษรภาษาอังกฤษ A–Z เท่านั้น', true);
+  const lotInput = $('#rLot');
+  const rawLotBefore = String(lotInput.value || '').trim();
+  const lot = prepareLotInput(lotInput, {autoFillBlank:true,showFallbackHint:true});
+  if (!lot || !/^[A-Z0-9]+$/.test(lot)) {
+    lotInput.focus();
+    return toast('Lot ต้องมีเฉพาะตัวเลข 0–9 และ/หรือภาษาอังกฤษ A–Z เท่านั้น', true);
   }
-  $('#rLot').value=lot;
+  if (!rawLotBefore) toast(`ไม่ได้กรอก Lot ระบบจึงใช้วันที่นำเข้า ${lot} เป็น Lot อัตโนมัติ`);
   const btn = e.submitter;
   btn.disabled = true;
   const {data, error} = await sb.rpc('fn_receive_stock', {
@@ -1393,18 +1460,22 @@ function findLotByCode(raw, lots = stockCache) {
   } catch (_) {}
   try { value = decodeURIComponent(value); } catch (_) {}
   value = value.replace(/^INV[:|]/i, '').trim();
-  const norm = value.toUpperCase().replace(/\s+/g, '');
+  const norm = normalizeScannedCode(value);
+  const compact = norm.replace(/[^A-Z0-9]/g, '');
   return lots.find(l => {
     const aliases = [...pgArray(l.legacy_codes), ...pgArray(l.legacy_lot_keys)];
     const keys = [l.lot_id, lotKey(l), `${l.material_code}-${l.lot_no}`, `${l.material_code}|${l.lot_no}`, ...aliases];
-    return keys.some(k => String(k || '').toUpperCase().replace(/\s+/g, '') === norm);
+    return keys.some(k => {
+      const keyNorm = normalizeScannedCode(k);
+      return keyNorm === norm || keyNorm.replace(/[^A-Z0-9]/g, '') === compact;
+    });
   }) || null;
 }
 
-async function resolveIssueCode(code) {
+async function resolveIssueCode(code, source = 'manual') {
   const lots = await getLots(true);
   const l = findLotByCode(code, lots);
-  if (!l) return toast('ไม่พบ Lot จาก QR Code นี้ หรือ Lot ถูกนำออกหมดแล้ว', true);
+  if (!l) return openIssueLookupNotFound(code, source);
   if (isExpired(l)) return toast('Lot นี้หมดอายุแล้ว ให้ยืนยันนำออกจากพื้นที่ในเมนูตรวจวันศุกร์', true);
   openIssueModal(l);
 }
@@ -1499,12 +1570,20 @@ async function startCameraScanner(mode = 'issue') {
           } else if (typeof window.jsQR === 'function') {
             const sourceW = video.videoWidth || 640;
             const sourceH = video.videoHeight || 480;
-            const scale = Math.min(1, 720 / sourceW);
-            canvas.width = Math.max(320, Math.round(sourceW * scale));
-            canvas.height = Math.max(240, Math.round(sourceH * scale));
+            const scale = Math.min(1, 1280 / Math.max(sourceW, sourceH));
+            canvas.width = Math.max(480, Math.round(sourceW * scale));
+            canvas.height = Math.max(360, Math.round(sourceH * scale));
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const result = window.jsQR(image.data, image.width, image.height, {inversionAttempts:'attemptBoth'});
+            let image = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            let result = window.jsQR(image.data, image.width, image.height, {inversionAttempts:'attemptBoth'});
+            if (!result) {
+              const cropX = Math.round(canvas.width * 0.12);
+              const cropY = Math.round(canvas.height * 0.18);
+              const cropW = Math.round(canvas.width * 0.76);
+              const cropH = Math.round(canvas.height * 0.64);
+              image = ctx.getImageData(cropX, cropY, cropW, cropH);
+              result = window.jsQR(image.data, image.width, image.height, {inversionAttempts:'attemptBoth'});
+            }
             if (finish(result?.data)) return;
           }
         } catch (_) {
