@@ -407,3 +407,15 @@ button.primary,button.secondary,button.danger,.mini,.chip,.tabs button,.side-lin
   .weekly-staff-summary-grid{grid-template-columns:1fr}.weekly-round-columns{grid-template-columns:1fr}
   .material-combo-results button{display:grid;justify-content:stretch}.material-combo-results button small{white-space:normal}
 }
+
+
+/* v1.4.1 — friendlier activity history */
+.activity-copy{min-width:0}
+.activity-title{display:block;color:var(--text);font-weight:700;line-height:1.35}
+.activity-detail{margin-top:3px;color:#40514e;font-size:.82rem;line-height:1.45}
+.activity-meta{margin-top:3px;color:var(--muted);font-size:.73rem;line-height:1.4}
+@media (max-width:720px){
+  .activity-title{font-size:.92rem}
+  .activity-detail{font-size:.8rem}
+  .activity-meta{font-size:.71rem}
+}

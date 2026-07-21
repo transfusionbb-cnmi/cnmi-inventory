@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.4.1';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const C = window.APP_CONFIG || {};
 const configured = C.SUPABASE_URL && !C.SUPABASE_URL.includes('YOUR-PROJECT') && C.SUPABASE_ANON_KEY && !C.SUPABASE_ANON_KEY.includes('YOUR-ANON');
@@ -15,6 +15,7 @@ let reportTab = '';
 let stockCache = [];
 let materialsCache = [];
 let inventorySummaryCache = [];
+let activityMaterialMap = null;
 let usageMaterialCode = '';
 let myStockTab = 'overview';
 let scannerStream = null;
@@ -719,9 +720,59 @@ function groupByOwner(summaryRows = []) {
   return [...map.values()].sort((a,b) => (b.expired_count + b.out_count + b.low_count) - (a.expired_count + a.out_count + a.low_count) || a.responsible_name.localeCompare(b.responsible_name, 'th'));
 }
 
+function seedActivityMaterialMap(rows = []) {
+  if (!activityMaterialMap) activityMaterialMap = new Map();
+  rows.forEach(row => {
+    const info = {
+      name: row.material_name || row.name || row.label_name || '',
+      unit: row.unit || '',
+      code: row.material_code || row.code || row.stock_code || ''
+    };
+    [row.material_code, row.code, row.stock_code].filter(Boolean).forEach(key => {
+      const norm = String(key).trim().toUpperCase();
+      const existing = activityMaterialMap.get(norm);
+      if (!existing || (!existing.name && info.name)) activityMaterialMap.set(norm, info);
+    });
+  });
+}
+
+async function loadActivityMaterials() {
+  if (activityMaterialMap?.size) return activityMaterialMap;
+  const {data, error} = await sb.from('materials').select('code,stock_code,name,label_name,unit,is_main,status').order('is_main', {ascending:false});
+  if (error) throw error;
+  seedActivityMaterialMap(data || []);
+  return activityMaterialMap;
+}
+
+function activityMaterialInfo(detail = {}) {
+  const code = detail.material_code || detail.stock_code || '';
+  const key = String(code).trim().toUpperCase();
+  const mapped = activityMaterialMap?.get(key) || {};
+  return {
+    code,
+    name: detail.material_name || detail.name || mapped.name || '',
+    unit: detail.unit || mapped.unit || ''
+  };
+}
+
 function activityCard(a) {
   const detail = a.summary || {};
-  return `<div class="activity-row"><span class="activity-dot">${icon(a.action === 'RECEIVE' ? 'plus' : a.action === 'ISSUE' ? 'minus' : a.action === 'LABEL_PRINT' ? 'print' : 'check')}</span><div><strong>${esc(a.action_label || a.action)}</strong><div class="muted small">${esc(detail.material_code || detail.stock_code || '')}${detail.lot_no ? ' · Lot ' + esc(detail.lot_no) : ''}${detail.before !== undefined ? ' · ' + qty(detail.before) + ' → ' + qty(detail.after) : ''}</div><div class="muted tiny">โดย ${esc(a.actor_name || a.actor_email || 'SYSTEM')} · ${dt(a.created_at)}</div></div></div>`;
+  const info = activityMaterialInfo(detail);
+  const actionText = a.action_label || a.action || 'ทำรายการ';
+  const title = info.name ? `${actionText} · ${info.name}` : actionText;
+  const detailParts = [];
+  if (detail.lot_no) detailParts.push(`Lot ${detail.lot_no}`);
+  if (detail.before !== undefined && detail.after !== undefined) {
+    detailParts.push(`คงเหลือ ${qty(detail.before)} → ${qty(detail.after)}${info.unit ? ' ' + info.unit : ''}`);
+  } else if (detail.quantity !== undefined) {
+    detailParts.push(`จำนวน ${qty(detail.quantity)}${info.unit ? ' ' + info.unit : ''}`);
+  }
+  const metaParts = [];
+  if (info.code) metaParts.push(`รหัส ${info.code}`);
+  metaParts.push(`โดย ${a.actor_name || a.actor_email || 'SYSTEM'}`);
+  metaParts.push(dt(a.created_at));
+  const iconName = a.action === 'RECEIVE' ? 'plus' : a.action === 'ISSUE' ? 'minus' : a.action === 'LABEL_PRINT' ? 'print' : 'check';
+  return `<div class="activity-row"><span class="activity-dot">${icon(iconName)}</span><div class="activity-copy"><strong class="activity-title">${esc(title)}</strong>${detailParts.length ? `<div class="activity-detail">${detailParts.map(esc).join(' · ')}</div>` : ''}<div class="activity-meta">${metaParts.map(esc).join(' · ')}</div></div></div>`;
 }
 
 async function renderHome() {
@@ -739,6 +790,7 @@ async function renderHome() {
 
   const summaries = summaryRes.data || [];
   inventorySummaryCache = summaries;
+  seedActivityMaterialMap(summaries);
   const activities = activityRes.data || [];
   const todayTx = todayTxRes.data || [];
   const expiredPendingCount = summaries.reduce((sum,x) => sum + Number(x.expired_pending_lots || 0), 0);
@@ -1536,6 +1588,7 @@ async function renderActivity() {
     const type=$('#activityType').value;
     if(!type){loaded=[];$('#activitySearch').disabled=true;$('#activityList').innerHTML='<div class="card select-first-state">'+icon('history')+'<div><strong>กรุณาเลือกประเภทกิจกรรม</strong><span>ยังไม่มีการโหลดประวัติ</span></div></div>';return;}
     $('#activityList').innerHTML='<div class="card usage-loading">กำลังโหลดกิจกรรมล่าสุด…</div>';
+    try { await loadActivityMaterials(); } catch (_) {}
     let q=sb.from('v_audit_activity').select('*');
     if(type==='receive')q=q.eq('action','RECEIVE');
     else if(type==='issue')q=q.eq('action','ISSUE');
