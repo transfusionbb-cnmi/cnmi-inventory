@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.4';
+const APP_VERSION = '1.4.5';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const C = window.APP_CONFIG || {};
 const configured = C.SUPABASE_URL && !C.SUPABASE_URL.includes('YOUR-PROJECT') && C.SUPABASE_ANON_KEY && !C.SUPABASE_ANON_KEY.includes('YOUR-ANON');
@@ -24,6 +24,8 @@ let scannerStream = null;
 let scannerTimer = null;
 let pendingIssueCode = new URLSearchParams(location.search).get('issue') || new URLSearchParams(location.search).get('lot');
 let deferredInstallPrompt = null;
+const MOVE_HISTORY_PAGE_SIZE = 7;
+const REPORT_PAGE_SIZE = 10;
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -636,7 +638,7 @@ function globalClick(e) {
   const exp = e.target.closest('[data-export-report]');
   if (exp) {
     e.preventDefault();
-    exportReport(exp.dataset.exportReport);
+    exportReport(exp.dataset.exportReport).catch(e => toast(errMsg(e), true));
   }
 }
 
@@ -1243,7 +1245,39 @@ async function loadMaterials() {
 }
 
 function transactionRows(rows, {showIssueMethod = false} = {}) {
-  return (rows || []).map(x => `<tr><td>${dt(x.created_at)}</td><td><strong>${esc(x.material_name)}</strong></td><td><span class="code-pill">${esc(x.lot_key)}</span></td><td>${x.tx_type === 'RECEIVE' ? '+' : ''}${qty(x.quantity_delta)} ${esc(x.unit)}</td><td>${qty(x.quantity_after)}</td>${showIssueMethod ? `<td>${issueMethodBadge(x.issue_method)}</td>` : ''}<td>${esc(x.created_by_name || x.created_by_email || 'SYSTEM')}</td></tr>`).join('');
+  return (rows || []).map(x => {
+    const recorder = x.created_by_name || x.created_by_email || 'SYSTEM';
+    return `<tr><td>${dt(x.created_at)}</td><td><strong>${esc(x.material_name)}</strong></td><td><span class="code-pill">${esc(x.lot_key)}</span></td><td class="quantity-cell">${x.tx_type === 'RECEIVE' ? '+' : ''}${qty(x.quantity_delta)} ${esc(x.unit)}</td><td class="balance-cell">${qty(x.quantity_after)}</td>${showIssueMethod ? `<td class="issue-method-cell">${issueMethodBadge(x.issue_method)}</td>` : ''}<td class="recorder-cell"><span class="recorder-name">${esc(recorder)}</span></td></tr>`;
+  }).join('');
+}
+
+function currentOperatorMarkup(title = 'ผู้บันทึกรายการ') {
+  const name = profile?.display_name || profile?.email || 'ผู้ใช้งานปัจจุบัน';
+  const initial = String(name).trim().charAt(0) || '?';
+  return `<div class="current-operator"><span class="operator-avatar">${esc(initial)}</span><div><small>${esc(title)}</small><strong>${esc(name)}</strong><span>ใช้ชื่อจากบัญชีที่เข้าสู่ระบบ เปลี่ยนเป็นคนอื่นไม่ได้</span></div></div>`;
+}
+
+async function fetchTransactionPage(txType, pageNumber = 1, pageSize = MOVE_HISTORY_PAGE_SIZE) {
+  const safePage = Math.max(1, Number(pageNumber) || 1);
+  const from = (safePage - 1) * pageSize;
+  const {data, error, count} = await sb.from('v_transaction_history')
+    .select('*', {count:'exact'})
+    .eq('tx_type', txType)
+    .order('created_at', {ascending:false})
+    .order('id', {ascending:false})
+    .range(from, from + pageSize - 1);
+  if (error) throw error;
+  return {rows:data || [], count:Number(count || 0), page:safePage, pageSize};
+}
+
+function moveHistoryMarkup(txType, result) {
+  const issue = txType === 'ISSUE';
+  const title = issue ? 'ประวัตินำออกล่าสุด' : 'ประวัตินำเข้าล่าสุด';
+  const reportTarget = issue ? 'issue' : 'receive';
+  const totalPages = Math.max(1, Math.ceil(result.count / result.pageSize));
+  const first = result.count ? ((result.page - 1) * result.pageSize) + 1 : 0;
+  const last = Math.min(result.page * result.pageSize, result.count);
+  return `<div class="section-title compact history-heading-v145"><div><h3>${title}</h3><p class="muted small">แสดง ${result.pageSize} รายการต่อหน้า${result.count ? ` · รายการที่ ${first}–${last} จาก ${result.count}` : ''}</p></div><button class="mini ghost" type="button" data-open-report="${reportTarget}">ดูรายงานทั้งหมด</button></div><div class="table-wrap history-table-wrap"><table class="data-table history-table-v145"><thead><tr><th>วันเวลา</th><th>สินค้า</th><th>Lot</th><th>จำนวน</th><th>ยอดหลังทำ</th>${issue ? '<th>วิธีนำออก</th>' : ''}<th>ผู้บันทึก</th></tr></thead><tbody>${transactionRows(result.rows, {showIssueMethod:issue}) || `<tr><td colspan="${issue ? 7 : 6}" class="empty">ยังไม่มีรายการ</td></tr>`}</tbody></table></div><div class="table-pagination ${totalPages <= 1 ? 'single' : ''}"><span>หน้า ${Math.min(result.page,totalPages)} จาก ${totalPages}</span><div><button class="mini ghost" type="button" data-move-history-page="${result.page - 1}" ${result.page <= 1 ? 'disabled' : ''}>ก่อนหน้า</button><button class="mini" type="button" data-move-history-page="${result.page + 1}" ${result.page >= totalPages ? 'disabled' : ''}>ถัดไป</button></div></div>`;
 }
 
 async function renderScanStock() {
@@ -1400,37 +1434,68 @@ function openIssueLookupNotFound(code, source = 'manual') {
 }
 
 async function renderMove(defaultTab = 'receive') {
-  page.innerHTML = `<div class="page-head"><div><h2>นำเข้า–นำออก</h2></div></div><div class="tabs move-tabs"><button data-tab="receive">${icon('plus')} นำเข้า</button><button data-tab="issue">${icon('minus')} นำออก</button></div><div id="movePane"></div>`;
+  page.innerHTML = `<div class="page-head move-page-head"><div><p class="eyebrow">Stock movement</p><h2>นำเข้า–นำออก</h2><p class="muted small">บันทึกรายการด้วยบัญชีปัจจุบัน และเปิดประวัติทีละหน้าเพื่อลดการโหลดข้อมูล</p></div></div><div class="tabs move-tabs premium-tabs"><button data-tab="receive">${icon('plus')} นำเข้า</button><button data-tab="issue">${icon('minus')} นำออก</button></div><div id="movePane"></div>`;
+
+  const bindHistory = txType => {
+    const container = $('#moveHistory');
+    if (!container) return;
+    container.querySelectorAll('[data-move-history-page]').forEach(button => button.addEventListener('click', async () => {
+      const targetPage = Number(button.dataset.moveHistoryPage || 1);
+      if (targetPage < 1) return;
+      button.disabled = true;
+      container.classList.add('loading-soft');
+      try {
+        const result = await fetchTransactionPage(txType, targetPage);
+        container.innerHTML = moveHistoryMarkup(txType, result);
+        queueResponsiveTables(container);
+        bindHistory(txType);
+        container.scrollIntoView({behavior:'smooth', block:'start'});
+      } catch (e) {
+        container.innerHTML = `<div class="notice">${esc(errMsg(e))}</div>`;
+      } finally {
+        container.classList.remove('loading-soft');
+      }
+    }));
+    container.querySelector('[data-open-report]')?.addEventListener('click', () => {
+      reportTab = container.querySelector('[data-open-report]').dataset.openReport || '';
+      navigate('reports');
+    });
+  };
+
+  const loadHistory = async txType => {
+    const container = $('#moveHistory');
+    if (!container) return;
+    container.innerHTML = '<div class="usage-loading">กำลังโหลด 7 รายการล่าสุด…</div>';
+    const result = await fetchTransactionPage(txType, 1);
+    container.innerHTML = moveHistoryMarkup(txType, result);
+    queueResponsiveTables(container);
+    bindHistory(txType);
+  };
 
   const draw = async tab => {
     moveTab = tab;
     navActive();
     $$('[data-tab]').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
-    $('#movePane').innerHTML='<div class="card usage-loading">กำลังโหลดข้อมูลเฉพาะเมนูที่เลือก…</div>';
+    $('#movePane').innerHTML='<div class="card usage-loading">กำลังเปิดเมนูที่เลือก…</div>';
     if (tab === 'receive') {
-      const [rawMats, historyRes, staffRes] = await Promise.all([
+      const [rawMats, staffRes] = await Promise.all([
         loadMaterials(),
-        sb.from('v_transaction_history').select('*').eq('tx_type','RECEIVE').limit(60),
         sb.from('staff_directory').select('email,display_name').eq('active',true).order('display_name')
       ]);
       if(staffRes.error) throw staffRes.error;
       const staffMap=new Map((staffRes.data||[]).map(x=>[x.email,x.display_name]));
       const mats=rawMats.map(m=>({...m,responsible_name:staffMap.get(m.responsible_email)||m.responsible_email||'ยังไม่กำหนด'}));
-      const ownerOptions='<option value="">ทุกคน</option>'+(staffRes.data||[]).map(x=>`<option value="${esc(x.email)}">${esc(x.display_name)}</option>`).join('');
-      if (historyRes.error) throw historyRes.error;
-      const historyRows=historyRes.data || [];
-      $('#movePane').innerHTML = `<div class="move-layout"><form id="receiveForm" class="card form-card form-grid"><div class="form-title"><span>${icon('plus')}</span><div><h3>บันทึกนำเข้า</h3></div></div><label>กรองผู้ดูแล<select id="rOwnerFilter">${ownerOptions}</select></label>${materialComboboxMarkup({id:'rMat',label:'วัสดุ',placeholder:'พิมพ์ชื่อวัสดุ เช่น Panel, Papain',materials:mats})}<div class="form-grid two"><label>Lot<input id="rLot" autocomplete="off" autocapitalize="characters" maxlength="60" inputmode="latin" pattern="[A-Za-z0-9]*" placeholder="เช่น 8A145 หรือเว้นว่างเพื่อใช้วันที่นำเข้า"><small id="lotRule" class="field-hint lot-rule">กรอกได้เฉพาะตัวเลข 0–9 และภาษาอังกฤษ A–Z · ถ้าว่าง ระบบจะใช้วันที่นำเข้า</small></label><label>วันหมดอายุ<input id="rExp" type="date"><small class="field-hint">ถ้าไม่มีวันหมดอายุ สามารถเว้นว่างได้</small></label></div><label>จำนวน<input id="rQty" type="number" min="0.01" step="0.01" required inputmode="decimal"></label><button class="primary" type="submit">${icon('plus')} บันทึกนำเข้า</button></form><section class="card history-card"><div class="section-title compact"><div><h3>ประวัตินำเข้าล่าสุด</h3></div><button class="mini ghost" data-route="reports">ดูรายงาน</button></div><div class="table-wrap"><table class="data-table"><thead><tr><th>วันเวลา</th><th>สินค้า</th><th>Lot</th><th>จำนวน</th><th>ยอดหลังทำ</th><th>ผู้บันทึก</th></tr></thead><tbody>${transactionRows(historyRows.slice(0,30)) || '<tr><td colspan="6" class="empty">ไม่มีรายการ</td></tr>'}</tbody></table></div></section></div>`;
-      setupMaterialCombobox('rMat',mats,{ownerSelectId:'rOwnerFilter',maxResults:20});
+      $('#movePane').innerHTML = `<div class="move-layout move-layout-v145"><form id="receiveForm" class="card form-card form-grid move-action-card"><div class="form-title"><span>${icon('plus')}</span><div><p class="eyebrow">Receive stock</p><h3>บันทึกนำเข้า</h3></div></div>${currentOperatorMarkup('ผู้นำเข้า')}${materialComboboxMarkup({id:'rMat',label:'วัสดุ',placeholder:'พิมพ์ชื่อวัสดุ เช่น Panel, Papain',materials:mats})}<div class="form-grid two"><label>Lot<input id="rLot" autocomplete="off" autocapitalize="characters" maxlength="60" inputmode="latin" pattern="[A-Za-z0-9]*" placeholder="เช่น 8A145 หรือเว้นว่างเพื่อใช้วันที่นำเข้า"><small id="lotRule" class="field-hint lot-rule">กรอกได้เฉพาะตัวเลข 0–9 และภาษาอังกฤษ A–Z · ถ้าว่าง ระบบจะใช้วันที่นำเข้า</small></label><label>วันหมดอายุ<input id="rExp" type="date"><small class="field-hint">ถ้าไม่มีวันหมดอายุ สามารถเว้นว่างได้</small></label></div><label>จำนวน<input id="rQty" type="number" min="0.01" step="0.01" required inputmode="decimal"></label><button class="primary large" type="submit">${icon('plus')} บันทึกนำเข้า</button></form><aside class="card move-side-card"><div class="move-side-icon">${icon('box')}</div><div><p class="eyebrow">ขั้นตอนสั้น ๆ</p><h3>รับเข้าให้ครบในครั้งเดียว</h3><p>เลือกวัสดุ กรอก Lot วันหมดอายุ และจำนวน จากนั้นระบบจะบันทึกชื่อผู้ใช้งานปัจจุบันให้อัตโนมัติ</p></div><div class="move-side-points"><span><b>1</b> เลือกวัสดุ</span><span><b>2</b> ตรวจ Lot และ EXP</span><span><b>3</b> บันทึกและพิมพ์ QR</span></div></aside><section id="moveHistory" class="card history-card move-history-wide"></section></div>`;
+      setupMaterialCombobox('rMat',mats,{maxResults:20});
       const lotInput=$('#rLot');
       lotInput.addEventListener('input',()=>prepareLotInput(lotInput));
       lotInput.addEventListener('blur',()=>prepareLotInput(lotInput,{autoFillBlank:true,showFallbackHint:true}));
       $('#receiveForm').addEventListener('submit', receive);
+      await loadHistory('RECEIVE');
     } else {
-      const historyRes = await sb.from('v_transaction_history').select('*').eq('tx_type','ISSUE').limit(60);
-      if (historyRes.error) throw historyRes.error;
-      const historyRows=historyRes.data || [];
-      $('#movePane').innerHTML = `<div class="move-layout"><div><section class="card issue-scan-simple"><div class="scan-card simple"><div class="scan-icon">${icon('qr')}</div><div><h3>นำออกด้วย QR Sticker</h3></div></div><button class="primary camera-primary" type="button" data-camera-scan>${icon('camera')} เปิดกล้องสแกน</button><div class="issue-or"><span>หรือ</span></div><form id="manualIssueForm" class="form-grid"><label>พิมพ์รหัส QR / รหัสล็อต<div class="toolbar issue-code-row" style="margin:0"><input id="issueCode" autocomplete="off" placeholder="เช่น BB020-69020" required><button type="submit" class="secondary">ค้นหา</button></div></label></form></section></div><section class="card history-card"><div class="section-title compact"><div><h3>ประวัตินำออกล่าสุด</h3></div><button class="mini ghost" data-route="reports">ดูรายงาน</button></div><div class="table-wrap"><table class="data-table"><thead><tr><th>วันเวลา</th><th>สินค้า</th><th>Lot</th><th>จำนวน</th><th>ยอดหลังทำ</th><th>วิธีนำออก</th><th>ผู้บันทึก</th></tr></thead><tbody>${transactionRows(historyRows.slice(0,30), {showIssueMethod:true}) || '<tr><td colspan="7" class="empty">ไม่มีรายการ</td></tr>'}</tbody></table></div></section></div>`;
+      $('#movePane').innerHTML = `<div class="move-layout move-layout-v145"><section class="card issue-scan-simple move-action-card"><div class="form-title"><span>${icon('qr')}</span><div><p class="eyebrow">Issue stock</p><h3>นำออกด้วย QR Sticker</h3></div></div>${currentOperatorMarkup('ผู้บันทึกการนำออก')}<button class="primary camera-primary large" type="button" data-camera-scan>${icon('camera')} เปิดกล้องสแกน</button><div class="issue-or"><span>หรือพิมพ์รหัสเอง</span></div><form id="manualIssueForm" class="form-grid"><label>รหัส QR / รหัสล็อต<div class="toolbar issue-code-row" style="margin:0"><input id="issueCode" autocomplete="off" placeholder="เช่น BB020-69020" required><button type="submit" class="secondary">ค้นหา</button></div></label></form></section><aside class="card move-side-card issue-method-guide"><div class="move-side-icon">${icon('history')}</div><div><p class="eyebrow">บันทึกวิธีอัตโนมัติ</p><h3>ระบบแยกสแกนกับพิมพ์เอง</h3><p>รายการใหม่จะแสดงวิธีนำออกชัดเจนในประวัติและรายงาน ส่วนข้อมูลเดิมจะแสดงว่าไม่ระบุ</p></div><div class="method-preview"><span class="badge ok">สแกน QR</span><span class="badge info">พิมพ์รหัสเอง</span><span class="badge">ไม่ระบุ — ข้อมูลเดิม</span></div></aside><section id="moveHistory" class="card history-card move-history-wide"></section></div>`;
       $('#manualIssueForm').addEventListener('submit',e=>{e.preventDefault();const code=$('#issueCode').value.trim();if(!code)return toast('กรุณาพิมพ์รหัส QR หรือรหัสล็อต',true);resolveIssueCode(code);});
+      await loadHistory('ISSUE');
     }
   };
   $$('[data-tab]').forEach(b => b.addEventListener('click', () => draw(b.dataset.tab).catch(e=>{ $('#movePane').innerHTML=`<div class="card notice">${esc(errMsg(e))}</div>`; })));
@@ -1835,50 +1900,181 @@ function saveCsv(filename, rows) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function exportReport(kind) {
+function reportTxType(kind) {
+  return kind === 'receive' ? 'RECEIVE' : kind === 'issue' ? 'ISSUE' : 'EXPIRED';
+}
+
+function cleanReportSearch(value) {
+  return String(value || '').replace(/[,%()]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function dateTimeLocalToIso(value) {
+  if (!value) return '';
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString();
+}
+
+function applyReportFilters(query, txType, filters = {}) {
+  const from = dateTimeLocalToIso(filters.from);
+  const to = dateTimeLocalToIso(filters.to);
+  if (from) query = query.gte('created_at', from);
+  if (to) query = query.lte('created_at', to);
+  const product = cleanReportSearch(filters.product);
+  const lot = cleanReportSearch(filters.lot);
+  const recorder = cleanReportSearch(filters.recorder);
+  if (product) query = query.ilike('material_name', `%${product}%`);
+  if (lot) query = query.ilike('lot_key', `%${lot}%`);
+  if (filters.quantity !== '' && filters.quantity !== null && filters.quantity !== undefined) {
+    const entered = Number(filters.quantity);
+    if (Number.isFinite(entered)) query = query.eq('quantity_delta', txType === 'RECEIVE' ? Math.abs(entered) : -Math.abs(entered));
+  }
+  if (filters.balance !== '' && filters.balance !== null && filters.balance !== undefined) {
+    const balance = Number(filters.balance);
+    if (Number.isFinite(balance)) query = query.eq('quantity_after', balance);
+  }
+  if (txType === 'ISSUE' && filters.method) {
+    if (filters.method === 'LEGACY') query = query.is('issue_method', null);
+    else query = query.eq('issue_method', filters.method);
+  }
+  if (recorder) query = query.or(`created_by_name.ilike.%${recorder}%,created_by_email.ilike.%${recorder}%`);
+  return query;
+}
+
+async function fetchReportPage(kind, filters = {}, pageNumber = 1, pageSize = REPORT_PAGE_SIZE) {
+  const txType = reportTxType(kind);
+  const pageNo = Math.max(1, Number(pageNumber) || 1);
+  const from = (pageNo - 1) * pageSize;
+  let query = sb.from('v_transaction_history').select('*', {count:'exact'}).eq('tx_type', txType);
+  query = applyReportFilters(query, txType, filters);
+  const {data, error, count} = await query.order('created_at', {ascending:false}).order('id', {ascending:false}).range(from, from + pageSize - 1);
+  if (error) throw error;
+  return {rows:data || [], count:Number(count || 0), page:pageNo, pageSize};
+}
+
+async function fetchAllFilteredReportRows(kind, filters = {}, maxRows = 10000) {
+  const txType = reportTxType(kind);
+  const batchSize = 1000;
+  const rows = [];
+  for (let from = 0; from < maxRows; from += batchSize) {
+    let query = sb.from('v_transaction_history').select('*').eq('tx_type', txType);
+    query = applyReportFilters(query, txType, filters);
+    const {data, error} = await query.order('created_at', {ascending:false}).order('id', {ascending:false}).range(from, from + batchSize - 1);
+    if (error) throw error;
+    const batch = data || [];
+    rows.push(...batch);
+    if (batch.length < batchSize) break;
+  }
+  return rows;
+}
+
+function readReportFilters() {
+  return {
+    from:$('#rfFrom')?.value || '',
+    to:$('#rfTo')?.value || '',
+    product:$('#rfProduct')?.value.trim() || '',
+    lot:$('#rfLot')?.value.trim() || '',
+    quantity:$('#rfQuantity')?.value ?? '',
+    balance:$('#rfBalance')?.value ?? '',
+    method:$('#rfMethod')?.value || '',
+    recorder:$('#rfRecorder')?.value.trim() || ''
+  };
+}
+
+function reportFilterMarkup(kind) {
+  const method = kind === 'issue' ? `<label>วิธีนำออก<select id="rfMethod"><option value="">ทั้งหมด</option><option value="QR_SCAN">สแกน QR</option><option value="MANUAL_ENTRY">พิมพ์รหัสเอง</option><option value="LEGACY">ไม่ระบุ — ข้อมูลเดิม</option></select></label>` : '';
+  return `<form id="reportFilterForm" class="card report-filter-card"><div class="report-filter-head"><div><p class="eyebrow">Filter report</p><h3>ตัวกรองรายงาน</h3><p>กรองก่อนโหลด ระบบจะแสดงครั้งละ 10 รายการ</p></div><button class="mini ghost" id="clearReportFilters" type="button">ล้างตัวกรอง</button></div><div class="report-filter-grid"><label>วันเวลาเริ่มต้น<input id="rfFrom" type="datetime-local"></label><label>วันเวลาสิ้นสุด<input id="rfTo" type="datetime-local"></label><label>สินค้า<input id="rfProduct" type="search" placeholder="พิมพ์ชื่อสินค้า"></label><label>Lot<input id="rfLot" type="search" placeholder="พิมพ์ Lot หรือรหัส"></label><label>จำนวน<input id="rfQuantity" type="number" step="0.01" min="0" placeholder="เช่น 1"></label><label>ยอดหลังทำ<input id="rfBalance" type="number" step="0.01" min="0" placeholder="เช่น 20"></label>${method}<label>ผู้บันทึก<input id="rfRecorder" type="search" placeholder="พิมพ์ชื่อผู้บันทึก"></label></div><div class="report-filter-actions"><button class="primary" type="submit">${icon('search')} ค้นหารายงาน</button><span class="muted small">เว้นว่างเพื่อดูรายการล่าสุดทั้งหมด</span></div></form>`;
+}
+
+function reportResultMarkup(kind, result) {
+  const showIssueMethod = kind === 'issue';
+  const totalPages = Math.max(1, Math.ceil(result.count / result.pageSize));
+  const first = result.count ? ((result.page - 1) * result.pageSize) + 1 : 0;
+  const last = Math.min(result.page * result.pageSize, result.count);
+  return `<div class="report-actions"><div><strong>ผลการค้นหา</strong><span class="muted small">${result.count ? `รายการที่ ${first}–${last} จาก ${result.count}` : 'ไม่พบรายการที่ตรงกับตัวกรอง'}</span></div><button class="primary" data-export-report="${kind}">${icon('download')} ส่งออก CSV ตามตัวกรอง</button></div><div class="table-wrap report-table-wrap"><table class="data-table report-table-v145"><thead><tr><th>วันเวลา</th><th>สินค้า</th><th>Lot</th><th>จำนวน</th><th>ยอดหลังทำ</th>${showIssueMethod ? '<th>วิธีนำออก</th>' : ''}<th>ผู้บันทึก</th></tr></thead><tbody>${transactionRows(result.rows, {showIssueMethod}) || `<tr><td colspan="${showIssueMethod ? 7 : 6}" class="empty">ไม่มีรายการ</td></tr>`}</tbody></table></div><div class="table-pagination ${totalPages <= 1 ? 'single' : ''}"><span>หน้า ${Math.min(result.page,totalPages)} จาก ${totalPages} · 10 รายการต่อหน้า</span><div><button class="mini ghost" type="button" data-report-page="${result.page - 1}" ${result.page <= 1 ? 'disabled' : ''}>ก่อนหน้า</button><button class="mini" type="button" data-report-page="${result.page + 1}" ${result.page >= totalPages ? 'disabled' : ''}>ถัดไป</button></div></div>`;
+}
+
+async function exportReport(kind) {
   const stamp = new Date().toISOString().slice(0,10);
   if (kind === 'stock') {
     const rows = window._reportStock || [];
     saveCsv(`CNMI_Inventory_Stock_${stamp}.csv`, [['รหัสวัสดุ','ชื่อวัสดุ','Lot','วันหมดอายุ','คงเหลือ','หน่วย','ผู้ดูแล','สถานะ','รหัสเดิมที่สแกนได้'], ...rows.map(x => [x.material_code,x.material_name,x.lot_no,x.expiry_date || '',x.balance,x.unit,x.responsible_name || '',isExpired(x)?'หมดอายุรอนำออก':'ใช้งาน',pgArray(x.legacy_lot_keys).join(' | ')])]);
-  } else {
-    const rows = (window._reportRows || []).filter(x => kind === 'receive' ? x.tx_type === 'RECEIVE' : kind === 'issue' ? x.tx_type === 'ISSUE' : x.tx_type === 'EXPIRED');
-    const header = ['วันเวลา','ประเภท','รหัสหลัก','รหัสเดิม','ชื่อวัสดุ','Lot','วันหมดอายุ','จำนวนเปลี่ยนแปลง','ยอดก่อน','ยอดหลัง','หน่วย'];
-    if (kind === 'issue') header.push('วิธีนำออก');
-    header.push('ผู้บันทึก','เหตุผล');
-    const dataRows = rows.map(x => {
-      const row = [x.created_at,x.tx_type,x.canonical_code,x.legacy_material_code || '',x.material_name,x.lot_no,x.expiry_date || '',x.quantity_delta,x.quantity_before,x.quantity_after,x.unit];
-      if (kind === 'issue') row.push(issueMethodLabel(x.issue_method));
-      row.push(x.created_by_name || x.created_by_email || 'SYSTEM',x.reason_detail || x.reason_code || '');
-      return row;
-    });
-    saveCsv(`CNMI_Inventory_${kind}_${stamp}.csv`, [header, ...dataRows]);
+    toast('ส่งออก CSV แล้ว');
+    return;
   }
-  toast('ส่งออก CSV แล้ว');
+  const context = window._reportContext || {};
+  const filters = context.kind === kind ? context.filters || {} : {};
+  toast('กำลังจัดเตรียม CSV ตามตัวกรอง…');
+  const rows = await fetchAllFilteredReportRows(kind, filters);
+  const header = ['วันเวลา','ประเภท','รหัสหลัก','รหัสเดิม','ชื่อวัสดุ','Lot','วันหมดอายุ','จำนวนเปลี่ยนแปลง','ยอดก่อน','ยอดหลัง','หน่วย'];
+  if (kind === 'issue') header.push('วิธีนำออก');
+  header.push('ผู้บันทึก','เหตุผล');
+  const dataRows = rows.map(x => {
+    const row = [x.created_at,x.tx_type,x.canonical_code,x.legacy_material_code || '',x.material_name,x.lot_no,x.expiry_date || '',x.quantity_delta,x.quantity_before,x.quantity_after,x.unit];
+    if (kind === 'issue') row.push(issueMethodLabel(x.issue_method));
+    row.push(x.created_by_name || x.created_by_email || 'SYSTEM',x.reason_detail || x.reason_code || '');
+    return row;
+  });
+  saveCsv(`CNMI_Inventory_${kind}_${stamp}.csv`, [header, ...dataRows]);
+  toast(`ส่งออก CSV แล้ว ${rows.length.toLocaleString('th-TH')} รายการ`);
 }
 
 async function renderReports(defaultTab = '') {
-  page.innerHTML = `<div class="page-head"><div><h2>รายงาน & ส่งออก</h2><p class="muted small">เลือกประเภทรายงานก่อน ระบบจึงจะโหลดข้อมูล</p></div></div><div class="tabs report-tabs"><button data-report-tab="receive">นำเข้า</button><button data-report-tab="issue">นำออก</button><button data-report-tab="expired">หมดอายุ</button><button data-report-tab="stock">สต๊อกคงเหลือ</button></div><div id="reportPane"><div class="card select-first-state">${icon('download')}<div><strong>กรุณาเลือกประเภทรายงาน</strong><span>ยังไม่มีการโหลดข้อมูล</span></div></div></div>`;
+  page.innerHTML = `<div class="page-head report-page-head"><div><p class="eyebrow">Reports</p><h2>รายงาน & ส่งออก</h2><p class="muted small">เลือกประเภทและกรองข้อมูลก่อน ระบบจะแสดงครั้งละ 10 รายการ</p></div></div><div class="tabs report-tabs premium-tabs"><button data-report-tab="receive">นำเข้า</button><button data-report-tab="issue">นำออก</button><button data-report-tab="expired">หมดอายุ</button><button data-report-tab="stock">สต๊อกคงเหลือ</button></div><div id="reportPane"><div class="card select-first-state">${icon('download')}<div><strong>กรุณาเลือกประเภทรายงาน</strong><span>ยังไม่มีการโหลดข้อมูล</span></div></div></div>`;
   const draw = async tab => {
     reportTab = tab;
     $$('[data-report-tab]').forEach(x => x.classList.toggle('active', x.dataset.reportTab === tab));
-    $('#reportPane').innerHTML='<div class="card usage-loading">กำลังโหลดรายงานที่เลือก…</div>';
+    $('#reportPane').innerHTML='<div class="card usage-loading">กำลังเปิดรายงานที่เลือก…</div>';
     if (tab === 'stock') {
       const lots=await getLots(true);
       window._reportStock=lots;
-      $('#reportPane').innerHTML = `<div class="report-actions"><span class="muted">แสดง ${lots.length} Lot ที่ยัง Active</span><button class="primary" data-export-report="stock">${icon('download')} ส่งออกสต๊อก CSV</button></div><div class="table-wrap"><table class="data-table"><thead><tr><th>สินค้า</th><th>Lot</th><th>คงเหลือ</th><th>EXP</th><th>ผู้ดูแล</th><th>สถานะ</th></tr></thead><tbody>${lots.map(x => `<tr><td><strong>${esc(x.material_name)}</strong></td><td>${esc(lotKey(x))}</td><td>${qty(x.balance)} ${esc(x.unit)}</td><td>${d(x.expiry_date)}</td><td>${esc(x.responsible_name || '-')}</td><td>${statusBadge(x)}</td></tr>`).join('')}</tbody></table></div>`;
+      $('#reportPane').innerHTML = `<section class="card report-result-card"><div class="report-actions"><div><strong>สต๊อกคงเหลือปัจจุบัน</strong><span class="muted small">${lots.length} Lot ที่ยัง Active</span></div><button class="primary" data-export-report="stock">${icon('download')} ส่งออกสต๊อก CSV</button></div><div class="table-wrap"><table class="data-table"><thead><tr><th>สินค้า</th><th>Lot</th><th>คงเหลือ</th><th>EXP</th><th>ผู้ดูแล</th><th>สถานะ</th></tr></thead><tbody>${lots.map(x => `<tr><td><strong>${esc(x.material_name)}</strong></td><td>${esc(lotKey(x))}</td><td>${qty(x.balance)} ${esc(x.unit)}</td><td>${d(x.expiry_date)}</td><td>${esc(x.responsible_name || '-')}</td><td>${statusBadge(x)}</td></tr>`).join('')}</tbody></table></div></section>`;
+      queueResponsiveTables($('#reportPane'));
       return;
     }
-    const type = tab === 'receive' ? 'RECEIVE' : tab === 'issue' ? 'ISSUE' : 'EXPIRED';
-    const {data,error}=await sb.from('v_transaction_history').select('*').eq('tx_type',type).limit(1500);
-    if(error)throw error;
-    const filtered=data||[];
-    window._reportRows=filtered;
-    const showIssueMethod = tab === 'issue';
-    $('#reportPane').innerHTML = `<div class="report-actions"><span class="muted">แสดง ${filtered.length} รายการล่าสุด</span><button class="primary" data-export-report="${tab}">${icon('download')} ส่งออก CSV</button></div><div class="table-wrap"><table class="data-table"><thead><tr><th>วันเวลา</th><th>สินค้า</th><th>Lot</th><th>จำนวน</th><th>ยอดหลังทำ</th>${showIssueMethod ? '<th>วิธีนำออก</th>' : ''}<th>ผู้บันทึก</th></tr></thead><tbody>${transactionRows(filtered, {showIssueMethod}) || `<tr><td colspan="${showIssueMethod ? 7 : 6}" class="empty">ไม่มีรายการ</td></tr>`}</tbody></table></div>`;
+
+    $('#reportPane').innerHTML = `<div class="report-layout-v145">${reportFilterMarkup(tab)}<section class="card report-result-card" id="reportResults"><div class="usage-loading">กำลังโหลด 10 รายการล่าสุด…</div></section></div>`;
+    let currentPage = 1;
+    let activeFilters = {};
+
+    const loadPage = async (pageNumber = 1) => {
+      const results = $('#reportResults');
+      if (!results) return;
+      results.innerHTML = '<div class="usage-loading">กำลังค้นหารายงาน…</div>';
+      try {
+        const result = await fetchReportPage(tab, activeFilters, pageNumber);
+        currentPage = result.page;
+        window._reportRows = result.rows;
+        window._reportContext = {kind:tab, filters:{...activeFilters}, count:result.count};
+        results.innerHTML = reportResultMarkup(tab, result);
+        queueResponsiveTables(results);
+        results.querySelectorAll('[data-report-page]').forEach(button => button.addEventListener('click', async () => {
+          const target = Number(button.dataset.reportPage || 1);
+          if (target < 1 || target === currentPage) return;
+          button.disabled = true;
+          await loadPage(target);
+          results.scrollIntoView({behavior:'smooth',block:'start'});
+        }));
+      } catch (e) {
+        results.innerHTML = `<div class="notice">${esc(errMsg(e))}</div>`;
+      }
+    };
+
+    $('#reportFilterForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      activeFilters = readReportFilters();
+      await loadPage(1);
+    });
+    $('#clearReportFilters').addEventListener('click', async () => {
+      $('#reportFilterForm').reset();
+      activeFilters = {};
+      await loadPage(1);
+    });
+    await loadPage(1);
   };
   $$('[data-report-tab]').forEach(b => b.addEventListener('click', () => draw(b.dataset.reportTab).catch(e=>{$('#reportPane').innerHTML=`<div class="card notice">${esc(errMsg(e))}</div>`;})));
   if(defaultTab) await draw(defaultTab);
 }
+
 
 async function renderAdmin() {
   if (!isAdminMode()) { page.innerHTML = '<div class="card notice">สลับเป็นโหมดผู้ดูแลระบบก่อน</div>'; return; }
@@ -1941,7 +2137,7 @@ function openMaterialEditor(code) {
 }
 
 function renderHelp() {
-  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>สร้างบัญชีครั้งแรก</h3><ol class="help-steps"><li>ใช้เฉพาะอีเมลมหิดล @mahidol.ac.th ที่ Admin อนุญาตไว้</li><li>ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว</li><li>กด “สร้างบัญชีครั้งแรก” แล้วกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</li></ol></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>กรองผู้ดูแลหรือพิมพ์ชื่อวัสดุบางส่วนแล้วเลือก</li><li>ใส่ Lot วันหมดอายุ และจำนวน แล้วบันทึก</li></ol></div><div class="card help-card"><h3>นำออก</h3><ol class="help-steps"><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าและวิธีนำออก แล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>ระบบบันทึกแยกเป็น “สแกน QR” หรือ “พิมพ์รหัสเอง” ในประวัติและรายงาน</li></ol></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแล</h3><p>มี 3 เมนูย่อย: ภาพรวม, ต้องเบิก และตั้งค่าการเตือน เลือกเตือนตามจำนวนขั้นต่ำ เตือนรอบเบิกรายเดือน หรือไม่แจ้งเตือนได้ การเตือนรายเดือนจะเริ่มตรวจรอบตั้งแต่เดือนถัดไปหลังบันทึก</p></div><div class="card help-card"><h3>ตรวจวันศุกร์</h3><p>กรอกจำนวนที่นับได้จริง หากไม่ตรงกับระบบ ให้เลือกเหตุผล ระบบจะปรับยอดและเก็บชื่อผู้ตรวจไว้ในประวัติ</p></div><div class="card help-card"><h3>สแกนตรวจ Lot</h3><p>เปิดกล้องหรือพิมพ์รหัส QR เพื่อดูยอด Lot ยอดรวม ผู้ดูแล ขั้นต่ำ และยืนยันตรวจหรือปรับยอดได้ทันที</p></div><div class="card help-card"><h3>สถานะผู้ตรวจ</h3><p>เปิดเมนู “สถานะผู้ตรวจ” แล้วกำหนดช่วงวันที่ เพื่อดูว่าแต่ละวันศุกร์ใครตรวจครบหรือยังไม่ครบ</p></div><div class="card help-card"><h3>สติ๊กเกอร์เดิม</h3><p>สติ๊กเกอร์รหัสเดิมยังสแกนได้ ไม่ต้องเปลี่ยนใหม่ทั้งหมด</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบไม่ตัดยอดเอง เปิดตรวจวันศุกร์และกด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์ถัดไป</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมดูได้ในหน้าประวัติและรายงาน</p></div><div class="card help-card"><h3>เครื่องพิมพ์สติ๊กเกอร์</h3><p>ฉลากกว้าง 25 mm สูง 20 mm ชื่อวัสดุจะย่อฟอนต์อัตโนมัติโดยไม่ตัด Lot/EXP ตั้ง Scale 100%, Margin None และปิด Header/Footer หากต้องการหลายดวงให้ใส่จำนวนในช่อง “จำนวนชุด” ของหน้าพิมพ์</p></div></div>`;
+  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>สร้างบัญชีครั้งแรก</h3><ol class="help-steps"><li>ใช้เฉพาะอีเมลมหิดล @mahidol.ac.th ที่ Admin อนุญาตไว้</li><li>ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว</li><li>กด “สร้างบัญชีครั้งแรก” แล้วกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</li></ol></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>พิมพ์ชื่อวัสดุบางส่วนแล้วเลือกจากรายการ</li><li>ตรวจชื่อผู้นำเข้าปัจจุบัน ใส่ Lot วันหมดอายุ และจำนวน แล้วบันทึก</li></ol></div><div class="card help-card"><h3>นำออก</h3><ol class="help-steps"><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าและวิธีนำออก แล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>ระบบบันทึกแยกเป็น “สแกน QR” หรือ “พิมพ์รหัสเอง” ในประวัติและรายงาน</li></ol></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแล</h3><p>มี 3 เมนูย่อย: ภาพรวม, ต้องเบิก และตั้งค่าการเตือน เลือกเตือนตามจำนวนขั้นต่ำ เตือนรอบเบิกรายเดือน หรือไม่แจ้งเตือนได้ การเตือนรายเดือนจะเริ่มตรวจรอบตั้งแต่เดือนถัดไปหลังบันทึก</p></div><div class="card help-card"><h3>ตรวจวันศุกร์</h3><p>กรอกจำนวนที่นับได้จริง หากไม่ตรงกับระบบ ให้เลือกเหตุผล ระบบจะปรับยอดและเก็บชื่อผู้ตรวจไว้ในประวัติ</p></div><div class="card help-card"><h3>สแกนตรวจ Lot</h3><p>เปิดกล้องหรือพิมพ์รหัส QR เพื่อดูยอด Lot ยอดรวม ผู้ดูแล ขั้นต่ำ และยืนยันตรวจหรือปรับยอดได้ทันที</p></div><div class="card help-card"><h3>สถานะผู้ตรวจ</h3><p>เปิดเมนู “สถานะผู้ตรวจ” แล้วกำหนดช่วงวันที่ เพื่อดูว่าแต่ละวันศุกร์ใครตรวจครบหรือยังไม่ครบ</p></div><div class="card help-card"><h3>สติ๊กเกอร์เดิม</h3><p>สติ๊กเกอร์รหัสเดิมยังสแกนได้ ไม่ต้องเปลี่ยนใหม่ทั้งหมด</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบไม่ตัดยอดเอง เปิดตรวจวันศุกร์และกด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์ถัดไป</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมดูได้ในหน้าประวัติและรายงาน</p></div><div class="card help-card"><h3>เครื่องพิมพ์สติ๊กเกอร์</h3><p>ฉลากกว้าง 25 mm สูง 20 mm ชื่อวัสดุจะย่อฟอนต์อัตโนมัติโดยไม่ตัด Lot/EXP ตั้ง Scale 100%, Margin None และปิด Header/Footer หากต้องการหลายดวงให้ใส่จำนวนในช่อง “จำนวนชุด” ของหน้าพิมพ์</p></div></div>`;
   refreshInstallUI();
 }
 
