@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.1';
+const APP_VERSION = '1.4.2';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const C = window.APP_CONFIG || {};
 const configured = C.SUPABASE_URL && !C.SUPABASE_URL.includes('YOUR-PROJECT') && C.SUPABASE_ANON_KEY && !C.SUPABASE_ANON_KEY.includes('YOUR-ANON');
@@ -13,6 +13,8 @@ let route = 'home';
 let moveTab = 'receive';
 let reportTab = '';
 let stockCache = [];
+let scanLotsCache = [];
+let scanLotsLoadedAt = 0;
 let materialsCache = [];
 let inventorySummaryCache = [];
 let activityMaterialMap = null;
@@ -313,7 +315,7 @@ function showIosInstallGuide() {
 
 function openMobileMenu() {
   const adminItem = isAdminMode() ? `<button type="button" data-route="admin">${icon('settings')}<span><strong>ตั้งค่าระบบ</strong><small>ผู้ใช้ ผู้ดูแล และข้อมูลสินค้า</small></span></button>` : '';
-  openModal(`<div class="mobile-menu-sheet"><div class="mobile-menu-head"><span class="owner-avatar">${esc((profile?.display_name || '?').trim().charAt(0))}</span><div><h3>เมนูทั้งหมด</h3><p>${esc(profile?.display_name || '')}</p></div></div><div class="mobile-menu-grid"><button type="button" data-route="stock">${icon('box')}<span><strong>ค้นหาสต๊อกทั้งหมด</strong><small>ค้นหาสินค้าและ Lot</small></span></button><button type="button" data-route="my-stock">${icon('user')}<span><strong>สต๊อกที่ฉันดูแล</strong><small>ดูของที่มี ต้องเบิก และตั้งค่าการเตือน</small></span></button><button type="button" data-route="usage">${icon('chart')}<span><strong>วิเคราะห์การใช้</strong><small>การใช้และแนวโน้มหมดอายุ</small></span></button><button type="button" data-route="weekly">${icon('check')}<span><strong>ตรวจวันศุกร์</strong><small>ตรวจนับและปรับยอดจริง</small></span></button><button type="button" data-route="weekly-status">${icon('user')}<span><strong>สถานะผู้ตรวจ</strong><small>ดูย้อนหลังตามช่วงวันที่</small></span></button><button type="button" data-route="activity">${icon('history')}<span><strong>ประวัติ</strong><small>รายการที่ทำในระบบ</small></span></button><button type="button" data-route="reports">${icon('download')}<span><strong>รายงานและส่งออก</strong><small>CSV และข้อมูลย้อนหลัง</small></span></button>${adminItem}<button type="button" data-route="help">${icon('help')}<span><strong>คู่มือใช้งาน</strong><small>ขั้นตอนทำงาน</small></span></button><button type="button" data-open-install>${icon('smartphone')}<span><strong>ติดตั้งแอป</strong><small>Android และ iPhone/iPad</small></span></button></div></div>`);
+  openModal(`<div class="mobile-menu-sheet"><div class="mobile-menu-head"><span class="owner-avatar">${esc((profile?.display_name || '?').trim().charAt(0))}</span><div><h3>เมนูทั้งหมด</h3><p>${esc(profile?.display_name || '')}</p></div></div><div class="mobile-menu-grid"><button type="button" data-route="stock">${icon('box')}<span><strong>ค้นหาสต๊อกทั้งหมด</strong><small>ค้นหาสินค้าและ Lot</small></span></button><button type="button" data-route="my-stock">${icon('user')}<span><strong>สต๊อกที่ฉันดูแล</strong><small>ดูของที่มี ต้องเบิก และตั้งค่าการเตือน</small></span></button><button type="button" data-route="usage">${icon('chart')}<span><strong>วิเคราะห์การใช้</strong><small>การใช้และแนวโน้มหมดอายุ</small></span></button><button type="button" data-route="weekly">${icon('check')}<span><strong>ตรวจวันศุกร์</strong><small>ตรวจนับและปรับยอดจริง</small></span></button><button type="button" data-route="scan-stock">${icon('camera')}<span><strong>สแกนตรวจ Lot</strong><small>ดูยอดคงเหลือและตรวจด้วยกล้อง</small></span></button><button type="button" data-route="weekly-status">${icon('user')}<span><strong>สถานะผู้ตรวจ</strong><small>ดูย้อนหลังตามช่วงวันที่</small></span></button><button type="button" data-route="activity">${icon('history')}<span><strong>ประวัติ</strong><small>รายการที่ทำในระบบ</small></span></button><button type="button" data-route="reports">${icon('download')}<span><strong>รายงานและส่งออก</strong><small>CSV และข้อมูลย้อนหลัง</small></span></button>${adminItem}<button type="button" data-route="help">${icon('help')}<span><strong>คู่มือใช้งาน</strong><small>ขั้นตอนทำงาน</small></span></button><button type="button" data-open-install>${icon('smartphone')}<span><strong>ติดตั้งแอป</strong><small>Android และ iPhone/iPad</small></span></button></div></div>`);
 }
 
 function loading() {
@@ -321,7 +323,7 @@ function loading() {
 }
 
 function clearDataCaches() {
-  stockCache = [];
+  stockCache = []; scanLotsCache=[]; scanLotsLoadedAt=0;
   materialsCache = [];
   inventorySummaryCache = [];
 }
@@ -496,7 +498,7 @@ async function enterApp() {
     appView.classList.remove('hidden');
     updateRoleUI();
     const hashRoute = location.hash.replace(/^#/, '');
-    const allowed = ['home','stock','my-stock','usage','urgent','move','weekly','weekly-status','activity','reports','help','admin'];
+    const allowed = ['home','stock','my-stock','usage','urgent','move','weekly','scan-stock','weekly-status','activity','reports','help','admin'];
     const initialRoute = allowed.includes(hashRoute) ? hashRoute : 'home';
     await navigate(initialRoute);
     if (pendingIssueCode) setTimeout(openPendingIssue, 250);
@@ -516,7 +518,7 @@ function showLogin() {
 async function logout() {
   if (sb) await sb.auth.signOut();
   profile = null;
-  stockCache = [];
+  stockCache = []; scanLotsCache=[]; scanLotsLoadedAt=0;
   materialsCache = [];
   inventorySummaryCache = [];
   usageMaterialCode = '';
@@ -597,7 +599,20 @@ function globalClick(e) {
   const scan = e.target.closest('[data-camera-scan]');
   if (scan) {
     e.preventDefault();
-    startCameraScanner();
+    startCameraScanner(scan.dataset.scanMode || 'issue');
+    return;
+  }
+  const scanConfirm = e.target.closest('[data-scan-confirm-check]');
+  if (scanConfirm) {
+    e.preventDefault();
+    confirmScannedCheck(scanConfirm.dataset.scanConfirmCheck);
+    return;
+  }
+  const scanAgain = e.target.closest('[data-scan-again]');
+  if (scanAgain) {
+    e.preventDefault();
+    closeModal();
+    startCameraScanner('inspect');
     return;
   }
   const c = e.target.closest('[data-check]');
@@ -656,6 +671,7 @@ async function navigate(r, options = {}) {
     else if (r === 'urgent') await renderUrgent();
     else if (r === 'move') await renderMove(moveTab);
     else if (r === 'weekly') await renderWeekly();
+    else if (r === 'scan-stock') await renderScanStock();
     else if (r === 'weekly-status') await renderWeeklyStatus();
     else if (r === 'activity') await renderActivity();
     else if (r === 'reports') await renderReports(reportTab);
@@ -800,7 +816,8 @@ async function renderHome() {
   const nearExpiryCount = (nearRes.data || []).length;
   const receiveToday = todayTx.filter(x => x.tx_type === 'RECEIVE').length;
   const issueToday = todayTx.filter(x => x.tx_type === 'ISSUE').length;
-  const ownerGroups = groupByOwner(summaries);
+  const watchRows = summaries.filter(x => Boolean(x.needs_reorder));
+  const ownerGroups = groupByOwner(watchRows);
   updateUrgentBadge(expiredPendingCount + reorderMaterials.length);
 
   let prog = null;
@@ -809,15 +826,15 @@ async function renderHome() {
     prog = q.data;
   }
 
-  const productRows = [...summaries].sort((a, b) => {
-    const score = x => Number(x.expired_pending_lots || 0) ? 4 : x.needs_reorder ? 3 : 0;
-    return score(b) - score(a) || Number(a.total_balance || 0) - Number(b.total_balance || 0);
-  }).slice(0, 8);
+  const productRows = [...watchRows].sort((a, b) => {
+    const score = x => (x.alert_mode || 'MINIMUM') === 'MONTHLY' ? 3 : Number(x.total_balance || 0) <= 0 ? 2 : 1;
+    return score(b) - score(a) || Number(a.total_balance || 0) - Number(b.total_balance || 0) || String(a.material_name || '').localeCompare(String(b.material_name || ''), 'th');
+  });
 
   page.innerHTML = `
     <div class="page-head dashboard-head"><div><h2>หน้าหลัก</h2><p class="muted small">ภาพรวมสถานะสต๊อก วันนี้ ${new Date().toLocaleDateString('th-TH',{day:'numeric',month:'long',year:'numeric'})}</p></div><button class="mini ghost" id="refreshHome">${icon('refresh')} รีเฟรช</button></div>
 
-    <section class="home-workflow" aria-label="งานที่ใช้บ่อย"><button data-route="move" data-move-tab="receive">${icon('plus')}<span><strong>รับเข้า</strong></span></button><button data-route="move" data-move-tab="issue">${icon('minus')}<span><strong>นำออก</strong></span></button><button data-route="weekly">${icon('check')}<span><strong>ตรวจวันศุกร์</strong></span></button><button data-route="my-stock">${icon('user')}<span><strong>สต๊อกที่ฉันดูแล</strong></span></button></section>
+    <section class="home-workflow" aria-label="งานที่ใช้บ่อย"><button data-route="move" data-move-tab="receive">${icon('plus')}<span><strong>รับเข้า</strong></span></button><button data-route="move" data-move-tab="issue">${icon('minus')}<span><strong>นำออก</strong></span></button><button data-route="scan-stock">${icon('camera')}<span><strong>สแกนตรวจ Lot</strong></span></button><button data-route="weekly">${icon('check')}<span><strong>ตรวจวันศุกร์</strong></span></button><button data-route="my-stock">${icon('user')}<span><strong>สต๊อกที่ฉันดูแล</strong></span></button></section>
 
     <div class="grid kpi-grid kpi-grid-6">
       <button class="card kpi kpi-button" data-route="urgent"><div class="kpi-top"><span class="kpi-icon danger">${icon('box')}</span><small>ต้องเบิก</small></div><strong>${reorderMaterials.length}</strong><small>รายการ</small></button>
@@ -842,13 +859,28 @@ async function renderHome() {
     ${prog ? `<section class="card weekly-summary"><div class="weekly-ring" style="--pct:${Number(prog.percent_complete || 0)}"><div><strong>${prog.checked_items}/${prog.total_items}</strong><span>${prog.percent_complete}%</span></div></div><div><h3>ตรวจสต๊อกวันศุกร์ ${d(prog.week_friday)}</h3><p class="muted">${prog.status === 'COMPLETED' ? 'ปิดรอบแล้ว' : `ยังเหลือ ${prog.pending_items ?? (prog.total_items-prog.checked_items)} Lot`}</p><button class="mini" data-route="weekly">ดูรายการตรวจทั้งหมด ${icon('arrow')}</button></div></section>` : ''}
   `;
 
-  const productHtml = `<div class="table-wrap quiet-table"><table class="data-table"><thead><tr><th>รายการสินค้า</th><th>คงเหลือ</th><th>ขั้นต่ำ</th><th>ผู้ดูแล</th><th>สถานะ</th><th></th></tr></thead><tbody>${productRows.map(x => `<tr><td><button class="table-name-link" data-material-detail="${esc(x.material_code)}"><span>${esc(x.material_name)}</span></button></td><td><span class="table-number">${qty(x.total_balance)}</span> ${esc(x.unit)}</td><td>${qty(x.min_qty)}</td><td><button class="owner-inline-link" data-owner-detail="${esc(x.responsible_email || 'unassigned')}">${esc(x.responsible_name || 'ยังไม่กำหนด')}</button></td><td>${Number(x.expired_pending_lots || 0) ? '<span class="badge danger">มี Lot หมดอายุ</span>' : x.needs_reorder ? `<span class="badge warn">${x.alert_mode==='MONTHLY'?'ถึงรอบเบิก':Number(x.total_balance||0)<=0?'หมด':'ต่ำกว่าขั้นต่ำ'}</span>` : x.alert_mode==='MONTHLY' && Number(x.total_balance||0)<=0 ? '<span class="badge info">ใช้ชุดปัจจุบันอยู่</span>' : '<span class="badge ok">ปกติ</span>'}</td><td><button class="icon-mini" title="วิเคราะห์การใช้" data-material-usage="${esc(x.material_code)}">${icon('chart')}</button></td></tr>`).join('') || '<tr><td colspan="6">ไม่มีข้อมูล</td></tr>'}</tbody></table></div>`;
-  const ownerHtml = `<div class="owner-summary-grid">${ownerGroups.map(g => `<button class="owner-box owner-box-button" type="button" data-owner-detail="${esc(g.responsible_email || 'unassigned')}"><span class="owner-avatar">${esc((g.responsible_name || '?').trim().charAt(0))}</span><span class="owner-box-copy"><strong>${esc(g.responsible_name)}</strong><small>${esc(g.responsible_email || 'ยังไม่กำหนด')}</small><span class="owner-stats"><span>ดูแล ${g.materials} รายการ</span><span>ต่ำกว่าขั้นต่ำ ${g.low_count}</span><span>สินค้าหมด ${g.out_count}</span><span class="danger-text">หมดอายุรอนำออก ${g.expired_count}</span></span><em>กดเพื่อดูรายการที่ดูแล ${icon('arrow')}</em></span></button>`).join('') || '<div class="empty">ไม่มีข้อมูลผู้ดูแล</div>'}</div>`;
+  const HOME_PAGE_SIZE = 7;
+  let homeProductPage = 1;
+  let homeMode = 'product';
+  const ownerHtml = `<div class="owner-summary-grid">${ownerGroups.map(g => `<button class="owner-box owner-box-button" type="button" data-owner-detail="${esc(g.responsible_email || 'unassigned')}"><span class="owner-avatar">${esc((g.responsible_name || '?').trim().charAt(0))}</span><span class="owner-box-copy"><strong>${esc(g.responsible_name)}</strong><small>${esc(g.responsible_email || 'ยังไม่กำหนด')}</small><span class="owner-stats"><span>ต้องเบิก ${g.materials} รายการ</span><span>ต่ำกว่าขั้นต่ำ/ถึงรอบ ${g.low_count}</span><span>สินค้าหมด ${g.out_count}</span></span><em>กดเพื่อดูรายการที่ดูแล ${icon('arrow')}</em></span></button>`).join('') || '<div class="empty">ไม่มีสินค้าที่ต้องเฝ้าระวัง</div>'}</div>`;
   const pane = $('#homeOverviewPane');
+  const productTable = rows => `<div class="table-wrap quiet-table"><table class="data-table"><thead><tr><th>รายการสินค้า</th><th>คงเหลือ</th><th>ขั้นต่ำ</th><th>ผู้ดูแล</th><th>สถานะ</th><th></th></tr></thead><tbody>${rows.map(x => `<tr><td><button class="table-name-link" data-material-detail="${esc(x.material_code)}"><span>${esc(x.material_name)}</span></button></td><td><span class="table-number">${qty(x.total_balance)}</span> ${esc(x.unit)}</td><td>${qty(x.min_qty)}</td><td><button class="owner-inline-link" data-owner-detail="${esc(x.responsible_email || 'unassigned')}">${esc(x.responsible_name || 'ยังไม่กำหนด')}</button></td><td><span class="badge warn">${x.alert_mode==='MONTHLY'?'ถึงรอบเบิก':Number(x.total_balance||0)<=0?'หมด':'ต่ำกว่าขั้นต่ำ'}</span></td><td><button class="icon-mini" title="วิเคราะห์การใช้" data-material-usage="${esc(x.material_code)}">${icon('chart')}</button></td></tr>`).join('') || '<tr><td colspan="6" class="empty">ไม่มีสินค้าที่ต้องเบิกหรือต่ำกว่าขั้นต่ำ</td></tr>'}</tbody></table></div>`;
+  const renderProductPage = () => {
+    const pageCount = Math.max(1, Math.ceil(productRows.length / HOME_PAGE_SIZE));
+    homeProductPage = Math.min(Math.max(1, homeProductPage), pageCount);
+    const begin = (homeProductPage - 1) * HOME_PAGE_SIZE;
+    const rows = productRows.slice(begin, begin + HOME_PAGE_SIZE);
+    const pagination = productRows.length > HOME_PAGE_SIZE ? `<div class="home-pagination"><span>หน้า ${homeProductPage} / ${pageCount} · ทั้งหมด ${productRows.length} รายการ</span><div><button type="button" class="mini ghost" data-home-page="prev" ${homeProductPage===1?'disabled':''}>ก่อนหน้า</button><button type="button" class="mini" data-home-page="next" ${homeProductPage===pageCount?'disabled':''}>หน้าถัดไป</button></div></div>` : (productRows.length ? `<div class="home-pagination single"><span>ทั้งหมด ${productRows.length} รายการ</span></div>` : '');
+    pane.innerHTML = productTable(rows) + pagination;
+    queueResponsiveTables(pane);
+    $$('[data-home-page]', pane).forEach(btn => btn.addEventListener('click', () => { homeProductPage += btn.dataset.homePage === 'next' ? 1 : -1; renderProductPage(); }));
+  };
   const setMode = mode => {
+    homeMode = mode;
     $('#homeModeProduct').classList.toggle('active', mode === 'product');
     $('#homeModeOwner').classList.toggle('active', mode === 'owner');
-    pane.innerHTML = mode === 'owner' ? ownerHtml : productHtml;
+    if (mode === 'owner') pane.innerHTML = ownerHtml;
+    else { homeProductPage = 1; renderProductPage(); }
   };
   $('#homeModeProduct').onclick = () => setMode('product');
   $('#homeModeOwner').onclick = () => setMode('owner');
@@ -1195,6 +1227,83 @@ function transactionRows(rows) {
   return (rows || []).map(x => `<tr><td>${dt(x.created_at)}</td><td><strong>${esc(x.material_name)}</strong></td><td><span class="code-pill">${esc(x.lot_key)}</span></td><td>${x.tx_type === 'RECEIVE' ? '+' : ''}${qty(x.quantity_delta)} ${esc(x.unit)}</td><td>${qty(x.quantity_after)}</td><td>${esc(x.created_by_name || x.created_by_email || 'SYSTEM')}</td></tr>`).join('');
 }
 
+async function renderScanStock() {
+  page.innerHTML = `<div class="page-head"><div><h2>สแกนตรวจ Lot</h2><p class="muted small">สแกน QR แล้วดูยอดคงเหลือ ผู้ดูแล ขั้นต่ำ และบันทึกตรวจวันศุกร์ได้ทันที</p></div><button class="mini ghost" data-route="weekly">ดูรายการตรวจทั้งหมด</button></div><div class="scan-stock-layout"><section class="card scan-stock-hero"><div class="scan-stock-icon">${icon('camera')}</div><div><h3>เปิดกล้องตรวจสต๊อก</h3><p>รองรับ QR ใหม่ รหัสเดิม และการพิมพ์รหัสเมื่อกล้องมีปัญหา</p></div><button class="primary camera-primary" type="button" data-camera-scan data-scan-mode="inspect">${icon('camera')} เปิดกล้องสแกน</button></section><section class="card"><form id="manualStockScanForm" class="form-grid"><label>พิมพ์รหัส QR / รหัสล็อต<div class="toolbar issue-code-row" style="margin:0"><input id="stockScanCode" autocomplete="off" placeholder="เช่น BB319-09062026" required><button type="submit" class="secondary">ตรวจสอบ</button></div></label></form><div class="scan-stock-help"><strong>หลังสแกน ระบบจะแสดง</strong><span>ชื่อวัสดุ · Lot · วันหมดอายุ · ยอด Lot และยอดรวม · ผู้ดูแล · ขั้นต่ำ · สถานะ</span></div></section></div>`;
+  $('#manualStockScanForm').addEventListener('submit', e => { e.preventDefault(); const code=$('#stockScanCode').value.trim(); if(!code)return toast('กรุณาพิมพ์รหัส QR หรือรหัสล็อต',true); resolveStockCheckCode(code); });
+}
+
+function scannedLotStatus(l, summary) {
+  if (isExpired(l)) return {label:'หมดอายุ · รอนำออก', badge:'danger'};
+  if (summary?.needs_reorder) {
+    if ((summary.alert_mode || 'MINIMUM') === 'MONTHLY') return {label:'ถึงรอบเบิก', badge:'warn'};
+    if (Number(summary.total_balance || 0) <= 0) return {label:'หมด', badge:'danger'};
+    return {label:'ต่ำกว่าขั้นต่ำ', badge:'warn'};
+  }
+  if (Number(l.balance || 0) <= 0) return {label:'หมด', badge:'danger'};
+  return {label:'ปกติ', badge:'ok'};
+}
+
+async function getScannableLots(force = false) {
+  if (!force && scanLotsCache.length && Date.now() - scanLotsLoadedAt < 30000) return scanLotsCache;
+  const {data, error} = await sb.from('v_lot_balances').select('*').eq('active', true).order('material_code').order('lot_no');
+  if (error) throw error;
+  const lots = data || [];
+  scanLotsCache = lots;
+  scanLotsLoadedAt = Date.now();
+  stockCache = [...new Map([...stockCache, ...lots].map(x => [x.lot_id, x])).values()];
+  return lots;
+}
+
+async function resolveStockCheckCode(code) {
+  const lots = await getScannableLots();
+  const l = findLotByCode(code, lots);
+  if (!l) return toast('ไม่พบ Lot จาก QR Code นี้ หรือ Lot ถูกปิดแล้ว', true);
+  try {
+    const [summaryRes, check] = await Promise.all([
+      sb.from('v_inventory_summary').select('*').eq('material_code', l.material_code).maybeSingle(),
+      ensureCheck()
+    ]);
+    if (summaryRes.error) throw summaryRes.error;
+    const summary = summaryRes.data || null;
+    let item = null;
+    if (check?.id) {
+      const itemRes = await sb.from('v_weekly_check_items').select('*').eq('check_id', check.id).eq('lot_id', l.lot_id).maybeSingle();
+      if (itemRes.error) throw itemRes.error;
+      item = itemRes.data || null;
+      if (item) {
+        const existing=(window._weeklyItems || []).filter(x=>x.item_id!==item.item_id);
+        window._weeklyItems=[...existing,item];
+      }
+    }
+    openScannedLotResult(l, summary, item);
+  } catch (e) { toast(errMsg(e), true); }
+}
+
+function openScannedLotResult(l, summary, item) {
+  const st = scannedLotStatus(l, summary);
+  const canAct = item && canHandleItem(item);
+  const checked = Boolean(item?.checked_at);
+  let checkActions = '';
+  if (item) {
+    if (checked) checkActions = `<span class="badge ok">ตรวจแล้ว ${dt(item.checked_at)}</span>`;
+    else if (!canAct) checkActions = `<span class="badge">รอ ${esc(item.responsible_name || 'ผู้ดูแล')}</span>`;
+    else if (isExpired(l)) checkActions = `<button class="danger" type="button" data-expired-remove="${esc(item.item_id)}">ยืนยันนำออก</button>`;
+    else checkActions = `<button class="primary" type="button" data-scan-confirm-check="${esc(item.item_id)}">ยืนยันตรวจแล้ว</button><button class="secondary" type="button" data-check="${esc(item.item_id)}">ปรับยอด</button>`;
+  } else checkActions = `<button class="secondary" type="button" data-route="weekly">เปิดหน้าตรวจวันศุกร์</button>`;
+  openModal(`<div class="scanned-result-head"><div><span class="eyebrow">ผลการสแกน</span><h3>${esc(l.material_name)}</h3><p>รหัส ${esc(l.material_code)}</p></div><em class="badge ${st.badge}">${st.label}</em></div><div class="scanned-lot-code"><span>Lot</span><strong>${esc(l.lot_no)}</strong><small>EXP ${d(l.expiry_date)}</small></div><div class="scanned-kpis"><div><span>คงเหลือ Lot นี้</span><strong>${qty(l.balance)}</strong><small>${esc(l.unit)}</small></div><div><span>คงเหลือรวม</span><strong>${qty(summary?.total_balance ?? l.balance)}</strong><small>${esc(l.unit)}</small></div><div><span>จำนวนขั้นต่ำ</span><strong>${qty(summary?.min_qty ?? l.min_qty)}</strong><small>${esc(l.unit)}</small></div></div><div class="scanned-owner"><span>${icon('user')}</span><div><small>ผู้ดูแล</small><strong>${esc(l.responsible_name || 'ยังไม่กำหนด')}</strong></div></div><div class="scanned-actions">${checkActions}<button class="mini ghost" type="button" data-material-detail="${esc(l.material_code)}">ดู Lot อื่นของวัสดุนี้</button><button class="mini ghost" type="button" data-scan-again>${icon('camera')} สแกน Lot ถัดไป</button></div>`);
+}
+
+async function confirmScannedCheck(itemId) {
+  const x=(window._weeklyItems || []).find(i=>i.item_id===itemId);
+  if(!x)return toast('ไม่พบรายการตรวจ กรุณาสแกนใหม่',true);
+  if(!canHandleItem(x))return toast('รายการนี้เป็นความรับผิดชอบของ '+(x.responsible_name||x.responsible_email),true);
+  const btn=$(`[data-scan-confirm-check]`);
+  if(btn)btn.disabled=true;
+  const {error}=await sb.rpc('fn_save_stock_check',{p_item_id:itemId,p_actual_qty:Number(x.current_balance),p_reason_code:null,p_reason_detail:null,p_acting_mode:actingMode});
+  if(error){if(btn)btn.disabled=false;return toast(errMsg(error),true);}
+  closeModal();stockCache=[]; scanLotsCache=[]; scanLotsLoadedAt=0;inventorySummaryCache=[];toast('ยืนยันตรวจแล้ว ยอดตรงกับระบบ');
+}
+
 async function renderMove(defaultTab = 'receive') {
   page.innerHTML = `<div class="page-head"><div><h2>นำเข้า–นำออก</h2></div></div><div class="tabs move-tabs"><button data-tab="receive">${icon('plus')} นำเข้า</button><button data-tab="issue">${icon('minus')} นำออก</button></div><div id="movePane"></div>`;
 
@@ -1268,7 +1377,7 @@ async function receive(e) {
   btn.disabled = false;
   if (error) return toast(errMsg(error), true);
   materialsCache = [];
-  stockCache = [];
+  stockCache = []; scanLotsCache=[]; scanLotsLoadedAt=0;
   inventorySummaryCache=[];
   toast('รับเข้าสต๊อกแล้ว');
   const row = Array.isArray(data) ? data[0] : data;
@@ -1316,7 +1425,7 @@ function openIssueModal(l) {
     btn.disabled = false;
     if (error) return toast(errMsg(error), true);
     closeModal();
-    stockCache = [];
+    stockCache = []; scanLotsCache=[]; scanLotsLoadedAt=0;
     toast('บันทึกนำออก 1 หน่วยแล้ว');
     navigate(route === 'home' ? 'home' : 'stock');
   });
@@ -1334,15 +1443,19 @@ async function openPendingIssue() {
   if (code) await resolveIssueCode(code);
 }
 
-async function startCameraScanner() {
+async function startCameraScanner(mode = 'issue') {
+  const inspectMode = mode === 'inspect';
+  const resolveCode = inspectMode ? resolveStockCheckCode : resolveIssueCode;
+  const title = inspectMode ? 'สแกนตรวจ Lot' : 'สแกน QR Sticker';
+  const description = inspectMode ? 'หันกล้องไปที่ QR เพื่อดูยอดคงเหลือและบันทึกผลตรวจ' : 'หันกล้องหลังไปที่ QR และให้อยู่ภายในกรอบ';
   if (!navigator.mediaDevices?.getUserMedia) {
-    openModal(`<h3>อุปกรณ์นี้เปิดกล้องไม่ได้</h3><p>กรุณาเปิดแอปผ่าน Safari หรือ Chrome และตรวจว่าเว็บไซต์ได้รับอนุญาตให้ใช้กล้อง</p><form id="manualScanForm" class="form-grid"><label>พิมพ์รหัส QR<input id="manualScanCode" placeholder="เช่น BB020-69020" autocomplete="off"></label><button class="primary" type="submit">ค้นหา Lot</button></form>`);
-    $('#manualScanForm').addEventListener('submit', e => { e.preventDefault(); const code = $('#manualScanCode').value; closeModal(); resolveIssueCode(code); });
+    openModal(`<h3>อุปกรณ์นี้เปิดกล้องไม่ได้</h3><p>กรุณาเปิดแอปผ่าน Safari หรือ Chrome และตรวจว่าเว็บไซต์ได้รับอนุญาตให้ใช้กล้อง</p><form id="manualScanForm" class="form-grid"><label>พิมพ์รหัส QR<input id="manualScanCode" placeholder="เช่น BB319-09062026" autocomplete="off"></label><button class="primary" type="submit">${inspectMode?'ตรวจสอบ Lot':'ค้นหา Lot'}</button></form>`);
+    $('#manualScanForm').addEventListener('submit', e => { e.preventDefault(); const code = $('#manualScanCode').value; closeModal(); resolveCode(code); });
     return;
   }
 
-  openModal(`<div class="scanner-head"><div><h3>สแกน QR Sticker</h3><p>หันกล้องหลังไปที่ QR และให้อยู่ภายในกรอบ</p></div><button class="icon-button modal-close" type="button" aria-label="ปิด">×</button></div><div class="scan-video-wrap"><video id="scanVideo" autoplay playsinline muted></video><canvas id="scanCanvas" hidden></canvas><div class="scan-frame"></div><div id="scanStatus" class="scan-status">กำลังเปิดกล้อง…</div></div><p class="muted small">รองรับ QR Sticker เดิมและรหัส Lot เดิม</p><form id="manualScanForm" class="scanner-manual form-grid"><label>หรือพิมพ์รหัส QR<input id="manualScanCode" placeholder="เช่น BB020-69020" autocomplete="off"></label><button class="secondary" type="submit">ค้นหา Lot</button></form>`);
-  $('#manualScanForm').addEventListener('submit', e => { e.preventDefault(); const code = $('#manualScanCode').value; closeModal(); resolveIssueCode(code); });
+  openModal(`<div class="scanner-head"><div><h3>${title}</h3><p>${description}</p></div><button class="icon-button modal-close" type="button" aria-label="ปิด">×</button></div><div class="scan-video-wrap"><video id="scanVideo" autoplay playsinline muted></video><canvas id="scanCanvas" hidden></canvas><div class="scan-frame"></div><div id="scanStatus" class="scan-status">กำลังเปิดกล้อง…</div></div><p class="muted small">รองรับ QR Sticker ใหม่ รหัสเดิม และรหัส Lot เดิม</p><form id="manualScanForm" class="scanner-manual form-grid"><label>หรือพิมพ์รหัส QR<input id="manualScanCode" placeholder="เช่น BB319-09062026" autocomplete="off"></label><button class="secondary" type="submit">${inspectMode?'ตรวจสอบ Lot':'ค้นหา Lot'}</button></form>`);
+  $('#manualScanForm').addEventListener('submit', e => { e.preventDefault(); const code = $('#manualScanCode').value; closeModal(); resolveCode(code); });
 
   const status = $('#scanStatus');
   try {
@@ -1372,7 +1485,7 @@ async function startCameraScanner() {
       if (!value) return false;
       stopScanner();
       closeModal();
-      resolveIssueCode(value);
+      resolveCode(value);
       return true;
     };
     const scan = async () => {
@@ -1412,8 +1525,8 @@ async function startCameraScanner() {
         : name === 'NotReadableError'
           ? 'กล้องอาจถูกแอปอื่นใช้งานอยู่ กรุณาปิดแอปกล้องแล้วลองใหม่'
           : errMsg(e);
-    $('#modalBody').innerHTML = `<h3>เปิดกล้องไม่สำเร็จ</h3><p>${esc(message)}</p><form id="manualScanForm" class="form-grid"><label>พิมพ์รหัส QR<input id="manualScanCode" placeholder="เช่น BB020-69020" autocomplete="off"></label><button class="primary" type="submit">ค้นหา Lot</button></form>`;
-    $('#manualScanForm').addEventListener('submit', ev => { ev.preventDefault(); const code = $('#manualScanCode').value; closeModal(); resolveIssueCode(code); });
+    $('#modalBody').innerHTML = `<h3>เปิดกล้องไม่สำเร็จ</h3><p>${esc(message)}</p><form id="manualScanForm" class="form-grid"><label>พิมพ์รหัส QR<input id="manualScanCode" placeholder="เช่น BB319-09062026" autocomplete="off"></label><button class="primary" type="submit">${inspectMode?'ตรวจสอบ Lot':'ค้นหา Lot'}</button></form>`;
+    $('#manualScanForm').addEventListener('submit', ev => { ev.preventDefault(); const code = $('#manualScanCode').value; closeModal(); resolveCode(code); });
   }
 }
 
@@ -1549,10 +1662,10 @@ function openCheck(id) {
     });
     if (error) return toast(errMsg(error), true);
     closeModal();
-    stockCache = [];
+    stockCache = []; scanLotsCache=[]; scanLotsLoadedAt=0;
     inventorySummaryCache=[];
     toast(diff ? `ปรับยอดคงเหลือเป็น ${qty(actual)} ${x.unit || ''} แล้ว` : 'บันทึกผลตรวจแล้ว ยอดตรงกับระบบ');
-    renderWeekly();
+    route === 'scan-stock' ? renderScanStock() : renderWeekly();
   });
 }
 
@@ -1574,9 +1687,9 @@ function openExpiredRemoval(id) {
     btn.disabled = false;
     if (error) return toast(errMsg(error), true);
     closeModal();
-    stockCache = [];
+    stockCache = []; scanLotsCache=[]; scanLotsLoadedAt=0;
     toast('นำ Lot หมดอายุออกจากสต๊อกแล้ว สัปดาห์หน้าจะไม่แสดงซ้ำ');
-    renderWeekly();
+    route === 'scan-stock' ? renderScanStock() : renderWeekly();
   });
 }
 
@@ -1687,7 +1800,7 @@ function bindAdminOwnerEvents() {
   $$('[data-owner-code]').forEach(sel => sel.addEventListener('change', async () => {
     const {error} = await sb.from('materials').update({responsible_email: sel.value || null}).eq('code', sel.dataset.ownerCode);
     if (error) return toast(errMsg(error), true);
-    stockCache = [];
+    stockCache = []; scanLotsCache=[]; scanLotsLoadedAt=0;
     materialsCache = [];
     const row = (window._adminMaterials || []).find(x => x.code === sel.dataset.ownerCode);
     if (row) row.responsible_email = sel.value || null;
@@ -1709,7 +1822,7 @@ function openMaterialEditor(code) {
     }).eq('code', code);
     if (error) return toast(errMsg(error), true);
     closeModal();
-    stockCache = [];
+    stockCache = []; scanLotsCache=[]; scanLotsLoadedAt=0;
     materialsCache = [];
     toast('บันทึกวัสดุแล้ว');
     renderAdmin();
@@ -1717,7 +1830,7 @@ function openMaterialEditor(code) {
 }
 
 function renderHelp() {
-  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>สร้างบัญชีครั้งแรก</h3><ol class="help-steps"><li>ใช้เฉพาะอีเมลมหิดล @mahidol.ac.th ที่ Admin อนุญาตไว้</li><li>ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว</li><li>กด “สร้างบัญชีครั้งแรก” แล้วกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</li></ol></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>กรองผู้ดูแลหรือพิมพ์ชื่อวัสดุบางส่วนแล้วเลือก</li><li>ใส่ Lot วันหมดอายุ และจำนวน แล้วบันทึก</li></ol></div><div class="card help-card"><h3>นำออก</h3><ol class="help-steps"><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าแล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>ใช้หลายหน่วยให้สแกนและยืนยันซ้ำ</li></ol></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแล</h3><p>มี 3 เมนูย่อย: ภาพรวม, ต้องเบิก และตั้งค่าการเตือน เลือกเตือนตามจำนวนขั้นต่ำ เตือนรอบเบิกรายเดือน หรือไม่แจ้งเตือนได้ การเตือนรายเดือนจะเริ่มตรวจรอบตั้งแต่เดือนถัดไปหลังบันทึก</p></div><div class="card help-card"><h3>ตรวจวันศุกร์</h3><p>กรอกจำนวนที่นับได้จริง หากไม่ตรงกับระบบ ให้เลือกเหตุผล ระบบจะปรับยอดและเก็บชื่อผู้ตรวจไว้ในประวัติ</p></div><div class="card help-card"><h3>สถานะผู้ตรวจ</h3><p>เปิดเมนู “สถานะผู้ตรวจ” แล้วกำหนดช่วงวันที่ เพื่อดูว่าแต่ละวันศุกร์ใครตรวจครบหรือยังไม่ครบ</p></div><div class="card help-card"><h3>สติ๊กเกอร์เดิม</h3><p>สติ๊กเกอร์รหัสเดิมยังสแกนได้ ไม่ต้องเปลี่ยนใหม่ทั้งหมด</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบไม่ตัดยอดเอง เปิดตรวจวันศุกร์และกด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์ถัดไป</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมดูได้ในหน้าประวัติและรายงาน</p></div><div class="card help-card"><h3>เครื่องพิมพ์สติ๊กเกอร์</h3><p>ฉลากกว้าง 25 mm สูง 20 mm พิมพ์ทีละ 1 ดวง เว้นขอบบน–ล่าง 1 mm และซ้าย–ขวา 2 mm ตั้ง Scale 100%, Margin None และปิด Header/Footer</p></div></div>`;
+  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>สร้างบัญชีครั้งแรก</h3><ol class="help-steps"><li>ใช้เฉพาะอีเมลมหิดล @mahidol.ac.th ที่ Admin อนุญาตไว้</li><li>ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว</li><li>กด “สร้างบัญชีครั้งแรก” แล้วกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</li></ol></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>กรองผู้ดูแลหรือพิมพ์ชื่อวัสดุบางส่วนแล้วเลือก</li><li>ใส่ Lot วันหมดอายุ และจำนวน แล้วบันทึก</li></ol></div><div class="card help-card"><h3>นำออก</h3><ol class="help-steps"><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าแล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>ใช้หลายหน่วยให้สแกนและยืนยันซ้ำ</li></ol></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแล</h3><p>มี 3 เมนูย่อย: ภาพรวม, ต้องเบิก และตั้งค่าการเตือน เลือกเตือนตามจำนวนขั้นต่ำ เตือนรอบเบิกรายเดือน หรือไม่แจ้งเตือนได้ การเตือนรายเดือนจะเริ่มตรวจรอบตั้งแต่เดือนถัดไปหลังบันทึก</p></div><div class="card help-card"><h3>ตรวจวันศุกร์</h3><p>กรอกจำนวนที่นับได้จริง หากไม่ตรงกับระบบ ให้เลือกเหตุผล ระบบจะปรับยอดและเก็บชื่อผู้ตรวจไว้ในประวัติ</p></div><div class="card help-card"><h3>สแกนตรวจ Lot</h3><p>เปิดกล้องหรือพิมพ์รหัส QR เพื่อดูยอด Lot ยอดรวม ผู้ดูแล ขั้นต่ำ และยืนยันตรวจหรือปรับยอดได้ทันที</p></div><div class="card help-card"><h3>สถานะผู้ตรวจ</h3><p>เปิดเมนู “สถานะผู้ตรวจ” แล้วกำหนดช่วงวันที่ เพื่อดูว่าแต่ละวันศุกร์ใครตรวจครบหรือยังไม่ครบ</p></div><div class="card help-card"><h3>สติ๊กเกอร์เดิม</h3><p>สติ๊กเกอร์รหัสเดิมยังสแกนได้ ไม่ต้องเปลี่ยนใหม่ทั้งหมด</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบไม่ตัดยอดเอง เปิดตรวจวันศุกร์และกด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์ถัดไป</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมดูได้ในหน้าประวัติและรายงาน</p></div><div class="card help-card"><h3>เครื่องพิมพ์สติ๊กเกอร์</h3><p>ฉลากกว้าง 25 mm สูง 20 mm ชื่อวัสดุจะย่อฟอนต์อัตโนมัติโดยไม่ตัด Lot/EXP ตั้ง Scale 100%, Margin None และปิด Header/Footer หากต้องการหลายดวงให้ใส่จำนวนในช่อง “จำนวนชุด” ของหน้าพิมพ์</p></div></div>`;
   refreshInstallUI();
 }
 

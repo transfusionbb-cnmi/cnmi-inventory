@@ -9,25 +9,26 @@
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;background:#eef2f3;font-family:Tahoma,"Leelawadee UI","Noto Sans Thai",Arial,sans-serif;color:#000;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .preview{width:25mm;height:20mm;background:#fff}
-.label{width:25mm;height:20mm;padding:1mm 2mm;display:grid;grid-template-columns:minmax(0,11.8mm) minmax(0,8.2mm);gap:.5mm;overflow:hidden;background:#fff;border:0}
-.text{min-width:0;display:flex;flex-direction:column;line-height:1.04;overflow:hidden;padding:.1mm .15mm}
-.code{font-size:6.1pt;font-weight:800;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:.35mm}
-.name{font-size:4.25pt;font-weight:700;line-height:1.08;max-height:6.7mm;overflow:hidden;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow-wrap:anywhere;margin-bottom:auto}
-.meta{display:grid;grid-template-columns:3.1mm minmax(0,1fr);align-items:baseline;gap:.2mm;font-size:4.05pt;line-height:1.15;margin-top:.32mm;white-space:nowrap;overflow:hidden}
-.meta span{font-weight:600}.meta b{font-weight:800;overflow:hidden;text-overflow:ellipsis}
-.qr-wrap{min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;border-left:.1mm solid #777;padding-left:.4mm}
-#qr{width:7.8mm;height:7.8mm;display:grid;place-items:center}
+.label{width:25mm;height:20mm;padding:.8mm 1mm;display:grid;grid-template-columns:minmax(0,14.1mm) minmax(0,8.45mm);gap:.45mm;overflow:hidden;background:#fff;border:0}
+.text{min-width:0;display:grid;grid-template-rows:minmax(0,1fr) auto auto auto;align-content:stretch;line-height:1.05;overflow:hidden;padding:.05mm .15mm .05mm .05mm}
+.name{min-width:0;font-size:6.5pt;font-weight:900;line-height:1.03;overflow:hidden;overflow-wrap:anywhere;word-break:normal;display:flex;align-items:flex-start;padding-top:.05mm}
+.name.medium{font-size:5.55pt;line-height:1.04}.name.long{font-size:4.75pt;line-height:1.04}.name.xlong{font-size:4.05pt;line-height:1.03}
+.code{font-size:3.2pt;font-weight:700;letter-spacing:.01em;line-height:1.12;white-space:nowrap;overflow:hidden;margin:.18mm 0 .2mm;color:#222}
+.meta{display:grid;grid-template-columns:3.05mm minmax(0,1fr);align-items:baseline;gap:.25mm;font-size:4.05pt;line-height:1.13;white-space:nowrap;overflow:visible;margin-top:.18mm}
+.meta span{font-weight:700}.meta b{font-weight:900;overflow:visible;white-space:nowrap}
+.qr-wrap{min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;border-left:.12mm solid #777;padding-left:.45mm}
+#qr{width:8.05mm;height:8.05mm;display:grid;place-items:center;flex:0 0 auto}
 #qr svg{width:100%;height:100%;display:block}
-.key{font-size:2.85pt;font-weight:800;line-height:1.05;text-align:center;max-width:8mm;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:.18mm}
-.mark{font-size:2.35pt;font-weight:700;margin-top:.1mm;letter-spacing:.05em}
-.screen-status{position:fixed;left:29mm;top:5mm;width:250px;padding:14px 16px;border-radius:12px;background:#fff;color:#087b6f;box-shadow:0 8px 28px rgba(0,0,0,.16);font-size:13px;font-weight:700;line-height:1.45}
+.key{font-size:3.1pt;font-weight:900;line-height:1.08;text-align:center;width:8.1mm;max-height:2.65mm;overflow:hidden;overflow-wrap:anywhere;word-break:break-all;margin-top:.28mm}
+.mark{font-size:2.45pt;font-weight:800;margin-top:.12mm;letter-spacing:.05em}
+.screen-status{position:fixed;left:29mm;top:5mm;width:270px;padding:14px 16px;border-radius:12px;background:#fff;color:#087b6f;box-shadow:0 8px 28px rgba(0,0,0,.16);font-size:13px;font-weight:700;line-height:1.45}
 @media print{html,body{width:25mm!important;height:20mm!important;min-height:0!important;margin:0!important;padding:0!important;overflow:hidden!important;background:#fff!important}.preview,.label{width:25mm!important;height:20mm!important;margin:0!important}.screen-status{display:none!important}}
 </style>
 </head>
 <body>
-<div class="preview"><div class="label"><div class="text"><div class="code" id="code"></div><div class="name" id="name"></div><div class="meta"><span>LOT</span><b id="lot"></b></div><div class="meta"><span>EXP</span><b id="exp"></b></div></div><div class="qr-wrap"><div id="qr"></div><div class="key" id="key"></div><div class="mark">CNMI</div></div></div></div>
+<div class="preview"><div class="label"><div class="text"><div class="name" id="name"></div><div class="code" id="code"></div><div class="meta"><span>Lot</span><b id="lot"></b></div><div class="meta"><span>EXP</span><b id="exp"></b></div></div><div class="qr-wrap"><div id="qr"></div><div class="key" id="key"></div><div class="mark">CNMI</div></div></div></div>
 <div class="screen-status" id="screenStatus">กำลังเปิดหน้าพิมพ์อัตโนมัติ…</div>
-<script src="assets/qr-lite.js?v=1.4.0"></script>
+<script src="assets/qr-lite.js?v=1.4.2"></script>
 <script>
 'use strict';
 const p=new URLSearchParams(location.search);
@@ -37,23 +38,39 @@ const lot=safe(p.get('lot'));
 const key=safe(p.get('key'),`${code}-${lot}`);
 const qrText=safe(p.get('qr'),key);
 const statusEl=document.getElementById('screenStatus');
-document.getElementById('code').textContent=code;
-document.getElementById('name').textContent=safe(p.get('name'));
+const nameEl=document.getElementById('name');
+const codeEl=document.getElementById('code');
+const name=safe(p.get('name'));
+nameEl.textContent=name;
+codeEl.textContent=`รหัส ${code}`;
 document.getElementById('lot').textContent=lot;
 document.getElementById('exp').textContent=safe(p.get('exp'),'ไม่ระบุ');
 document.getElementById('key').textContent=key;
+if(name.length>52)nameEl.classList.add('xlong');else if(name.length>36)nameEl.classList.add('long');else if(name.length>22)nameEl.classList.add('medium');
 try{document.getElementById('qr').innerHTML=window.CNMIQRCode.svg(qrText,{level:'L',margin:1});}catch(e){document.getElementById('qr').textContent='QR';console.error(e);}
+function fitName(){
+  let size=parseFloat(getComputedStyle(nameEl).fontSize);
+  const min=3.45;
+  let guard=0;
+  while((nameEl.scrollHeight>nameEl.clientHeight+1||nameEl.scrollWidth>nameEl.clientWidth+1)&&size>min&&guard<28){
+    size-=.25;nameEl.style.fontSize=`${size}px`;guard++;
+  }
+}
+function fitKey(){
+  const el=document.getElementById('key');let size=parseFloat(getComputedStyle(el).fontSize);let guard=0;
+  while((el.scrollHeight>el.clientHeight+1||el.scrollWidth>el.clientWidth+1)&&size>3&&guard<18){size-=.2;el.style.fontSize=`${size}px`;guard++;}
+}
 function nextFrame(){return new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));}
+async function prepare(){if(document.fonts&&document.fonts.ready){try{await document.fonts.ready;}catch(_){}}await nextFrame();fitName();fitKey();await nextFrame();}
 async function startPrint(){
   try{
     if(document.readyState!=='complete')await new Promise(resolve=>window.addEventListener('load',resolve,{once:true}));
-    if(document.fonts&&document.fonts.ready){try{await document.fonts.ready;}catch(_){}}
-    await nextFrame();await new Promise(resolve=>setTimeout(resolve,90));
+    await prepare();await new Promise(resolve=>setTimeout(resolve,90));
     statusEl.textContent='กำลังเปิดหน้าพิมพ์…';window.focus();window.print();
   }catch(e){statusEl.textContent='เปิดหน้าพิมพ์ไม่สำเร็จ กรุณากด Ctrl + P';console.error(e);}
 }
 window.addEventListener('afterprint',()=>setTimeout(()=>window.close(),180));
-window.addEventListener('load',()=>{if(p.get('auto')==='1')startPrint();else statusEl.textContent='ตัวอย่างสติ๊กเกอร์ 25 × 20 mm';},{once:true});
+window.addEventListener('load',async()=>{await prepare();if(p.get('auto')==='1')startPrint();else statusEl.textContent='ตัวอย่างสติ๊กเกอร์ 25 × 20 mm';},{once:true});
 setTimeout(()=>{if(p.get('auto')==='1'&&!document.hidden)statusEl.textContent='หากหน้าพิมพ์ยังไม่เปิด กรุณากด Ctrl + P';},5000);
 </script>
 </body>

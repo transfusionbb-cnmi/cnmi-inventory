@@ -115,7 +115,18 @@
           "sizes": "192x192"
         }
       ]
+    },
+    {
+      "name": "สแกนตรวจ Lot",
+      "short_name": "สแกน Lot",
+      "url": "./index.html#scan-stock",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
     }
   ],
-  "version": "1.4.0"
+  "version": "1.4.2"
 }
