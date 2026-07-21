@@ -9,16 +9,16 @@
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;background:#eef2f3;font-family:Tahoma,"Leelawadee UI","Noto Sans Thai",Arial,sans-serif;color:#000;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .preview{width:25mm;height:20mm;background:#fff}
-.label{width:25mm;height:20mm;padding:.55mm;display:grid;grid-template-columns:minmax(0,14mm) minmax(0,9.3mm);gap:.55mm;overflow:hidden;background:#fff;border:.12mm solid #222}
+.label{width:25mm;height:20mm;padding:1mm 2mm;display:grid;grid-template-columns:minmax(0,11.8mm) minmax(0,8.2mm);gap:.5mm;overflow:hidden;background:#fff;border:0}
 .text{min-width:0;display:flex;flex-direction:column;line-height:1.04;overflow:hidden;padding:.1mm .15mm}
 .code{font-size:6.1pt;font-weight:800;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:.35mm}
 .name{font-size:4.25pt;font-weight:700;line-height:1.08;max-height:6.7mm;overflow:hidden;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow-wrap:anywhere;margin-bottom:auto}
 .meta{display:grid;grid-template-columns:3.1mm minmax(0,1fr);align-items:baseline;gap:.2mm;font-size:4.05pt;line-height:1.15;margin-top:.32mm;white-space:nowrap;overflow:hidden}
 .meta span{font-weight:600}.meta b{font-weight:800;overflow:hidden;text-overflow:ellipsis}
 .qr-wrap{min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;border-left:.1mm solid #777;padding-left:.4mm}
-#qr{width:8.65mm;height:8.65mm;display:grid;place-items:center}
+#qr{width:7.8mm;height:7.8mm;display:grid;place-items:center}
 #qr svg{width:100%;height:100%;display:block}
-.key{font-size:2.85pt;font-weight:800;line-height:1.05;text-align:center;max-width:8.8mm;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:.18mm}
+.key{font-size:2.85pt;font-weight:800;line-height:1.05;text-align:center;max-width:8mm;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:.18mm}
 .mark{font-size:2.35pt;font-weight:700;margin-top:.1mm;letter-spacing:.05em}
 .screen-status{position:fixed;left:29mm;top:5mm;width:250px;padding:14px 16px;border-radius:12px;background:#fff;color:#087b6f;box-shadow:0 8px 28px rgba(0,0,0,.16);font-size:13px;font-weight:700;line-height:1.45}
 @media print{html,body{width:25mm!important;height:20mm!important;min-height:0!important;margin:0!important;padding:0!important;overflow:hidden!important;background:#fff!important}.preview,.label{width:25mm!important;height:20mm!important;margin:0!important}.screen-status{display:none!important}}
@@ -27,7 +27,7 @@ html,body{margin:0;padding:0;background:#eef2f3;font-family:Tahoma,"Leelawadee U
 <body>
 <div class="preview"><div class="label"><div class="text"><div class="code" id="code"></div><div class="name" id="name"></div><div class="meta"><span>LOT</span><b id="lot"></b></div><div class="meta"><span>EXP</span><b id="exp"></b></div></div><div class="qr-wrap"><div id="qr"></div><div class="key" id="key"></div><div class="mark">CNMI</div></div></div></div>
 <div class="screen-status" id="screenStatus">กำลังเปิดหน้าพิมพ์อัตโนมัติ…</div>
-<script src="assets/qr-lite.js?v=1.3.8"></script>
+<script src="assets/qr-lite.js?v=1.4.0"></script>
 <script>
 'use strict';
 const p=new URLSearchParams(location.search);

@@ -376,3 +376,34 @@ button.primary,button.secondary,button.danger,.mini,.chip,.tabs button,.side-lin
   .material-combo-results{max-height:36vh}.material-combo-results button{padding:12px 13px}
   .page-head .muted.small{font-size:.76rem}
 }
+
+/* v1.4.0 — Mahidol access, flexible reorder alerts and weekly status report */
+.stock-choice-card.three{display:grid;grid-template-columns:minmax(170px,.75fr) minmax(190px,.8fr) minmax(260px,1.25fr);gap:12px;align-items:end}
+.my-stock-tabs{display:flex;gap:8px;margin:0 0 12px;overflow:auto;scrollbar-width:none}.my-stock-tabs::-webkit-scrollbar{display:none}.my-stock-tabs button{border:1px solid var(--line);border-radius:999px;background:#fff;padding:10px 15px;color:#53605d;font-weight:650;white-space:nowrap}.my-stock-tabs button.active{background:var(--brand);border-color:var(--brand);color:#fff}.my-stock-tabs button span{display:inline-grid;place-items:center;min-width:22px;height:22px;margin-left:4px;border-radius:999px;background:rgba(255,255,255,.2);font-size:.72rem}
+.my-stock-meta{margin-top:10px;color:var(--muted);font-size:.76rem}.my-stock-card.needs-reorder{border-left-color:#e59a49;background:#fffaf4}.stock-setting-grid{display:grid;grid-template-columns:1.2fr .8fr .8fr;gap:10px;margin:13px 0}.my-stock-setting-card>.primary{width:100%}
+.weekly-status-filter{display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:end;margin-bottom:14px}.weekly-staff-summary-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.weekly-staff-summary-grid article{display:grid;gap:4px;padding:12px 13px;border:1px solid var(--line);border-radius:14px;background:#fbfdfc}.weekly-staff-summary-grid article span,.weekly-staff-summary-grid article small{font-size:.73rem;color:var(--muted)}.weekly-staff-summary-grid article em{font-style:normal;font-weight:700;font-size:.8rem}.weekly-round-list{display:grid;gap:10px}.weekly-round-card{border:1px solid var(--line);border-radius:16px;background:#fff;overflow:hidden}.weekly-round-card summary{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:13px 15px;cursor:pointer}.weekly-round-card summary span{color:var(--muted);font-size:.78rem}.weekly-round-columns{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:0 15px 15px}.weekly-round-columns h4{margin:0 0 8px;color:var(--muted)}.weekly-round-columns p{display:flex;justify-content:space-between;gap:10px;margin:0;padding:8px 0;border-bottom:1px solid #edf2f0}.weekly-round-columns p span{color:var(--muted);font-size:.75rem}
+
+@media(min-width:980px){
+  .page{max-width:none;width:100%;padding-left:20px;padding-right:20px}
+  .table-wrap{overflow-x:hidden}
+  .data-table{width:100%;table-layout:fixed}
+  .data-table th,.data-table td{white-space:normal!important;overflow-wrap:anywhere;word-break:break-word;vertical-align:top}
+  .data-table th:first-child,.data-table td:first-child{width:28%}
+  .data-table th:last-child,.data-table td:last-child{width:auto}
+  .quiet-table .data-table th:first-child,.quiet-table .data-table td:first-child{width:36%}
+  .compact-desktop-table th:first-child,.compact-desktop-table td:first-child{width:34%}
+  .history-card .data-table th:nth-child(1),.history-card .data-table td:nth-child(1){width:15%}
+  .history-card .data-table th:nth-child(2),.history-card .data-table td:nth-child(2){width:28%}
+  .history-card .data-table th:nth-child(3),.history-card .data-table td:nth-child(3){width:18%}
+  .history-card .data-table th:nth-child(4),.history-card .data-table td:nth-child(4){width:13%}
+  .history-card .data-table th:nth-child(5),.history-card .data-table td:nth-child(5){width:12%}
+  .history-card .data-table th:nth-child(6),.history-card .data-table td:nth-child(6){width:14%}
+}
+@media(max-width:900px){.stock-choice-card.three{grid-template-columns:1fr}.stock-setting-grid{grid-template-columns:1fr 1fr}.stock-setting-grid label:first-child{grid-column:1/-1}.weekly-staff-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:699px){
+  .my-stock-tabs{margin-inline:-2px;padding:2px 4px 5px}.my-stock-tabs button{flex:0 0 auto}
+  .stock-setting-grid{grid-template-columns:1fr}.stock-setting-grid label:first-child{grid-column:auto}
+  .weekly-status-filter{grid-template-columns:1fr}.weekly-status-filter .primary{width:100%}
+  .weekly-staff-summary-grid{grid-template-columns:1fr}.weekly-round-columns{grid-template-columns:1fr}
+  .material-combo-results button{display:grid;justify-content:stretch}.material-combo-results button small{white-space:normal}
+}

@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.3.9';
+const APP_VERSION = '1.4.0';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const C = window.APP_CONFIG || {};
 const configured = C.SUPABASE_URL && !C.SUPABASE_URL.includes('YOUR-PROJECT') && C.SUPABASE_ANON_KEY && !C.SUPABASE_ANON_KEY.includes('YOUR-ANON');
@@ -16,6 +16,7 @@ let stockCache = [];
 let materialsCache = [];
 let inventorySummaryCache = [];
 let usageMaterialCode = '';
+let myStockTab = 'overview';
 let scannerStream = null;
 let scannerTimer = null;
 let pendingIssueCode = new URLSearchParams(location.search).get('issue') || new URLSearchParams(location.search).get('lot');
@@ -33,6 +34,7 @@ const dt = v => v ? new Date(v).toLocaleString('th-TH', {dateStyle:'short',timeS
 const icon = (name, cls = 'icon') => `<svg class="${cls}" aria-hidden="true"><use href="#i-${name}"></use></svg>`;
 const isAdminAccount = () => profile?.role === 'admin';
 const isAdminMode = () => isAdminAccount() && actingMode === 'admin';
+const isMahidolEmail = email => /^[^@\s]+@mahidol\.ac\.th$/i.test(String(email || '').trim());
 
 
 let responsiveTableQueued = false;
@@ -67,14 +69,22 @@ function materialComboboxMarkup({id, label = 'สินค้า', placeholder =
   return `<label class="material-combo-label">${esc(label)}<div class="material-combobox" id="${esc(id)}Combo"><div class="material-combo-input-wrap">${icon('search')}<input id="${esc(id)}Search" class="material-combo-search" type="search" inputmode="search" enterkeyhint="search" autocomplete="off" spellcheck="false" placeholder="${esc(placeholder)}" value="${esc(selected?.name || '')}" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${esc(id)}Results"><button type="button" class="material-combo-clear ${selected ? '' : 'hidden'}" id="${esc(id)}Clear" aria-label="ล้างสินค้าที่เลือก">×</button></div><input type="hidden" id="${esc(id)}" value="${esc(selected?.code || '')}"><div class="material-combo-results hidden" id="${esc(id)}Results" role="listbox"></div></div>${hint ? `<small class="field-hint">${esc(hint)}</small>` : ''}</label>`;
 }
 
-function setupMaterialCombobox(id, materials, {onChange = null, maxResults = 12} = {}) {
+function setupMaterialCombobox(id, materials, {onChange = null, maxResults = 12, ownerSelectId = ''} = {}) {
   const input = $(`#${id}Search`);
   const hidden = $(`#${id}`);
   const results = $(`#${id}Results`);
   const clearBtn = $(`#${id}Clear`);
+  const ownerFilter = ownerSelectId ? $(`#${ownerSelectId}`) : null;
   if (!input || !hidden || !results || !clearBtn) return {clear(){}, select(){}};
   let activeIndex = -1;
-  const normalized = materials.map(m => ({...m, _name:normalizeMaterialSearch(m.name), _label:normalizeMaterialSearch(m.label_name), _code:normalizeMaterialSearch(m.code), _unit:normalizeMaterialSearch(m.unit)}));
+  const normalized = materials.map(m => ({
+    ...m,
+    _name:normalizeMaterialSearch(m.name),
+    _label:normalizeMaterialSearch(m.label_name),
+    _code:normalizeMaterialSearch(m.code),
+    _unit:normalizeMaterialSearch(m.unit),
+    _owner:normalizeMaterialSearch(m.responsible_name || m.responsible_email)
+  }));
   const close = () => { results.classList.add('hidden'); input.setAttribute('aria-expanded','false'); activeIndex = -1; };
   const setActive = index => {
     const options = [...results.querySelectorAll('[data-material-option]')];
@@ -94,27 +104,32 @@ function setupMaterialCombobox(id, materials, {onChange = null, maxResults = 12}
   };
   const render = () => {
     const q = normalizeMaterialSearch(input.value);
+    const owner = ownerFilter?.value || '';
     hidden.value = '';
     clearBtn.classList.toggle('hidden', !input.value);
-    if (!q) {
-      results.innerHTML = '<div class="material-combo-empty">เริ่มพิมพ์ชื่อสินค้าอย่างน้อย 1 ตัวอักษร</div>';
+    let pool = normalized;
+    if (owner) pool = pool.filter(m => m.responsible_email === owner);
+    if (!q && !owner) {
+      results.innerHTML = '<div class="material-combo-empty">พิมพ์ชื่อบางส่วน หรือเลือกผู้ดูแลก่อน</div>';
       results.classList.remove('hidden');
       input.setAttribute('aria-expanded','true');
       activeIndex = -1;
       return;
     }
-    const ranked = normalized.map(m => {
-      let score = 99;
-      if (m._name.startsWith(q)) score = 0;
+    const ranked = pool.map(m => {
+      let score = q ? 99 : 0;
+      if (!q) score = 0;
+      else if (m._name.startsWith(q)) score = 0;
       else if (m._name.includes(q)) score = 1;
       else if (m._label.startsWith(q)) score = 2;
       else if (m._label.includes(q)) score = 3;
       else if (m._code.includes(q)) score = 4;
-      else if (m._unit.includes(q)) score = 5;
+      else if (m._owner.includes(q)) score = 5;
+      else if (m._unit.includes(q)) score = 6;
       return {m,score};
     }).filter(x => x.score < 99).sort((a,b) => a.score - b.score || String(a.m.name).localeCompare(String(b.m.name),'th'));
     const shown = ranked.slice(0,maxResults);
-    results.innerHTML = shown.map(({m}) => `<button type="button" data-material-option="${esc(m.code)}" role="option"><span>${esc(m.name)}</span>${m.unit ? `<small>${esc(m.unit)}</small>` : ''}</button>`).join('') + (ranked.length > maxResults ? `<div class="material-combo-more">พบอีก ${ranked.length-maxResults} รายการ พิมพ์เพิ่มเพื่อกรองให้แคบลง</div>` : '') || '<div class="material-combo-empty">ไม่พบสินค้า ลองพิมพ์คำอื่น</div>';
+    results.innerHTML = shown.map(({m}) => `<button type="button" data-material-option="${esc(m.code)}" role="option"><span>${esc(m.name)}</span><small>${esc(m.responsible_name || 'ยังไม่กำหนดผู้ดูแล')}${m.unit ? ` · ${esc(m.unit)}` : ''}</small></button>`).join('') + (ranked.length > maxResults ? `<div class="material-combo-more">พบอีก ${ranked.length-maxResults} รายการ พิมพ์เพิ่มเพื่อกรองให้แคบลง</div>` : '') || '<div class="material-combo-empty">ไม่พบสินค้า ลองพิมพ์คำอื่นหรือเปลี่ยนผู้ดูแล</div>';
     results.classList.remove('hidden');
     input.setAttribute('aria-expanded','true');
     activeIndex = -1;
@@ -146,6 +161,14 @@ function setupMaterialCombobox(id, materials, {onChange = null, maxResults = 12}
     input.focus();
     render();
     if (onChange) onChange('', null);
+  });
+  ownerFilter?.addEventListener('change', () => {
+    const selected = materials.find(m => m.code === hidden.value);
+    if (selected && ownerFilter.value && selected.responsible_email !== ownerFilter.value) {
+      hidden.value=''; input.value=''; clearBtn.classList.add('hidden');
+      if (onChange) onChange('',null);
+    }
+    render();
   });
   return {
     clear(trigger = true) {
@@ -289,7 +312,7 @@ function showIosInstallGuide() {
 
 function openMobileMenu() {
   const adminItem = isAdminMode() ? `<button type="button" data-route="admin">${icon('settings')}<span><strong>ตั้งค่าระบบ</strong><small>ผู้ใช้ ผู้ดูแล และข้อมูลสินค้า</small></span></button>` : '';
-  openModal(`<div class="mobile-menu-sheet"><div class="mobile-menu-head"><span class="owner-avatar">${esc((profile?.display_name || '?').trim().charAt(0))}</span><div><h3>เมนูทั้งหมด</h3><p>${esc(profile?.display_name || '')} · ${isAdminMode() ? 'โหมดผู้ดูแลระบบ' : 'โหมดเจ้าหน้าที่'}</p></div></div><div class="mobile-menu-grid"><button type="button" data-route="stock">${icon('box')}<span><strong>ค้นหาสต๊อกทั้งหมด</strong><small>ค้นหาสินค้าและเปิดดู Lot</small></span></button><button type="button" data-route="my-stock">${icon('user')}<span><strong>สต๊อกที่ฉันดูแล</strong><small>ดูรายการและปรับจำนวนขั้นต่ำ</small></span></button><button type="button" data-route="usage">${icon('chart')}<span><strong>วิเคราะห์การใช้</strong><small>ดูการใช้และแนวโน้มหมดอายุ</small></span></button><button type="button" data-route="weekly">${icon('check')}<span><strong>ตรวจวันศุกร์</strong><small>ตรวจนับและปรับยอดจริง</small></span></button><button type="button" data-route="activity">${icon('history')}<span><strong>ประวัติ</strong><small>ดูว่าใครทำรายการอะไร</small></span></button><button type="button" data-route="reports">${icon('download')}<span><strong>รายงานและส่งออก</strong><small>CSV และข้อมูลย้อนหลัง</small></span></button>${adminItem}<button type="button" data-route="help">${icon('help')}<span><strong>คู่มือใช้งาน</strong><small>ขั้นตอนทำงานสำหรับเจ้าหน้าที่</small></span></button><button type="button" data-open-install>${icon('smartphone')}<span><strong>ติดตั้งแอป</strong><small>Android และ iPhone/iPad</small></span></button></div></div>`);
+  openModal(`<div class="mobile-menu-sheet"><div class="mobile-menu-head"><span class="owner-avatar">${esc((profile?.display_name || '?').trim().charAt(0))}</span><div><h3>เมนูทั้งหมด</h3><p>${esc(profile?.display_name || '')}</p></div></div><div class="mobile-menu-grid"><button type="button" data-route="stock">${icon('box')}<span><strong>ค้นหาสต๊อกทั้งหมด</strong><small>ค้นหาสินค้าและ Lot</small></span></button><button type="button" data-route="my-stock">${icon('user')}<span><strong>สต๊อกที่ฉันดูแล</strong><small>ดูของที่มี ต้องเบิก และตั้งค่าการเตือน</small></span></button><button type="button" data-route="usage">${icon('chart')}<span><strong>วิเคราะห์การใช้</strong><small>การใช้และแนวโน้มหมดอายุ</small></span></button><button type="button" data-route="weekly">${icon('check')}<span><strong>ตรวจวันศุกร์</strong><small>ตรวจนับและปรับยอดจริง</small></span></button><button type="button" data-route="weekly-status">${icon('user')}<span><strong>สถานะผู้ตรวจ</strong><small>ดูย้อนหลังตามช่วงวันที่</small></span></button><button type="button" data-route="activity">${icon('history')}<span><strong>ประวัติ</strong><small>รายการที่ทำในระบบ</small></span></button><button type="button" data-route="reports">${icon('download')}<span><strong>รายงานและส่งออก</strong><small>CSV และข้อมูลย้อนหลัง</small></span></button>${adminItem}<button type="button" data-route="help">${icon('help')}<span><strong>คู่มือใช้งาน</strong><small>ขั้นตอนทำงาน</small></span></button><button type="button" data-open-install>${icon('smartphone')}<span><strong>ติดตั้งแอป</strong><small>Android และ iPhone/iPad</small></span></button></div></div>`);
 }
 
 function loading() {
@@ -429,6 +452,7 @@ async function login(e) {
   if (!configured) return toast('กรุณาตั้งค่า Supabase ก่อน', true);
   const email = $('#loginEmail').value.trim().toLowerCase();
   const password = $('#loginPassword').value;
+  if (!isMahidolEmail(email)) return toast('ใช้ได้เฉพาะอีเมลมหิดล @mahidol.ac.th', true);
   const btn = e.submitter;
   btn.disabled = true;
   const {error} = await sb.auth.signInWithPassword({email, password});
@@ -441,10 +465,16 @@ async function register() {
   if (!configured) return toast('กรุณาตั้งค่า Supabase ก่อน', true);
   const email = $('#loginEmail').value.trim().toLowerCase();
   const password = $('#loginPassword').value;
-  if (!email || password.length < 6) return toast('กรอกอีเมลและรหัสผ่านอย่างน้อย 6 ตัว', true);
-  const {error} = await sb.auth.signUp({email, password});
-  if (error) return toast(errMsg(error), true);
-  toast('สร้างบัญชีแล้ว กรุณาตรวจอีเมลยืนยันตามการตั้งค่า Supabase');
+  if (!isMahidolEmail(email)) return toast('ใช้ได้เฉพาะอีเมลมหิดล @mahidol.ac.th', true);
+  if (password.length < 6) return toast('ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว', true);
+  const {data,error} = await sb.auth.signUp({email, password});
+  if (error) {
+    const msg=String(error.message || '');
+    if (/database error|saving new user/i.test(msg)) return toast('อีเมลนี้อาจยังไม่ได้รับสิทธิ์จาก Admin หรือไม่ใช่อีเมลมหิดล', true);
+    return toast(errMsg(error), true);
+  }
+  if (data?.session) await sb.auth.signOut();
+  toast('สร้างบัญชีแล้ว กดเข้าสู่ระบบด้วยอีเมลและรหัสเดิม');
 }
 
 async function loadProfile() {
@@ -465,7 +495,7 @@ async function enterApp() {
     appView.classList.remove('hidden');
     updateRoleUI();
     const hashRoute = location.hash.replace(/^#/, '');
-    const allowed = ['home','stock','my-stock','usage','urgent','move','weekly','activity','reports','help','admin'];
+    const allowed = ['home','stock','my-stock','usage','urgent','move','weekly','weekly-status','activity','reports','help','admin'];
     const initialRoute = allowed.includes(hashRoute) ? hashRoute : 'home';
     await navigate(initialRoute);
     if (pendingIssueCode) setTimeout(openPendingIssue, 250);
@@ -614,16 +644,18 @@ async function navigate(r, options = {}) {
   route = r;
   if (r === 'move') moveTab = options.tab || moveTab || 'receive';
   if (r === 'usage') usageMaterialCode = options.material || usageMaterialCode || '';
+  if (r === 'my-stock') myStockTab = options.tab || myStockTab || 'overview';
   navActive();
   loading();
   try {
     if (r === 'home') await renderHome();
     else if (r === 'stock') await renderStock(options.filter || 'select');
-    else if (r === 'my-stock') await renderMyStock();
+    else if (r === 'my-stock') await renderMyStock(options.tab || myStockTab);
     else if (r === 'usage') await renderUsage(usageMaterialCode);
     else if (r === 'urgent') await renderUrgent();
     else if (r === 'move') await renderMove(moveTab);
     else if (r === 'weekly') await renderWeekly();
+    else if (r === 'weekly-status') await renderWeeklyStatus();
     else if (r === 'activity') await renderActivity();
     else if (r === 'reports') await renderReports(reportTab);
     else if (r === 'help') renderHelp();
@@ -678,8 +710,10 @@ function groupByOwner(summaryRows = []) {
     });
     const item = map.get(key);
     item.materials += 1;
-    if (Number(row.total_balance || 0) <= 0) item.out_count += 1;
-    else if (Number(row.total_balance || 0) < Number(row.min_qty || 0)) item.low_count += 1;
+    if (row.needs_reorder) {
+      if ((row.alert_mode || 'MINIMUM') === 'MINIMUM' && Number(row.total_balance || 0) <= 0) item.out_count += 1;
+      else item.low_count += 1;
+    }
     item.expired_count += Number(row.expired_pending_lots || 0);
   });
   return [...map.values()].sort((a,b) => (b.expired_count + b.out_count + b.low_count) - (a.expired_count + a.out_count + a.low_count) || a.responsible_name.localeCompare(b.responsible_name, 'th'));
@@ -708,13 +742,14 @@ async function renderHome() {
   const activities = activityRes.data || [];
   const todayTx = todayTxRes.data || [];
   const expiredPendingCount = summaries.reduce((sum,x) => sum + Number(x.expired_pending_lots || 0), 0);
-  const outMaterials = summaries.filter(x => Number(x.total_balance || 0) <= 0);
-  const lowMaterials = summaries.filter(x => Number(x.total_balance || 0) > 0 && Number(x.total_balance || 0) < Number(x.min_qty || 0));
+  const reorderMaterials = summaries.filter(x => Boolean(x.needs_reorder));
+  const outMaterials = summaries.filter(x => Boolean(x.needs_reorder) && (x.alert_mode || 'MINIMUM') === 'MINIMUM' && Number(x.total_balance || 0) <= 0);
+  const lowMaterials = summaries.filter(x => Boolean(x.needs_reorder) && (x.alert_mode || 'MINIMUM') === 'MINIMUM' && Number(x.total_balance || 0) > 0);
   const nearExpiryCount = (nearRes.data || []).length;
   const receiveToday = todayTx.filter(x => x.tx_type === 'RECEIVE').length;
   const issueToday = todayTx.filter(x => x.tx_type === 'ISSUE').length;
   const ownerGroups = groupByOwner(summaries);
-  updateUrgentBadge(expiredPendingCount + lowMaterials.length + outMaterials.length);
+  updateUrgentBadge(expiredPendingCount + reorderMaterials.length);
 
   let prog = null;
   if (checkRes) {
@@ -723,7 +758,7 @@ async function renderHome() {
   }
 
   const productRows = [...summaries].sort((a, b) => {
-    const score = x => Number(x.expired_pending_lots || 0) ? 4 : Number(x.total_balance || 0) <= 0 ? 3 : Number(x.total_balance || 0) < Number(x.min_qty || 0) ? 2 : 0;
+    const score = x => Number(x.expired_pending_lots || 0) ? 4 : x.needs_reorder ? 3 : 0;
     return score(b) - score(a) || Number(a.total_balance || 0) - Number(b.total_balance || 0);
   }).slice(0, 8);
 
@@ -733,7 +768,7 @@ async function renderHome() {
     <section class="home-workflow" aria-label="งานที่ใช้บ่อย"><button data-route="move" data-move-tab="receive">${icon('plus')}<span><strong>รับเข้า</strong></span></button><button data-route="move" data-move-tab="issue">${icon('minus')}<span><strong>นำออก</strong></span></button><button data-route="weekly">${icon('check')}<span><strong>ตรวจวันศุกร์</strong></span></button><button data-route="my-stock">${icon('user')}<span><strong>สต๊อกที่ฉันดูแล</strong></span></button></section>
 
     <div class="grid kpi-grid kpi-grid-6">
-      <button class="card kpi kpi-button" data-route="stock" data-stock-filter="out"><div class="kpi-top"><span class="kpi-icon danger">${icon('box')}</span><small>สินค้าหมด</small></div><strong>${outMaterials.length}</strong><small>รายการ</small></button>
+      <button class="card kpi kpi-button" data-route="urgent"><div class="kpi-top"><span class="kpi-icon danger">${icon('box')}</span><small>ต้องเบิก</small></div><strong>${reorderMaterials.length}</strong><small>รายการ</small></button>
       <button class="card kpi kpi-button" data-route="stock" data-stock-filter="low"><div class="kpi-top"><span class="kpi-icon warn">${icon('alert')}</span><small>ต่ำกว่าขั้นต่ำ</small></div><strong>${lowMaterials.length}</strong><small>รายการ</small></button>
       <button class="card kpi kpi-button" data-route="move" data-move-tab="receive"><div class="kpi-top"><span class="kpi-icon">${icon('plus')}</span><small>นำเข้า (วันนี้)</small></div><strong>${receiveToday}</strong><small>รายการ</small></button>
       <button class="card kpi kpi-button" data-route="move" data-move-tab="issue"><div class="kpi-top"><span class="kpi-icon info">${icon('minus')}</span><small>นำออก (วันนี้)</small></div><strong>${issueToday}</strong><small>รายการ</small></button>
@@ -755,7 +790,7 @@ async function renderHome() {
     ${prog ? `<section class="card weekly-summary"><div class="weekly-ring" style="--pct:${Number(prog.percent_complete || 0)}"><div><strong>${prog.checked_items}/${prog.total_items}</strong><span>${prog.percent_complete}%</span></div></div><div><h3>ตรวจสต๊อกวันศุกร์ ${d(prog.week_friday)}</h3><p class="muted">${prog.status === 'COMPLETED' ? 'ปิดรอบแล้ว' : `ยังเหลือ ${prog.pending_items ?? (prog.total_items-prog.checked_items)} Lot`}</p><button class="mini" data-route="weekly">ดูรายการตรวจทั้งหมด ${icon('arrow')}</button></div></section>` : ''}
   `;
 
-  const productHtml = `<div class="table-wrap quiet-table"><table class="data-table"><thead><tr><th>รายการสินค้า</th><th>คงเหลือ</th><th>ขั้นต่ำ</th><th>ผู้ดูแล</th><th>สถานะ</th><th></th></tr></thead><tbody>${productRows.map(x => `<tr><td><button class="table-name-link" data-material-detail="${esc(x.material_code)}"><span>${esc(x.material_name)}</span></button></td><td><span class="table-number">${qty(x.total_balance)}</span> ${esc(x.unit)}</td><td>${qty(x.min_qty)}</td><td><button class="owner-inline-link" data-owner-detail="${esc(x.responsible_email || 'unassigned')}">${esc(x.responsible_name || 'ยังไม่กำหนด')}</button></td><td>${Number(x.expired_pending_lots || 0) ? '<span class="badge danger">มี Lot หมดอายุ</span>' : Number(x.total_balance || 0) <= 0 ? '<span class="badge danger">หมด</span>' : Number(x.total_balance || 0) < Number(x.min_qty || 0) ? '<span class="badge warn">ต่ำกว่าขั้นต่ำ</span>' : '<span class="badge ok">คงเหลือ</span>'}</td><td><button class="icon-mini" title="วิเคราะห์การใช้" data-material-usage="${esc(x.material_code)}">${icon('chart')}</button></td></tr>`).join('') || '<tr><td colspan="6">ไม่มีข้อมูล</td></tr>'}</tbody></table></div>`;
+  const productHtml = `<div class="table-wrap quiet-table"><table class="data-table"><thead><tr><th>รายการสินค้า</th><th>คงเหลือ</th><th>ขั้นต่ำ</th><th>ผู้ดูแล</th><th>สถานะ</th><th></th></tr></thead><tbody>${productRows.map(x => `<tr><td><button class="table-name-link" data-material-detail="${esc(x.material_code)}"><span>${esc(x.material_name)}</span></button></td><td><span class="table-number">${qty(x.total_balance)}</span> ${esc(x.unit)}</td><td>${qty(x.min_qty)}</td><td><button class="owner-inline-link" data-owner-detail="${esc(x.responsible_email || 'unassigned')}">${esc(x.responsible_name || 'ยังไม่กำหนด')}</button></td><td>${Number(x.expired_pending_lots || 0) ? '<span class="badge danger">มี Lot หมดอายุ</span>' : x.needs_reorder ? `<span class="badge warn">${x.alert_mode==='MONTHLY'?'ถึงรอบเบิก':Number(x.total_balance||0)<=0?'หมด':'ต่ำกว่าขั้นต่ำ'}</span>` : x.alert_mode==='MONTHLY' && Number(x.total_balance||0)<=0 ? '<span class="badge info">ใช้ชุดปัจจุบันอยู่</span>' : '<span class="badge ok">ปกติ</span>'}</td><td><button class="icon-mini" title="วิเคราะห์การใช้" data-material-usage="${esc(x.material_code)}">${icon('chart')}</button></td></tr>`).join('') || '<tr><td colspan="6">ไม่มีข้อมูล</td></tr>'}</tbody></table></div>`;
   const ownerHtml = `<div class="owner-summary-grid">${ownerGroups.map(g => `<button class="owner-box owner-box-button" type="button" data-owner-detail="${esc(g.responsible_email || 'unassigned')}"><span class="owner-avatar">${esc((g.responsible_name || '?').trim().charAt(0))}</span><span class="owner-box-copy"><strong>${esc(g.responsible_name)}</strong><small>${esc(g.responsible_email || 'ยังไม่กำหนด')}</small><span class="owner-stats"><span>ดูแล ${g.materials} รายการ</span><span>ต่ำกว่าขั้นต่ำ ${g.low_count}</span><span>สินค้าหมด ${g.out_count}</span><span class="danger-text">หมดอายุรอนำออก ${g.expired_count}</span></span><em>กดเพื่อดูรายการที่ดูแล ${icon('arrow')}</em></span></button>`).join('') || '<div class="empty">ไม่มีข้อมูลผู้ดูแล</div>'}</div>`;
   const pane = $('#homeOverviewPane');
   const setMode = mode => {
@@ -786,7 +821,7 @@ function buildMaterialGroups(summaries = [], lots = []) {
       material_code:l.material_code, material_name:l.material_name, label_name:l.label_name,
       unit:l.unit, min_qty:l.min_qty, responsible_email:l.responsible_email,
       responsible_name:l.responsible_name, total_balance:0, active_lots:0,
-      nearest_expiry:null, expired_pending_lots:0, expired_pending_balance:0, lots:[]
+      nearest_expiry:null, expired_pending_lots:0, expired_pending_balance:0, alert_mode:l.alert_mode || 'MINIMUM', reorder_day:l.reorder_day || 1, needs_reorder:false, lots:[]
     });
     map.get(l.material_code).lots.push(l);
   });
@@ -802,6 +837,7 @@ function buildMaterialGroups(summaries = [], lots = []) {
     }
     return {...g,
       total_balance:Number(g.total_balance || 0), min_qty:Number(g.min_qty || 0),
+      alert_mode:g.alert_mode || 'MINIMUM', reorder_day:Number(g.reorder_day || 1), needs_reorder:Boolean(g.needs_reorder),
       activeLots, expiredLots, negativeLots,
       active_lots:Number(g.active_lots || activeLots.length),
       expired_pending_lots:Number(g.expired_pending_lots || expiredLots.length),
@@ -814,8 +850,15 @@ function buildMaterialGroups(summaries = [], lots = []) {
 function materialGroupStatus(g) {
   if (g.expired_pending_lots > 0) return {key:'expired',label:`หมดอายุรอนำออก ${g.expired_pending_lots} Lot`,badge:'danger'};
   if (g.negativeLots.length || g.total_balance < 0) return {key:'negative',label:'ยอดติดลบ',badge:'danger'};
-  if (g.total_balance <= 0) return {key:'out',label:'สินค้าหมด',badge:'danger'};
-  if (g.total_balance < g.min_qty) return {key:'low',label:'ต่ำกว่าขั้นต่ำ',badge:'warn'};
+  if (g.alert_mode === 'MONTHLY') {
+    if (g.needs_reorder) return {key:'reorder',label:'ถึงรอบเบิก',badge:'warn'};
+    if (g.total_balance <= 0) return {key:'current-use',label:'ใช้ชุดปัจจุบันอยู่',badge:'info'};
+  } else if (g.alert_mode === 'NONE') {
+    if (g.total_balance <= 0) return {key:'notrack',label:'ไม่เปิดแจ้งเตือน',badge:'info'};
+  } else {
+    if (g.total_balance <= 0) return {key:'out',label:'สินค้าหมด',badge:'danger'};
+    if (g.total_balance < g.min_qty) return {key:'low',label:'ต่ำกว่าขั้นต่ำ',badge:'warn'};
+  }
   if (g.days_to_nearest !== null && Number(g.days_to_nearest) <= 30) return {key:'expiry',label:'ใกล้หมดอายุ',badge:'warn'};
   return {key:'positive',label:'คงเหลือปกติ',badge:'ok'};
 }
@@ -872,34 +915,48 @@ async function openOwnerDetail(ownerKey) {
     const rows = summaries.filter(x => unassigned ? !x.responsible_email : x.responsible_email === ownerKey);
     const groups = buildMaterialGroups(rows, lots);
     const name = groups[0]?.responsible_name || (unassigned ? 'ยังไม่กำหนดผู้ดูแล' : ownerKey);
-    const low = groups.filter(g => g.total_balance > 0 && g.total_balance < g.min_qty).length;
-    const out = groups.filter(g => g.total_balance <= 0).length;
+    const low = groups.filter(g => ['low','reorder'].includes(materialGroupStatus(g).key)).length;
+    const out = groups.filter(g => materialGroupStatus(g).key === 'out').length;
     const expired = groups.reduce((s,g) => s + g.expired_pending_lots,0);
     openModal(`<div class="owner-detail-head"><span class="owner-avatar large">${esc(name.trim().charAt(0) || '?')}</span><div><h3>${esc(name)}</h3><p>${unassigned ? 'ยังไม่ได้กำหนดผู้ดูแล' : esc(ownerKey)}</p></div></div><div class="detail-kpis four"><div><span>ดูแลทั้งหมด</span><strong>${groups.length}</strong><small>รายการ</small></div><div><span>ต่ำกว่าขั้นต่ำ</span><strong>${low}</strong><small>รายการ</small></div><div><span>สินค้าหมด</span><strong>${out}</strong><small>รายการ</small></div><div><span>หมดอายุรอนำออก</span><strong>${expired}</strong><small>Lot</small></div></div><div class="owner-material-list">${groups.map(g => { const st=materialGroupStatus(g); return `<div class="owner-material-row"><button data-material-detail="${esc(g.material_code)}"><span>${esc(g.material_name)}</span></button><div><span class="table-number">${qty(g.total_balance)}</span> ${esc(g.unit)}<em class="badge ${st.badge}">${st.label}</em></div><button class="icon-mini" title="วิเคราะห์การใช้" data-material-usage="${esc(g.material_code)}">${icon('chart')}</button></div>`; }).join('') || '<div class="empty">ไม่มีรายการที่รับผิดชอบ</div>'}</div>`);
   } catch (e) { toast(errMsg(e), true); }
 }
 
 
-async function renderMyStock() {
+async function renderMyStock(tab = 'overview') {
+  myStockTab = ['overview','reorder','settings'].includes(tab) ? tab : 'overview';
   const {data,error} = await sb.from('v_inventory_summary').select('*').eq('responsible_email', profile.email).order('material_name');
   if (error) throw error;
   const groups = buildMaterialGroups(data || [], []);
-  const low = groups.filter(g => g.total_balance > 0 && g.total_balance < g.min_qty).length;
-  const out = groups.filter(g => g.total_balance <= 0).length;
-  page.innerHTML = `<div class="page-head"><div><h2>สต๊อกที่ฉันดูแล</h2><p class="muted small">ดูสินค้าในความรับผิดชอบและกำหนดจำนวนขั้นต่ำได้ด้วยตนเอง</p></div><button class="mini ghost" data-route="help">${icon('help')} วิธีตั้งขั้นต่ำ</button></div><section class="my-stock-guide"><div>${icon('alert')}<span><strong>แจ้งเตือนเมื่อคงเหลือ “ต่ำกว่า” ขั้นต่ำ</strong><small>ตัวอย่าง ตั้งขั้นต่ำ 1 และคงเหลือ 1 จะยังไม่แจ้งเตือน แต่เมื่อเหลือ 0 จะแสดงว่าสินค้าหมด</small></span></div><div>${icon('user')}<span><strong>แก้ได้เฉพาะสินค้าที่ตนเองดูแล</strong><small>ระบบบันทึกชื่อผู้แก้และเวลาไว้ในประวัติทุกครั้ง</small></span></div></section><div class="my-stock-kpis"><div><span>ดูแลทั้งหมด</span><strong>${groups.length}</strong><small>รายการ</small></div><div><span>ต่ำกว่าขั้นต่ำ</span><strong>${low}</strong><small>รายการ</small></div><div><span>สินค้าหมด</span><strong>${out}</strong><small>รายการ</small></div></div><div class="my-stock-list">${groups.map(g=>{const st=materialGroupStatus(g);return `<form class="my-stock-card" data-my-minimum-form data-material-code="${esc(g.material_code)}"><div class="my-stock-title"><div><h3>${esc(g.material_name)}</h3><p>คงเหลือ <strong>${qty(g.total_balance)}</strong> ${esc(g.unit)} · ${g.active_lots} Lot</p></div><em class="badge ${st.badge}">${st.label}</em></div><div class="my-stock-min-row"><label>จำนวนขั้นต่ำ<input name="minimum" type="number" min="0" step="0.01" value="${Number(g.min_qty || 0)}" inputmode="decimal" required></label><button class="primary" type="submit">บันทึกขั้นต่ำ</button></div><div class="my-stock-actions"><button type="button" class="mini ghost" data-material-detail="${esc(g.material_code)}">ดู Lot</button><button type="button" class="mini" data-material-usage="${esc(g.material_code)}">${icon('chart')} วิเคราะห์การใช้</button></div></form>`;}).join('') || '<div class="card empty">ยังไม่มีสินค้าที่กำหนดให้คุณดูแล กรุณาให้ Admin กำหนดผู้ดูแลในเมนูตั้งค่า</div>'}</div>`;
-  $$('[data-my-minimum-form]').forEach(form=>form.addEventListener('submit',async e=>{
-    e.preventDefault();
-    const btn=e.submitter;
-    const value=Number(new FormData(form).get('minimum'));
-    if (!Number.isFinite(value) || value < 0) return toast('จำนวนขั้นต่ำต้องเป็น 0 หรือมากกว่า',true);
-    btn.disabled=true;
-    const {error}=await sb.rpc('fn_update_my_minimum',{p_material_code:form.dataset.materialCode,p_min_qty:value,p_acting_mode:actingMode});
-    btn.disabled=false;
-    if (error) return toast(errMsg(error),true);
-    inventorySummaryCache=[];
-    toast('บันทึกจำนวนขั้นต่ำแล้ว');
-    renderMyStock();
-  }));
+  const reorder = groups.filter(g => g.needs_reorder);
+  const monthly = groups.filter(g => g.alert_mode === 'MONTHLY').length;
+  const tabBar = `<div class="my-stock-tabs"><button data-my-stock-tab="overview" class="${myStockTab==='overview'?'active':''}">ภาพรวม</button><button data-my-stock-tab="reorder" class="${myStockTab==='reorder'?'active':''}">ต้องเบิก <span>${reorder.length}</span></button><button data-my-stock-tab="settings" class="${myStockTab==='settings'?'active':''}">ตั้งค่าการเตือน</button></div>`;
+  const summary = `<div class="my-stock-kpis"><div><span>ดูแลทั้งหมด</span><strong>${groups.length}</strong><small>รายการ</small></div><div><span>ต้องเบิก</span><strong>${reorder.length}</strong><small>รายการ</small></div><div><span>เตือนรายเดือน</span><strong>${monthly}</strong><small>รายการ</small></div></div>`;
+  const overviewCards = groups.map(g=>{const st=materialGroupStatus(g);return `<article class="my-stock-card"><div class="my-stock-title"><div><h3>${esc(g.material_name)}</h3><p>คงเหลือ ${qty(g.total_balance)} ${esc(g.unit)} · ${g.active_lots} Lot</p></div><em class="badge ${st.badge}">${st.label}</em></div><div class="my-stock-meta"><span>${g.alert_mode==='MONTHLY' ? `เตือนวันที่ ${g.reorder_day} ของเดือน` : g.alert_mode==='NONE' ? 'ไม่เปิดแจ้งเตือน' : `ขั้นต่ำ ${qty(g.min_qty)} ${esc(g.unit)}`}</span></div><div class="my-stock-actions"><button type="button" class="mini ghost" data-material-detail="${esc(g.material_code)}">ดู Lot</button><button type="button" class="mini" data-material-usage="${esc(g.material_code)}">${icon('chart')} วิเคราะห์</button></div></article>`;}).join('');
+  const reorderCards = reorder.map(g=>{const st=materialGroupStatus(g);return `<article class="my-stock-card needs-reorder"><div class="my-stock-title"><div><h3>${esc(g.material_name)}</h3><p>คงเหลือ ${qty(g.total_balance)} ${esc(g.unit)}</p></div><em class="badge ${st.badge}">${st.label}</em></div><div class="my-stock-actions"><button type="button" class="primary" data-route="move" data-move-tab="receive">รับเข้า</button><button type="button" class="mini" data-material-usage="${esc(g.material_code)}">ดูการใช้</button></div></article>`;}).join('');
+  const settingsCards = groups.map(g=>`<form class="my-stock-card my-stock-setting-card" data-my-settings-form data-material-code="${esc(g.material_code)}"><div class="my-stock-title"><div><h3>${esc(g.material_name)}</h3><p>คงเหลือ ${qty(g.total_balance)} ${esc(g.unit)}</p></div></div><div class="stock-setting-grid"><label>รูปแบบแจ้งเตือน<select name="alert_mode"><option value="MINIMUM" ${g.alert_mode==='MINIMUM'?'selected':''}>เตือนตามจำนวนขั้นต่ำ</option><option value="MONTHLY" ${g.alert_mode==='MONTHLY'?'selected':''}>เตือนรอบเบิกรายเดือน</option><option value="NONE" ${g.alert_mode==='NONE'?'selected':''}>ไม่แจ้งเตือน</option></select></label><label data-minimum-field>จำนวนขั้นต่ำ<input name="minimum" type="number" min="0" step="0.01" value="${Number(g.min_qty || 0)}" inputmode="decimal"></label><label data-reorder-field>วันที่เตือนของเดือน (1–28)<input name="reorder_day" type="number" min="1" max="28" step="1" value="${Number(g.reorder_day || 1)}" inputmode="numeric"></label></div><button class="primary" type="submit">บันทึกการตั้งค่า</button></form>`).join('');
+  const body = myStockTab==='settings' ? settingsCards : myStockTab==='reorder' ? (reorderCards || '<div class="card empty">ยังไม่มีสินค้าที่ถึงรอบเบิก</div>') : overviewCards;
+  page.innerHTML = `<div class="page-head"><div><h2>สต๊อกที่ฉันดูแล</h2></div></div>${tabBar}${summary}<div class="my-stock-list">${body || '<div class="card empty">ยังไม่มีสินค้าที่กำหนดให้คุณดูแล</div>'}</div>`;
+  $$('[data-my-stock-tab]').forEach(b=>b.addEventListener('click',()=>renderMyStock(b.dataset.myStockTab)));
+  $$('[data-my-settings-form]').forEach(form=>{
+    const mode=form.elements.alert_mode;
+    const toggle=()=>{
+      form.querySelector('[data-minimum-field]').classList.toggle('hidden',mode.value!=='MINIMUM');
+      form.querySelector('[data-reorder-field]').classList.toggle('hidden',mode.value!=='MONTHLY');
+    };
+    mode.addEventListener('change',toggle); toggle();
+    form.addEventListener('submit',async e=>{
+      e.preventDefault();
+      const fd=new FormData(form);
+      const min=Number(fd.get('minimum') || 0);
+      const day=Number(fd.get('reorder_day') || 1);
+      const btn=e.submitter; btn.disabled=true;
+      const {error}=await sb.rpc('fn_update_my_stock_settings',{p_material_code:form.dataset.materialCode,p_min_qty:min,p_alert_mode:String(fd.get('alert_mode')),p_reorder_day:day,p_acting_mode:actingMode});
+      btn.disabled=false;
+      if(error)return toast(errMsg(error),true);
+      inventorySummaryCache=[]; toast('บันทึกการตั้งค่าแล้ว'); renderMyStock('settings');
+    });
+  });
 }
 
 async function renderStock(initialFilter = 'select') {
@@ -907,13 +964,15 @@ async function renderStock(initialFilter = 'select') {
   if (summaryRes.error) throw summaryRes.error;
   inventorySummaryCache = summaryRes.data || [];
   const groups = buildMaterialGroups(inventorySummaryCache, []);
-  const materialOptions = groups.map(g => ({code:g.material_code,name:g.material_name,label_name:g.material_name,unit:g.unit}));
+  const materialOptions = groups.map(g => ({code:g.material_code,name:g.material_name,label_name:g.material_name,unit:g.unit,responsible_email:g.responsible_email,responsible_name:g.responsible_name}));
+  const stockOwners=[...new Map(groups.filter(g=>g.responsible_email).map(g=>[g.responsible_email,g.responsible_name || g.responsible_email])).entries()].sort((a,b)=>String(a[1]).localeCompare(String(b[1]),'th'));
+  const stockOwnerOptions='<option value="">ทุกคน</option>'+stockOwners.map(([email,name])=>`<option value="${esc(email)}">${esc(name)}</option>`).join('');
   const activeLots = groups.reduce((s,g) => s + g.active_lots,0);
-  const lowCount = groups.filter(g => g.total_balance > 0 && g.total_balance < g.min_qty).length;
+  const reorderCount = groups.filter(g => g.needs_reorder).length;
   const nearCount = groups.filter(g => g.days_to_nearest !== null && Number(g.days_to_nearest) >= 0 && Number(g.days_to_nearest) <= 30).length;
-  const outCount = groups.filter(g => g.total_balance <= 0).length;
+  const outCount = groups.filter(g => materialGroupStatus(g).key === 'out').length;
   const selectedFilter = initialFilter && initialFilter !== 'select' ? initialFilter : '';
-  page.innerHTML = `<div class="page-head stock-page-head"><div><h2>สต๊อกคงเหลือ</h2><p class="muted small">เลือกสถานะ หรือพิมพ์ชื่อสินค้าบางส่วน ระบบจึงจะแสดงรายการ</p></div><button class="mini" data-route="usage">${icon('chart')} วิเคราะห์การใช้</button></div><div class="stock-summary-strip"><div><span>สินค้า</span><strong>${groups.length}</strong><small>รายการ</small></div><div><span>Lot ใช้งาน</span><strong>${activeLots}</strong><small>Lot</small></div><div><span>ต่ำกว่าขั้นต่ำ</span><strong>${lowCount}</strong><small>รายการ</small></div><div><span>สินค้าหมด</span><strong>${outCount}</strong><small>รายการ</small></div><div><span>ใกล้หมดอายุ</span><strong>${nearCount}</strong><small>รายการ</small></div></div><section class="card stock-choice-card"><label>เลือกสถานะ<select id="stockStatusSelect"><option value="">กรุณาเลือกสถานะ</option><option value="all">ทั้งหมด</option><option value="positive">คงเหลือปกติ</option><option value="low">ต่ำกว่าขั้นต่ำ</option><option value="out">สินค้าหมด</option><option value="expiry">ใกล้หมดอายุ</option><option value="expired">หมดอายุรอนำออก</option><option value="negative">ยอดติดลบ</option></select></label>${materialComboboxMarkup({id:'stockMaterialCode',label:'หรือค้นหาสินค้า',placeholder:'พิมพ์ชื่อสินค้าบางส่วน',materials:materialOptions})}</section><div id="materialStockList" class="material-stock-list"></div>`;
+  page.innerHTML = `<div class="page-head stock-page-head"><div><h2>สต๊อกคงเหลือ</h2><p class="muted small">เลือกสถานะ หรือพิมพ์ชื่อสินค้าบางส่วน ระบบจึงจะแสดงรายการ</p></div><button class="mini" data-route="usage">${icon('chart')} วิเคราะห์การใช้</button></div><div class="stock-summary-strip"><div><span>สินค้า</span><strong>${groups.length}</strong><small>รายการ</small></div><div><span>Lot ใช้งาน</span><strong>${activeLots}</strong><small>Lot</small></div><div><span>ต้องเบิก</span><strong>${reorderCount}</strong><small>รายการ</small></div><div><span>สินค้าหมด</span><strong>${outCount}</strong><small>รายการ</small></div><div><span>ใกล้หมดอายุ</span><strong>${nearCount}</strong><small>รายการ</small></div></div><section class="card stock-choice-card three"><label>เลือกผู้ดูแล<select id="stockOwnerFilter">${stockOwnerOptions}</select></label><label>เลือกสถานะ<select id="stockStatusSelect"><option value="">กรุณาเลือกสถานะ</option><option value="all">ทั้งหมด</option><option value="positive">คงเหลือปกติ</option><option value="reorder">ถึงรอบเบิก</option><option value="low">ต่ำกว่าขั้นต่ำ</option><option value="out">สินค้าหมด</option><option value="current-use">ใช้ชุดปัจจุบันอยู่</option><option value="notrack">ไม่เปิดแจ้งเตือน</option><option value="expiry">ใกล้หมดอายุ</option><option value="expired">หมดอายุรอนำออก</option><option value="negative">ยอดติดลบ</option></select></label>${materialComboboxMarkup({id:'stockMaterialCode',label:'หรือค้นหาสินค้า',placeholder:'พิมพ์ชื่อสินค้าบางส่วน',materials:materialOptions})}</section><div id="materialStockList" class="material-stock-list"></div>`;
   const statusSelect=$('#stockStatusSelect');
   statusSelect.value=selectedFilter;
   const draw = () => {
@@ -924,11 +983,14 @@ async function renderStock(initialFilter = 'select') {
       return;
     }
     let arr=groups;
+    const owner=$('#stockOwnerFilter').value;
+    if(owner) arr=arr.filter(g=>g.responsible_email===owner);
     if (code) arr=arr.filter(g=>g.material_code===code);
     if (filter && filter!=='all') arr=arr.filter(g=>materialGroupStatus(g).key===filter);
     $('#materialStockList').innerHTML=arr.map(materialStockCard).join('') || `<div class="card empty">${icon('search')}<div>ไม่พบรายการตามตัวเลือก</div></div>`;
   };
-  const materialCombo=setupMaterialCombobox('stockMaterialCode',materialOptions,{onChange:(code)=>{if(code)statusSelect.value='';draw();}});
+  const materialCombo=setupMaterialCombobox('stockMaterialCode',materialOptions,{ownerSelectId:'stockOwnerFilter',onChange:(code)=>{if(code)statusSelect.value='';draw();}});
+  $('#stockOwnerFilter').addEventListener('change',draw);
   statusSelect.addEventListener('change',()=>{if(statusSelect.value)materialCombo.clear(false);draw();});
   draw();
 }
@@ -997,10 +1059,14 @@ function renderUsageResult(material, rows, fromDate, toDate, summary) {
 }
 
 async function renderUsage(selectedCode = '') {
-  const mats = await loadMaterials();
+  const [rawMats,summaries]=await Promise.all([loadMaterials(),ensureInventorySummary()]);
+  const summaryMap=new Map(summaries.map(x=>[x.material_code,x]));
+  const mats=rawMats.map(m=>({...m,responsible_name:summaryMap.get(m.code)?.responsible_name||m.responsible_email||'ยังไม่กำหนด'}));
+  const usageOwners=[...new Map(mats.filter(m=>m.responsible_email).map(m=>[m.responsible_email,m.responsible_name])).entries()].sort((a,b)=>String(a[1]).localeCompare(String(b[1]),'th'));
+  const usageOwnerOptions='<option value="">ทุกคน</option>'+usageOwners.map(([email,name])=>`<option value="${esc(email)}">${esc(name)}</option>`).join('');
   const today=new Date(), start=new Date(today); start.setFullYear(start.getFullYear()-1); start.setDate(start.getDate()+1);
   const initial=selectedCode && mats.some(m=>m.code===selectedCode) ? selectedCode : '';
-  page.innerHTML = `<div class="page-head"><div><h2>วิเคราะห์การใช้สินค้า</h2><p class="muted small">พิมพ์ชื่อสินค้าบางส่วน แล้วเลือกช่วงวันที่ก่อนคำนวณ</p></div></div><form id="usageFilterForm" class="card usage-filter-card">${materialComboboxMarkup({id:'usageMaterial',label:'สินค้า',placeholder:'พิมพ์ชื่อสินค้าบางส่วน',materials:mats,initialCode:initial})}<div class="form-grid two"><label>ตั้งแต่วันที่<input id="usageFrom" type="date" value="${dateInputValue(start)}" required></label><label>ถึงวันที่<input id="usageTo" type="date" value="${dateInputValue(today)}" required></label></div><div class="usage-filter-actions"><div class="preset-group"><button type="button" data-usage-days="30">30 วัน</button><button type="button" data-usage-days="90">90 วัน</button><button type="button" data-usage-days="365" class="active">1 ปี</button><button type="button" data-usage-all>ทั้งหมด</button></div><button class="primary" type="submit">${icon('chart')} คำนวณ</button></div></form><div id="usageResult"><div class="card select-first-state">${icon('chart')}<div><strong>กรุณาค้นหาและเลือกสินค้า</strong><span>ยังไม่มีการโหลดประวัติ จนกว่าจะเลือกสินค้าและกดคำนวณ</span></div></div></div>`;
+  page.innerHTML = `<div class="page-head"><div><h2>วิเคราะห์การใช้สินค้า</h2><p class="muted small">พิมพ์ชื่อสินค้าบางส่วน แล้วเลือกช่วงวันที่ก่อนคำนวณ</p></div></div><form id="usageFilterForm" class="card usage-filter-card"><label>กรองผู้ดูแล<select id="usageOwnerFilter">${usageOwnerOptions}</select></label>${materialComboboxMarkup({id:'usageMaterial',label:'สินค้า',placeholder:'พิมพ์ชื่อสินค้าบางส่วน',materials:mats,initialCode:initial})}<div class="form-grid two"><label>ตั้งแต่วันที่<input id="usageFrom" type="date" value="${dateInputValue(start)}" required></label><label>ถึงวันที่<input id="usageTo" type="date" value="${dateInputValue(today)}" required></label></div><div class="usage-filter-actions"><div class="preset-group"><button type="button" data-usage-days="30">30 วัน</button><button type="button" data-usage-days="90">90 วัน</button><button type="button" data-usage-days="365" class="active">1 ปี</button><button type="button" data-usage-all>ทั้งหมด</button></div><button class="primary" type="submit">${icon('chart')} คำนวณ</button></div></form><div id="usageResult"><div class="card select-first-state">${icon('chart')}<div><strong>กรุณาค้นหาและเลือกสินค้า</strong><span>ยังไม่มีการโหลดประวัติ จนกว่าจะเลือกสินค้าและกดคำนวณ</span></div></div></div>`;
   const resetResult=()=>{$('#usageResult').innerHTML='<div class="card select-first-state">'+icon('chart')+'<div><strong>กรุณาค้นหาและเลือกสินค้า</strong><span>พิมพ์ชื่อบางส่วนได้ ไม่ต้องเลื่อนหารายการยาว ๆ</span></div></div>';};
   const load = async () => {
     const code=$('#usageMaterial').value, from=$('#usageFrom').value, to=$('#usageTo').value;
@@ -1017,7 +1083,7 @@ async function renderUsage(selectedCode = '') {
       queueResponsiveTables($('#usageResult'));
     } catch(e) { $('#usageResult').innerHTML=`<div class="card notice">${esc(errMsg(e))}</div>`; }
   };
-  setupMaterialCombobox('usageMaterial',mats,{onChange:(code)=>{if(code)load();else resetResult();}});
+  setupMaterialCombobox('usageMaterial',mats,{ownerSelectId:'usageOwnerFilter',onChange:(code)=>{if(code)load();else resetResult();}});
   $('#usageFilterForm').addEventListener('submit',e=>{e.preventDefault();load();});
   $$('[data-usage-days]').forEach(b=>b.addEventListener('click',()=>{const end=new Date();const begin=new Date(end);begin.setDate(begin.getDate()-Number(b.dataset.usageDays)+1);$('#usageFrom').value=dateInputValue(begin);$('#usageTo').value=dateInputValue(end);$$('[data-usage-days]').forEach(x=>x.classList.toggle('active',x===b));if($('#usageMaterial').value)load();}));
   $('[data-usage-all]').addEventListener('click',()=>{$('#usageFrom').value='2000-01-01';$('#usageTo').value=dateInputValue(new Date());$$('[data-usage-days]').forEach(x=>x.classList.remove('active'));if($('#usageMaterial').value)load();});
@@ -1025,13 +1091,12 @@ async function renderUsage(selectedCode = '') {
 }
 
 async function renderUrgent() {
-  const [lots, summaryRes] = await Promise.all([getLots(true), sb.from('v_inventory_summary').select('*').order('material_code')]);
+  const [lots, summaryRes] = await Promise.all([getLots(true), sb.from('v_inventory_summary').select('*').order('material_name')]);
   if (summaryRes.error) throw summaryRes.error;
   const expired = lots.filter(x => requiresExpiryConfirmation(x) && Number(x.balance) > 0);
-  const low = (summaryRes.data || []).filter(x => Number(x.total_balance || 0) > 0 && Number(x.total_balance || 0) < Number(x.min_qty || 0));
-  const out = (summaryRes.data || []).filter(x => Number(x.total_balance || 0) <= 0);
-  updateUrgentBadge(expired.length + low.length + out.length);
-  page.innerHTML = `<div class="page-head"><div><h2>ติดตามเร่งด่วน</h2><p class="muted small">จัดการของหมดอายุและรายการต่ำกว่าขั้นต่ำก่อน</p></div><span class="badge danger">${expired.length + low.length + out.length} รายการ</span></div><section class="urgent-banner"><div>${icon('alert')}<strong>ของหมดอายุจะไม่ถูกตัดยอดเอง</strong><p>ให้ผู้ดูแลยืนยันว่าได้นำออกจากพื้นที่แล้วในเมนูตรวจวันศุกร์ จากนั้นสัปดาห์ถัดไปจะไม่แสดงซ้ำ</p></div><button class="primary" data-route="weekly">ไปตรวจวันศุกร์</button></section><div class="section-title"><h3>หมดอายุ · รอนำออก (${expired.length})</h3></div><div class="list">${expired.map(lotCard).join('') || '<div class="card empty">ไม่มี Lot หมดอายุค้าง</div>'}</div><div class="section-title"><h3>ต่ำกว่าขั้นต่ำ / หมด (${low.length + out.length})</h3></div><div class="table-wrap"><table class="data-table"><thead><tr><th>สินค้า</th><th>คงเหลือ</th><th>ขั้นต่ำ</th><th>ผู้ดูแล</th><th>สถานะ</th></tr></thead><tbody>${[...out,...low].map(x => `<tr><td><strong>${esc(x.material_name)}</strong></td><td>${qty(x.total_balance)} ${esc(x.unit)}</td><td>${qty(x.min_qty)}</td><td>${esc(x.responsible_name || '-')}</td><td>${Number(x.total_balance) <= 0 ? '<span class="badge danger">หมด</span>' : '<span class="badge warn">ต่ำกว่าขั้นต่ำ</span>'}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">ไม่มีรายการ</td></tr>'}</tbody></table></div>`;
+  const reorder = (summaryRes.data || []).filter(x => Boolean(x.needs_reorder));
+  updateUrgentBadge(expired.length + reorder.length);
+  page.innerHTML = `<div class="page-head"><div><h2>ติดตามเร่งด่วน</h2></div><span class="badge danger">${expired.length + reorder.length} รายการ</span></div><section class="urgent-banner"><div>${icon('alert')}<strong>ของหมดอายุต้องยืนยันหลังนำออกจากพื้นที่</strong></div><button class="primary" data-route="weekly">ไปตรวจวันศุกร์</button></section><div class="section-title"><h3>หมดอายุ · รอนำออก (${expired.length})</h3></div><div class="list">${expired.map(lotCard).join('') || '<div class="card empty">ไม่มี Lot หมดอายุค้าง</div>'}</div><div class="section-title"><h3>ถึงรอบเบิก (${reorder.length})</h3></div><div class="table-wrap"><table class="data-table compact-desktop-table"><thead><tr><th>สินค้า</th><th>คงเหลือ</th><th>รูปแบบเตือน</th><th>ผู้ดูแล</th><th>สถานะ</th></tr></thead><tbody>${reorder.map(x => `<tr><td><strong>${esc(x.material_name)}</strong></td><td>${qty(x.total_balance)} ${esc(x.unit)}</td><td>${x.alert_mode==='MONTHLY' ? `รายเดือน · วันที่ ${x.reorder_day}` : `ขั้นต่ำ ${qty(x.min_qty)}`}</td><td>${esc(x.responsible_name || '-')}</td><td><span class="badge warn">${x.alert_mode==='MONTHLY'?'ถึงรอบเบิก':Number(x.total_balance)<=0?'หมด':'ต่ำกว่าขั้นต่ำ'}</span></td></tr>`).join('') || '<tr><td colspan="5" class="empty">ไม่มีรายการต้องเบิก</td></tr>'}</tbody></table></div>`;
 }
 
 async function printLabel(lotId) {
@@ -1087,14 +1152,19 @@ async function renderMove(defaultTab = 'receive') {
     $$('[data-tab]').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
     $('#movePane').innerHTML='<div class="card usage-loading">กำลังโหลดข้อมูลเฉพาะเมนูที่เลือก…</div>';
     if (tab === 'receive') {
-      const [mats, historyRes] = await Promise.all([
+      const [rawMats, historyRes, staffRes] = await Promise.all([
         loadMaterials(),
-        sb.from('v_transaction_history').select('*').eq('tx_type','RECEIVE').limit(60)
+        sb.from('v_transaction_history').select('*').eq('tx_type','RECEIVE').limit(60),
+        sb.from('staff_directory').select('email,display_name').eq('active',true).order('display_name')
       ]);
+      if(staffRes.error) throw staffRes.error;
+      const staffMap=new Map((staffRes.data||[]).map(x=>[x.email,x.display_name]));
+      const mats=rawMats.map(m=>({...m,responsible_name:staffMap.get(m.responsible_email)||m.responsible_email||'ยังไม่กำหนด'}));
+      const ownerOptions='<option value="">ทุกคน</option>'+(staffRes.data||[]).map(x=>`<option value="${esc(x.email)}">${esc(x.display_name)}</option>`).join('');
       if (historyRes.error) throw historyRes.error;
       const historyRows=historyRes.data || [];
-      $('#movePane').innerHTML = `<div class="move-layout"><form id="receiveForm" class="card form-card form-grid"><div class="form-title"><span>${icon('plus')}</span><div><h3>บันทึกนำเข้า</h3></div></div>${materialComboboxMarkup({id:'rMat',label:'วัสดุ',placeholder:'พิมพ์ชื่อวัสดุ เช่น Panel, Papain',materials:mats})}<div class="form-grid two"><label>Lot<input id="rLot" required autocomplete="off" autocapitalize="characters" maxlength="60" pattern="[A-Za-z0-9]+" placeholder="เช่น 8A145"><small id="lotRule" class="field-hint lot-rule">เฉพาะตัวเลขและภาษาอังกฤษ</small></label><label>วันหมดอายุ<input id="rExp" type="date"></label></div><label>จำนวน<input id="rQty" type="number" min="0.01" step="0.01" required inputmode="decimal"></label><button class="primary" type="submit">${icon('plus')} บันทึกนำเข้า</button></form><section class="card history-card"><div class="section-title compact"><div><h3>ประวัตินำเข้าล่าสุด</h3></div><button class="mini ghost" data-route="reports">ดูรายงาน</button></div><div class="table-wrap"><table class="data-table"><thead><tr><th>วันเวลา</th><th>สินค้า</th><th>Lot</th><th>จำนวน</th><th>ยอดหลังทำ</th><th>ผู้บันทึก</th></tr></thead><tbody>${transactionRows(historyRows.slice(0,30)) || '<tr><td colspan="6" class="empty">ไม่มีรายการ</td></tr>'}</tbody></table></div></section></div>`;
-      setupMaterialCombobox('rMat',mats);
+      $('#movePane').innerHTML = `<div class="move-layout"><form id="receiveForm" class="card form-card form-grid"><div class="form-title"><span>${icon('plus')}</span><div><h3>บันทึกนำเข้า</h3></div></div><label>กรองผู้ดูแล<select id="rOwnerFilter">${ownerOptions}</select></label>${materialComboboxMarkup({id:'rMat',label:'วัสดุ',placeholder:'พิมพ์ชื่อวัสดุ เช่น Panel, Papain',materials:mats})}<div class="form-grid two"><label>Lot<input id="rLot" required autocomplete="off" autocapitalize="characters" maxlength="60" pattern="[A-Za-z0-9]+" placeholder="เช่น 8A145"><small id="lotRule" class="field-hint lot-rule">เฉพาะตัวเลขและภาษาอังกฤษ</small></label><label>วันหมดอายุ<input id="rExp" type="date"></label></div><label>จำนวน<input id="rQty" type="number" min="0.01" step="0.01" required inputmode="decimal"></label><button class="primary" type="submit">${icon('plus')} บันทึกนำเข้า</button></form><section class="card history-card"><div class="section-title compact"><div><h3>ประวัตินำเข้าล่าสุด</h3></div><button class="mini ghost" data-route="reports">ดูรายงาน</button></div><div class="table-wrap"><table class="data-table"><thead><tr><th>วันเวลา</th><th>สินค้า</th><th>Lot</th><th>จำนวน</th><th>ยอดหลังทำ</th><th>ผู้บันทึก</th></tr></thead><tbody>${transactionRows(historyRows.slice(0,30)) || '<tr><td colspan="6" class="empty">ไม่มีรายการ</td></tr>'}</tbody></table></div></section></div>`;
+      setupMaterialCombobox('rMat',mats,{ownerSelectId:'rOwnerFilter',maxResults:20});
       const lotInput=$('#rLot');
       const validateLot=()=>{
         const value=lotInput.value.trim();
@@ -1321,20 +1391,13 @@ function weeklyItemCard(x) {
 async function renderWeekly() {
   const check = await ensureCheck();
   if (!check) { page.innerHTML = '<div class="card empty">ยังไม่มีรอบตรวจ</div>'; return; }
-  const historyStart = new Date(check.week_friday + 'T00:00:00');
-  historyStart.setDate(historyStart.getDate() - 7 * 7);
-  const historyStartIso = historyStart.toISOString().slice(0,10);
-  const [{data, error}, staffRes, statusRes] = await Promise.all([
+  const [{data, error}, staffRes] = await Promise.all([
     sb.from('v_weekly_check_items').select('*').eq('check_id', check.id).order('material_code').order('lot_no'),
-    sb.from('staff_directory').select('*').eq('active', true).order('display_name'),
-    sb.from('v_weekly_staff_status').select('*').gte('week_friday', historyStartIso).order('week_friday', {ascending:false})
+    sb.from('staff_directory').select('*').eq('active', true).order('display_name')
   ]);
   if (error) throw error;
   if (staffRes.error) throw staffRes.error;
-  if (statusRes.error) throw statusRes.error;
   const items = (data || []).filter(x => x.checked_at || !isExpired(x) || requiresExpiryConfirmation(x));
-  const staffStatuses = statusRes.data || [];
-  const currentStatuses = staffStatuses.filter(x => x.check_id === check.id);
   const done = items.filter(x => x.checked_at).length;
   const pct = items.length ? Math.round(done * 100 / items.length) : 100;
   const expiredPending = items.filter(x => !x.checked_at && requiresExpiryConfirmation(x)).length;
@@ -1342,37 +1405,13 @@ async function renderWeekly() {
   items.forEach(i => { if (i.responsible_email && !ownerSet.has(i.responsible_email)) ownerSet.set(i.responsible_email, i.responsible_name || i.responsible_email); });
   const ownerSelect = ['<option value="mine">ของฉัน</option>', '<option value="all">ทุกคน</option>'].concat([...ownerSet.entries()].sort((a,b)=>String(a[1]).localeCompare(String(b[1]), 'th')).map(([email, name]) => `<option value="${esc(email)}">${esc(name)}</option>`)).join('');
 
-  const currentPending = currentStatuses.filter(x => Number(x.pending_items || 0) > 0);
-  const currentDone = currentStatuses.filter(x => Number(x.pending_items || 0) === 0 && Number(x.total_items || 0) > 0);
-  const statsByEmail = new Map();
-  staffStatuses.forEach(s => {
-    const email = s.assigned_email || 'unassigned';
-    if (!statsByEmail.has(email)) statsByEmail.set(email, {email,name:s.assigned_name || 'ยังไม่กำหนด',rounds:0,missed:0,completed:0,delegated:0});
-    const stat = statsByEmail.get(email);
-    stat.rounds += 1;
-    if (Number(s.pending_items || 0) > 0) stat.missed += 1;
-    else stat.completed += 1;
-    stat.delegated += Number(s.checked_by_other_items || 0);
-  });
-  const historyStats = [...statsByEmail.values()].sort((a,b) => b.missed-a.missed || a.name.localeCompare(b.name,'th'));
-  const personChip = (s, kind) => `<button type="button" class="weekly-person-chip ${kind}" data-owner-jump="${esc(s.assigned_email || 'unassigned')}" data-owner-state="${kind === 'done' ? 'done' : 'pending'}"><span>${esc(s.assigned_name || 'ยังไม่กำหนด')}</span><small>${kind === 'done' ? `${qty(s.checked_items)}/${qty(s.total_items)} Lot` : `เหลือ ${qty(s.pending_items)} Lot`}</small></button>`;
-
-  page.innerHTML = `<div class="page-head"><div><h2>ตรวจสต๊อกวันศุกร์</h2><p class="muted small">รอบวันที่ ${d(check.week_friday)}</p></div><span class="badge ${check.status === 'COMPLETED' ? 'ok' : 'info'}">${check.status === 'COMPLETED' ? 'เสร็จแล้ว' : `${done}/${items.length}`}</span></div>
+  page.innerHTML = `<div class="page-head"><div><h2>ตรวจสต๊อกวันศุกร์</h2><p class="muted small">รอบวันที่ ${d(check.week_friday)}</p></div><button class="mini ghost" data-route="weekly-status">${icon('user')} สถานะผู้ตรวจ</button></div>
   <section class="card weekly-header"><div class="weekly-ring small-ring" style="--pct:${pct}"><div><strong>${pct}%</strong><span>${done}/${items.length}</span></div></div><div><h3>ความคืบหน้า</h3><p class="muted">ยังไม่ตรวจ ${items.length-done} Lot · หมดอายุรอยืนยัน ${expiredPending} Lot</p></div></section>
-  <section class="card weekly-team-status">
-    <div class="section-title compact"><h3>สถานะผู้ดูแลสัปดาห์นี้</h3><span class="badge info">${currentDone.length}/${currentStatuses.length} คนครบ</span></div>
-    <div class="weekly-team-columns"><div><h4>ยังไม่ครบ (${currentPending.length})</h4><div class="weekly-person-list">${currentPending.map(s=>personChip(s,'pending')).join('') || '<span class="weekly-all-done">ทุกคนตรวจครบแล้ว</span>'}</div></div><div><h4>ตรวจครบแล้ว (${currentDone.length})</h4><div class="weekly-person-list">${currentDone.map(s=>personChip(s,'done')).join('') || '<span class="muted">ยังไม่มี</span>'}</div></div></div>
-    <details class="weekly-history-stats"><summary>สถิติ 8 สัปดาห์ล่าสุด</summary><div class="weekly-history-list">${historyStats.map(s=>`<button type="button" data-owner-jump="${esc(s.email)}" data-owner-state="all"><span><strong>${esc(s.name)}</strong><small>ครบ ${s.completed}/${s.rounds} สัปดาห์${s.delegated ? ` · มีผู้ตรวจแทน ${s.delegated} Lot` : ''}</small></span><em class="${s.missed ? 'danger-text' : 'ok-text'}">ไม่ครบ ${s.missed}</em></button>`).join('') || '<div class="muted">ยังไม่มีข้อมูลย้อนหลัง</div>'}</div></details>
-  </section>
-  <div class="weekly-tools"><label>กรองเจ้าหน้าที่<select id="weeklyOwnerFilter">${ownerSelect}</select></label><div class="filters horizontal-scroller" style="margin-bottom:0" aria-label="เลื่อนซ้ายขวาเพื่อดูตัวกรองทั้งหมด"><button class="chip active" data-wf="pending">ยังไม่ตรวจ</button><button class="chip" data-wf="mine">งานของฉัน</button><button class="chip" data-wf="expired">หมดอายุ</button><button class="chip" data-wf="mismatch">ไม่ตรง</button><button class="chip" data-wf="done">ตรวจแล้ว</button><button class="chip" data-wf="all">ทั้งหมด</button></div></div><div id="checkList" class="list"></div>${check.status !== 'COMPLETED' && isAdminMode() ? '<button id="completeCheck" class="primary wide-action">เสร็จสิ้นและปิดรอบตรวจ</button>' : ''}`;
+  <div class="weekly-tools"><label>กรองเจ้าหน้าที่<select id="weeklyOwnerFilter">${ownerSelect}</select></label><div class="filters horizontal-scroller" style="margin-bottom:0"><button class="chip active" data-wf="pending">ยังไม่ตรวจ</button><button class="chip" data-wf="mine">งานของฉัน</button><button class="chip" data-wf="expired">หมดอายุ</button><button class="chip" data-wf="mismatch">ไม่ตรง</button><button class="chip" data-wf="done">ตรวจแล้ว</button><button class="chip" data-wf="all">ทั้งหมด</button></div></div><div id="checkList" class="list"></div>${check.status !== 'COMPLETED' && isAdminMode() ? '<button id="completeCheck" class="primary wide-action">เสร็จสิ้นและปิดรอบตรวจ</button>' : ''}`;
 
   let f = 'pending';
   const ownerFilter = $('#weeklyOwnerFilter');
   ownerFilter.value = isAdminMode() ? 'all' : 'mine';
-  const setFilterChip = value => {
-    f = value;
-    $$('[data-wf]').forEach(x => x.classList.toggle('active', x.dataset.wf === value));
-  };
   const draw = () => {
     let arr = items;
     const owner = ownerFilter.value;
@@ -1386,22 +1425,40 @@ async function renderWeekly() {
     $('#checkList').innerHTML = arr.map(weeklyItemCard).join('') || '<div class="card empty">ไม่มีรายการตามตัวกรองนี้</div>';
   };
   ownerFilter.addEventListener('change', draw);
-  $$('[data-wf]').forEach(b => b.addEventListener('click', () => { setFilterChip(b.dataset.wf); draw(); }));
-  $$('[data-owner-jump]').forEach(b => b.addEventListener('click', () => {
-    const email=b.dataset.ownerJump;
-    if ([...ownerFilter.options].some(o=>o.value===email)) ownerFilter.value=email;
-    setFilterChip(b.dataset.ownerState || 'all');
-    draw();
-    $('#checkList')?.scrollIntoView({behavior:'smooth',block:'start'});
-  }));
+  $$('[data-wf]').forEach(b => b.addEventListener('click', () => { f=b.dataset.wf; $$('[data-wf]').forEach(x=>x.classList.toggle('active',x===b)); draw(); }));
   draw();
   if ($('#completeCheck')) $('#completeCheck').onclick = async () => {
     const {error} = await sb.rpc('fn_complete_weekly_check', {p_check_id:check.id, p_acting_mode:actingMode});
     if (error) return toast(errMsg(error), true);
-    toast('ปิดรอบตรวจสต๊อกแล้ว');
-    renderWeekly();
+    toast('ปิดรอบตรวจสต๊อกแล้ว'); renderWeekly();
   };
   window._weeklyItems = items;
+}
+
+async function renderWeeklyStatus() {
+  const end=new Date();
+  const start=new Date(end); start.setDate(start.getDate()-84);
+  page.innerHTML=`<div class="page-head"><div><h2>สถานะผู้ตรวจวันศุกร์</h2></div><button class="mini ghost" data-route="weekly">กลับไปตรวจสต๊อก</button></div><form id="weeklyStatusForm" class="card weekly-status-filter"><label>ตั้งแต่วันที่<input id="weeklyStatusFrom" type="date" value="${dateInputValue(start)}"></label><label>ถึงวันที่<input id="weeklyStatusTo" type="date" value="${dateInputValue(end)}"></label><button class="primary" type="submit">แสดงผล</button></form><div id="weeklyStatusResult"></div>`;
+  const load=async()=>{
+    const from=$('#weeklyStatusFrom').value,to=$('#weeklyStatusTo').value;
+    if(!from||!to||from>to)return toast('ช่วงวันที่ไม่ถูกต้อง',true);
+    $('#weeklyStatusResult').innerHTML='<div class="card usage-loading">กำลังโหลดสถานะผู้ตรวจ…</div>';
+    const {data,error}=await sb.from('v_weekly_staff_status').select('*').gte('week_friday',from).lte('week_friday',to).order('week_friday',{ascending:false});
+    if(error){$('#weeklyStatusResult').innerHTML=`<div class="card notice">${esc(errMsg(error))}</div>`;return;}
+    const rows=data||[];
+    const people=new Map(),weeks=new Map();
+    rows.forEach(r=>{
+      const email=r.assigned_email||'unassigned';
+      if(!people.has(email))people.set(email,{name:r.assigned_name||'ยังไม่กำหนด',rounds:0,done:0,missed:0,pending:0,delegated:0});
+      const p=people.get(email);p.rounds++;p.pending+=Number(r.pending_items||0);p.delegated+=Number(r.checked_by_other_items||0);if(Number(r.pending_items||0)>0)p.missed++;else p.done++;
+      const week=r.week_friday;if(!weeks.has(week))weeks.set(week,[]);weeks.get(week).push(r);
+    });
+    const peopleHtml=[...people.values()].sort((a,b)=>b.missed-a.missed||a.name.localeCompare(b.name,'th')).map(p=>`<article><strong>${esc(p.name)}</strong><span>ครบ ${p.done}/${p.rounds} สัปดาห์</span><em class="${p.missed?'danger-text':'ok-text'}">ไม่ครบ ${p.missed}</em>${p.delegated?`<small>มีผู้ตรวจแทน ${p.delegated} Lot</small>`:''}</article>`).join('');
+    const weekHtml=[...weeks.entries()].map(([week,items])=>{const pending=items.filter(x=>Number(x.pending_items||0)>0),done=items.filter(x=>Number(x.pending_items||0)===0&&Number(x.total_items||0)>0);return `<details class="weekly-round-card"><summary><strong>ศุกร์ ${d(week)}</strong><span>${done.length}/${items.length} คนครบ</span></summary><div class="weekly-round-columns"><div><h4>ยังไม่ครบ (${pending.length})</h4>${pending.map(x=>`<p><strong>${esc(x.assigned_name)}</strong><span>เหลือ ${qty(x.pending_items)} Lot</span></p>`).join('')||'<p class="ok-text">ทุกคนตรวจครบ</p>'}</div><div><h4>ตรวจครบแล้ว (${done.length})</h4>${done.map(x=>`<p><strong>${esc(x.assigned_name)}</strong><span>${qty(x.checked_items)}/${qty(x.total_items)} Lot</span></p>`).join('')||'<p class="muted">ยังไม่มี</p>'}</div></div></details>`;}).join('');
+    $('#weeklyStatusResult').innerHTML=`<section class="card"><div class="section-title compact"><h3>สรุปตามเจ้าหน้าที่</h3><span class="badge info">${weeks.size} สัปดาห์</span></div><div class="weekly-staff-summary-grid">${peopleHtml||'<div class="empty">ไม่มีข้อมูล</div>'}</div></section><section class="weekly-round-list"><div class="section-title"><h3>รายละเอียดแต่ละวันศุกร์</h3></div>${weekHtml||'<div class="card empty">ไม่มีข้อมูลในช่วงวันที่เลือก</div>'}</section>`;
+  };
+  $('#weeklyStatusForm').addEventListener('submit',e=>{e.preventDefault();load();});
+  await load();
 }
 
 function openCheck(id) {
@@ -1607,7 +1664,7 @@ function openMaterialEditor(code) {
 }
 
 function renderHelp() {
-  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>บัญชี Admin มี 2 โหมด</h3><p><strong>โหมดเจ้าหน้าที่:</strong> เห็นและตรวจเฉพาะงานของตนเหมือนทุกคน<br><strong>โหมดผู้ดูแลระบบ:</strong> ดูงานรวม ปิดรอบ เปลี่ยนสิทธิ์ และเปลี่ยนผู้ดูแลวัสดุ</p></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>พิมพ์ชื่อวัสดุบางส่วนแล้วเลือก ใส่ Lot วันหมดอายุ และจำนวน</li><li>บันทึก แล้วกดพิมพ์ QR Sticker</li></ol></div><div class="card help-card"><h3>ค้นหาสินค้าในหน้ารับเข้า</h3><p>แตะช่องวัสดุแล้วพิมพ์ชื่อเพียงบางส่วน เช่น Panel หรือ Papain จากนั้นเลือกสินค้าที่ตรงกัน ไม่ต้องเลื่อนรายชื่อทั้งหมด</p></div><div class="card help-card"><h3>เจ้าหน้าที่นำออกเองได้</h3><ol class="help-steps"><li>อยู่ในโหมด Staff แล้วเปิดเมนู นำออก</li><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าแล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>ถ้าใช้หลายหน่วย ให้สแกนและยืนยันซ้ำตามจำนวน</li></ol><p>ระบบบันทึกชื่อผู้ทำ วันเวลา Lot และยอดหลังทำทุกครั้ง</p></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแลและจำนวนขั้นต่ำ</h3><p>เปิดเมนูย่อย “สต๊อกที่ฉันดูแล” เพื่อดูเฉพาะสินค้าที่รับผิดชอบและแก้จำนวนขั้นต่ำได้ จำนวนขั้นต่ำจะเตือนเมื่อยอดคงเหลือ <strong>ต่ำกว่า</strong>ค่าที่ตั้ง ไม่เตือนเมื่อยอดเท่ากับขั้นต่ำ</p></div><div class="card help-card"><h3>ตรวจวันศุกร์และปรับยอด</h3><p>กรอก “จำนวนที่นับได้จริง” หากไม่ตรงกับยอดในระบบ ต้องเลือกเหตุผล แล้วระบบจะปรับยอดคงเหลือให้เท่ากับจำนวนที่กรอกโดยอัตโนมัติ</p><p><strong>ตัวอย่าง:</strong> ระบบมี 24 แต่นับจริงได้ 0 เมื่อบันทึก ยอดจะถูกปรับเป็น 0 และประวัติจะแสดงผู้ตรวจพร้อมเหตุผล</p><p>ใช้วิธีนี้สำหรับแก้ยอดที่ไม่ตรงเท่านั้น การนำออกใช้งานตามปกติให้ใช้เมนู “นำออก”</p></div><div class="card help-card"><h3>ติดตามผู้ตรวจประจำสัปดาห์</h3><p>หน้าตรวจวันศุกร์แสดงรายชื่อผู้ดูแลที่ตรวจครบ ผู้ที่ยังเหลืองาน และสถิติไม่ครบใน 8 สัปดาห์ล่าสุด กดชื่อเพื่อกรองรายการของคนนั้นได้ทันที</p></div><div class="card help-card"><h3>สติ๊กเกอร์ Old / New</h3><p>ไม่ต้องเปลี่ยนสติ๊กเกอร์เดิมทั้งหมด ระบบอ่าน Alias รหัสเก่าและพาไป Lot หลักเดียวกัน สติ๊กเกอร์ที่พิมพ์ใหม่จะใช้รหัสหลักเพื่อไม่ให้เกิดรหัสซ้ำในอนาคต</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>รายการที่หมดอายุก่อนเดือนกรกฎาคม 2569 ถูกปิดเป็นข้อมูลตั้งต้นแล้ว ไม่ต้องตรวจย้อนหลัง ระบบจะไม่ตัดยอดของรายการใหม่เองโดยไม่มีคนยืนยัน เปิดตรวจวันศุกร์ กด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์หน้า</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมถูกเก็บใน Transaction History เปิดดูได้ใต้หน้าบันทึกนำเข้า–นำออก และในเมนู รายงาน & ส่งออก</p></div><div class="card help-card"><h3>ตั้งเครื่องพิมพ์ Godex</h3><p>Paper 25 × 20 mm · Scale 100% · Margin None · ปิด Header/Footer</p></div></div>`;
+  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>สร้างบัญชีครั้งแรก</h3><ol class="help-steps"><li>ใช้เฉพาะอีเมลมหิดล @mahidol.ac.th ที่ Admin อนุญาตไว้</li><li>ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว</li><li>กด “สร้างบัญชีครั้งแรก” แล้วกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</li></ol></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>กรองผู้ดูแลหรือพิมพ์ชื่อวัสดุบางส่วนแล้วเลือก</li><li>ใส่ Lot วันหมดอายุ และจำนวน แล้วบันทึก</li></ol></div><div class="card help-card"><h3>นำออก</h3><ol class="help-steps"><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าแล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>ใช้หลายหน่วยให้สแกนและยืนยันซ้ำ</li></ol></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแล</h3><p>มี 3 เมนูย่อย: ภาพรวม, ต้องเบิก และตั้งค่าการเตือน เลือกเตือนตามจำนวนขั้นต่ำ เตือนรอบเบิกรายเดือน หรือไม่แจ้งเตือนได้ การเตือนรายเดือนจะเริ่มตรวจรอบตั้งแต่เดือนถัดไปหลังบันทึก</p></div><div class="card help-card"><h3>ตรวจวันศุกร์</h3><p>กรอกจำนวนที่นับได้จริง หากไม่ตรงกับระบบ ให้เลือกเหตุผล ระบบจะปรับยอดและเก็บชื่อผู้ตรวจไว้ในประวัติ</p></div><div class="card help-card"><h3>สถานะผู้ตรวจ</h3><p>เปิดเมนู “สถานะผู้ตรวจ” แล้วกำหนดช่วงวันที่ เพื่อดูว่าแต่ละวันศุกร์ใครตรวจครบหรือยังไม่ครบ</p></div><div class="card help-card"><h3>สติ๊กเกอร์เดิม</h3><p>สติ๊กเกอร์รหัสเดิมยังสแกนได้ ไม่ต้องเปลี่ยนใหม่ทั้งหมด</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบไม่ตัดยอดเอง เปิดตรวจวันศุกร์และกด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์ถัดไป</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมดูได้ในหน้าประวัติและรายงาน</p></div><div class="card help-card"><h3>เครื่องพิมพ์สติ๊กเกอร์</h3><p>ฉลากกว้าง 25 mm สูง 20 mm พิมพ์ทีละ 1 ดวง เว้นขอบบน–ล่าง 1 mm และซ้าย–ขวา 2 mm ตั้ง Scale 100%, Margin None และปิด Header/Footer</p></div></div>`;
   refreshInstallUI();
 }
 
