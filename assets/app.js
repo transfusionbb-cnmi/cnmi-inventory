@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.7';
+const APP_VERSION = '1.4.8';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const C = window.APP_CONFIG || {};
 const configured = C.SUPABASE_URL && !C.SUPABASE_URL.includes('YOUR-PROJECT') && C.SUPABASE_ANON_KEY && !C.SUPABASE_ANON_KEY.includes('YOUR-ANON');
@@ -20,6 +20,7 @@ let inventorySummaryCache = [];
 let activityMaterialMap = null;
 let usageMaterialCode = '';
 let myStockTab = 'overview';
+let weeklyAdminActingForEmail = '';
 let scannerStream = null;
 let scannerTimer = null;
 let pendingIssueCode = new URLSearchParams(location.search).get('issue') || new URLSearchParams(location.search).get('lot');
@@ -282,7 +283,7 @@ function ensureQrDecoder() {
       return;
     }
     const script = document.createElement('script');
-    script.src = 'third_party/jsQR-1.4.0.js?v=1.4.7';
+    script.src = 'third_party/jsQR-1.4.0.js?v=1.4.8';
     script.async = false;
     script.dataset.jsqrLoader = '1';
     script.onload = () => resolve(typeof window.jsQR === 'function');
@@ -881,6 +882,11 @@ function activityCard(a) {
   const title = info.name ? `${actionText} · ${info.name}` : actionText;
   const detailParts = [];
   if (detail.lot_no) detailParts.push(`Lot ${detail.lot_no}`);
+  if (String(a.action || '').startsWith('WEEKLY_DELEGATION')) {
+    if (detail.to_name) detailParts.push(`ผู้รับ: ${detail.to_name}`);
+    if (detail.item_count !== undefined) detailParts.push(`${qty(detail.item_count)} Lot`);
+    if (detail.reason) detailParts.push(detail.reason);
+  }
   if (a.action === 'ISSUE') detailParts.push(`วิธีนำออก: ${issueMethodLabel(detail.issue_method)}`);
   if (detail.before !== undefined && detail.after !== undefined) {
     detailParts.push(`คงเหลือ ${qty(detail.before)} → ${qty(detail.after)}${info.unit ? ' ' + info.unit : ''}`);
@@ -1444,7 +1450,7 @@ async function confirmScannedCheck(itemId) {
   if(!canHandleItem(x))return toast('รายการนี้เป็นความรับผิดชอบของ '+(x.responsible_name||x.responsible_email),true);
   const btn=$(`[data-scan-confirm-check]`);
   if(btn)btn.disabled=true;
-  const {error}=await sb.rpc('fn_save_stock_check',{p_item_id:itemId,p_actual_qty:Number(x.current_balance),p_reason_code:null,p_reason_detail:null,p_acting_mode:actingMode});
+  const {error}=await sb.rpc('fn_save_stock_check',{p_item_id:itemId,p_actual_qty:Number(x.current_balance),p_reason_code:null,p_reason_detail:null,p_acting_mode:actingMode,p_acting_for_email:weeklyActingForEmail(x)});
   if(error){if(btn)btn.disabled=false;return toast(errMsg(error),true);}
   closeModal();stockCache=[]; scanLotsCache=[]; scanLotsLoadedAt=0;inventorySummaryCache=[];toast('ยืนยันตรวจแล้ว ยอดตรงกับระบบ');
 }
@@ -1932,20 +1938,148 @@ function stopScanner() {
   scannerStream = null;
 }
 
+function weeklyOwnerEmail(x) {
+  return String(x?.responsible_email || '').trim().toLowerCase();
+}
+
+function weeklyDelegatedEmail(x) {
+  return String(x?.delegated_to_email || '').trim().toLowerCase();
+}
+
+function weeklyDelegationActive(x) {
+  return ['ACCEPTED','ADMIN_ASSIGNED','COMPLETED'].includes(String(x?.delegation_status || '').toUpperCase());
+}
+
+function weeklyDelegationWaiting(x) {
+  return String(x?.delegation_status || '').toUpperCase() === 'PENDING';
+}
+
 function canHandleItem(x) {
-  return isAdminMode() || x.responsible_email === profile.email;
+  const me = String(profile?.email || '').trim().toLowerCase();
+  const owner = weeklyOwnerEmail(x);
+  if (isAdminMode()) {
+    if (route === 'weekly') {
+      return Boolean(weeklyAdminActingForEmail) && owner === String(weeklyAdminActingForEmail).toLowerCase();
+    }
+    return true;
+  }
+  if (owner && owner === me) return true;
+  return ['ACCEPTED','ADMIN_ASSIGNED'].includes(String(x?.delegation_status || '').toUpperCase())
+    && weeklyDelegatedEmail(x) === me;
+}
+
+function weeklyDelegationBadge(x) {
+  const status = String(x?.delegation_status || '').toUpperCase();
+  const ownerNick = operatorNickname(x?.responsible_name || x?.responsible_email || 'ผู้ดูแล');
+  const targetNick = operatorNickname(x?.delegated_to_name || x?.delegated_to_email || 'ผู้ตรวจแทน');
+  if (status === 'PENDING') return `<span class="badge warn">รอ ${esc(targetNick)} ยืนยัน</span>`;
+  if (status === 'ACCEPTED') return `<span class="badge info">${esc(targetNick)} รับตรวจแทน ${esc(ownerNick)}</span>`;
+  if (status === 'ADMIN_ASSIGNED') return `<span class="badge info">Admin มอบหมายให้ ${esc(targetNick)}</span>`;
+  if (status === 'REJECTED') return `<span class="badge danger">${esc(targetNick)} ปฏิเสธแล้ว</span>`;
+  if (status === 'CANCELLED') return `<span class="badge">ยกเลิกการมอบหมายแล้ว</span>`;
+  if (status === 'COMPLETED' && weeklyDelegatedEmail(x) && weeklyDelegatedEmail(x) !== weeklyOwnerEmail(x)) return `<span class="badge ok">${esc(targetNick)} ตรวจแทนแล้ว</span>`;
+  return '';
 }
 
 function weeklyItemCard(x) {
   const expired = requiresExpiryConfirmation(x) && x.checked_at == null;
   const resultText = x.result === 'MATCHED' ? 'ตรง' : x.result === 'ADJUSTED' ? 'ปรับแล้ว' : x.result === 'EXPIRED_REMOVED' ? 'นำหมดอายุออกแล้ว' : '';
   const resultClass = x.result === 'MATCHED' ? 'ok' : x.result === 'EXPIRED_REMOVED' ? 'danger' : 'warn';
+  const me = String(profile?.email || '').toLowerCase();
+  const owner = weeklyOwnerEmail(x);
+  const delegatedToMe = weeklyDelegatedEmail(x) === me;
+  const ownerNick = operatorNickname(x.responsible_name || x.responsible_email || 'ผู้ดูแล');
+  const checkerNick = operatorNickname(x.checked_by_name || x.checked_by_email || '');
+  const delegateBadge = weeklyDelegationBadge(x);
   let action = '';
   if (x.checked_at) action = `<span class="badge ${resultClass}">${resultText}</span>`;
-  else if (!canHandleItem(x)) action = `<span class="badge">รอ ${esc(x.responsible_name || 'ผู้ดูแล')}</span>`;
-  else if (expired) action = `<button class="mini danger" data-expired-remove="${esc(x.item_id)}">ยืนยันนำออก</button>`;
+  else if (weeklyDelegationWaiting(x)) {
+    action = delegatedToMe
+      ? `<span class="badge warn">รอคุณตอบรับด้านบน</span>`
+      : `<span class="badge warn">รอ ${esc(operatorNickname(x.delegated_to_name || x.delegated_to_email))} ยืนยัน</span>`;
+  } else if (!canHandleItem(x)) {
+    if (isAdminMode() && !weeklyAdminActingForEmail) action = '<span class="badge">เลือกชื่อเจ้าหน้าที่ด้านบน</span>';
+    else if (weeklyDelegationActive(x) && x.delegated_to_name) action = `<span class="badge">รอ ${esc(operatorNickname(x.delegated_to_name))} ตรวจแทน</span>`;
+    else action = `<span class="badge">รอ ${esc(ownerNick)}</span>`;
+  } else if (expired) action = `<button class="mini danger" data-expired-remove="${esc(x.item_id)}">ยืนยันนำออก</button>`;
   else action = `<button class="mini" data-check="${esc(x.item_id)}">ตรวจ</button>`;
-  return `<div class="card check-card ${x.checked_at ? (x.result === 'ADJUSTED' ? 'mismatch' : x.result === 'EXPIRED_REMOVED' ? 'expired-done' : 'checked') : expired ? 'expired-card' : ''}"><div class="check-info"><div><strong>${esc(x.material_name)}</strong><div class="lot-meta">${esc(lotKey(x))} · ระบบ ${qty(x.current_balance)} ${esc(x.unit)} · EXP ${d(x.expiry_date)}</div><div class="lot-meta">ผู้ดูแล: ${esc(x.responsible_name || '-')}</div>${expired ? '<div class="expired-callout">หมดอายุแล้ว: ไม่ต้องนับ ให้ตรวจว่านำออกจากพื้นที่จริงแล้ว</div>' : ''}${x.checked_at ? `<div class="lot-meta">ดำเนินการโดย ${esc(x.checked_by_name || x.checked_by_email)} · ${dt(x.checked_at)}</div>` : ''}</div>${action}</div></div>`;
+
+  const delegationLine = delegateBadge ? `<div class="weekly-delegation-line">${delegateBadge}${x.delegation_reason ? `<small>${esc(x.delegation_reason)}</small>` : ''}</div>` : '';
+  const checkerLine = x.checked_at
+    ? `<div class="lot-meta">${owner && String(x.checked_by_email || '').toLowerCase() !== owner ? `${esc(checkerNick)} ตรวจแทน ${esc(ownerNick)}` : `ดำเนินการโดย ${esc(x.checked_by_name || x.checked_by_email)}`} · ${dt(x.checked_at)}</div>`
+    : '';
+  return `<div class="card check-card ${x.checked_at ? (x.result === 'ADJUSTED' ? 'mismatch' : x.result === 'EXPIRED_REMOVED' ? 'expired-done' : 'checked') : expired ? 'expired-card' : ''}"><div class="check-info"><div><strong>${esc(x.material_name)}</strong><div class="lot-meta">${esc(lotKey(x))} · ระบบ ${qty(x.current_balance)} ${esc(x.unit)} · EXP ${d(x.expiry_date)}</div><div class="lot-meta">ผู้ดูแล: ${esc(x.responsible_name || '-')}</div>${delegationLine}${expired ? '<div class="expired-callout">หมดอายุแล้ว: ไม่ต้องนับ ให้ตรวจว่านำออกจากพื้นที่จริงแล้ว</div>' : ''}${checkerLine}</div>${action}</div></div>`;
+}
+
+function groupWeeklyDelegations(items, predicate) {
+  const groups = new Map();
+  (items || []).filter(predicate).forEach(item => {
+    const key = item.delegation_batch_id || `single-${item.item_id}`;
+    if (!groups.has(key)) groups.set(key, {
+      batchId:item.delegation_batch_id,
+      items:[],
+      fromName:item.delegated_by_name || item.responsible_name || item.delegated_by_email,
+      toName:item.delegated_to_name || item.delegated_to_email,
+      reason:item.delegation_reason || '-',
+      status:item.delegation_status || ''
+    });
+    groups.get(key).items.push(item);
+  });
+  return [...groups.values()];
+}
+
+function weeklyDelegationPanels(items) {
+  const me = String(profile?.email || '').toLowerCase();
+  const incoming = groupWeeklyDelegations(items, x => !x.checked_at && weeklyDelegationWaiting(x) && weeklyDelegatedEmail(x) === me);
+  const outgoing = groupWeeklyDelegations(items, x => !x.checked_at && ['PENDING','ACCEPTED','ADMIN_ASSIGNED'].includes(String(x.delegation_status || '').toUpperCase()) && (String(x.delegated_by_email || '').toLowerCase() === me || weeklyOwnerEmail(x) === me || isAdminMode()));
+  const incomingHtml = incoming.length ? `<section class="card delegation-panel delegation-incoming"><div class="section-title compact"><div><p class="eyebrow">Delegation inbox</p><h3>คำขอตรวจแทน</h3></div><span class="badge warn">${incoming.length} คำขอ</span></div><div class="delegation-request-list">${incoming.map(g => `<article><div><strong>${esc(operatorNickname(g.fromName))} ฝากตรวจ ${g.items.length} Lot</strong><small>${esc(g.reason)}</small><span>${g.items.slice(0,3).map(x=>esc(x.material_name)).join(' · ')}${g.items.length>3?' …':''}</span></div><div class="delegation-request-actions"><button class="primary mini" data-delegation-response="accept" data-delegation-batch="${esc(g.batchId)}">รับงาน</button><button class="secondary mini" data-delegation-response="reject" data-delegation-batch="${esc(g.batchId)}">ปฏิเสธ</button></div></article>`).join('')}</div></section>` : '';
+  const outgoingHtml = outgoing.length ? `<section class="card delegation-panel"><div class="section-title compact"><div><p class="eyebrow">Delegated work</p><h3>งานที่มอบหมายไว้</h3></div><span class="badge info">${outgoing.reduce((n,g)=>n+g.items.length,0)} Lot</span></div><div class="delegation-outgoing-list">${outgoing.map(g => `<article><div><strong>${esc(operatorNickname(g.toName))} · ${g.items.length} Lot</strong><small>${g.status === 'PENDING' ? 'รอยืนยัน' : g.status === 'ACCEPTED' ? 'รับงานแล้ว' : 'Admin มอบหมายแล้ว'} · ${esc(g.reason)}</small></div><button class="mini ghost" data-delegation-cancel="${esc(g.batchId)}">ยกเลิก</button></article>`).join('')}</div></section>` : '';
+  return incomingHtml + outgoingHtml;
+}
+
+function openWeeklyDelegateModal(items, staff, check) {
+  const adminMode = isAdminMode();
+  const me = String(profile?.email || '').toLowerCase();
+  const owners = [...new Map((items || []).filter(x=>!x.checked_at && x.responsible_email).map(x=>[x.responsible_email,x.responsible_name || x.responsible_email])).entries()].sort((a,b)=>String(a[1]).localeCompare(String(b[1]),'th'));
+  const defaultOwner = adminMode ? (weeklyAdminActingForEmail || owners[0]?.[0] || '') : profile.email;
+  const activeDelegation = x => ['PENDING','ACCEPTED','ADMIN_ASSIGNED'].includes(String(x.delegation_status || '').toUpperCase());
+  const eligibleForOwner = email => (items || []).filter(x => !x.checked_at && weeklyOwnerEmail(x) === String(email || '').toLowerCase() && !activeDelegation(x));
+  const targetOptions = (staff || []).filter(s => s.email && (adminMode || String(s.email).toLowerCase() !== me)).map(s => `<option value="${esc(s.email)}">${esc(s.display_name)}</option>`).join('');
+  if (!targetOptions) return toast('ไม่พบเจ้าหน้าที่สำหรับรับงานแทน', true);
+
+  openModal(`<section class="weekly-delegate-modal"><div class="section-title"><div><p class="eyebrow">Weekly delegation</p><h3>${adminMode ? 'มอบหมายผู้ตรวจแทน' : 'ฝากเพื่อนตรวจแทน'}</h3><p class="muted small">รอบวันที่ ${d(check?.week_friday)}</p></div></div><form id="weeklyDelegateForm" class="form-grid">${adminMode ? `<label>เจ้าของงาน<select id="delegateOwner">${owners.map(([email,name])=>`<option value="${esc(email)}" ${email===defaultOwner?'selected':''}>${esc(name)}</option>`).join('')}</select></label>` : `<div class="delegate-owner-fixed"><small>เจ้าของงาน</small><strong>${esc(profile.display_name || profile.email)}</strong></div>`}<label>ผู้ตรวจแทน<select id="delegateTarget" required><option value="">เลือกผู้ตรวจแทน</option>${targetOptions}</select></label><fieldset class="delegate-scope"><legend>รายการที่ฝาก</legend><label><input type="radio" name="delegateScope" value="all" checked> ฝากทั้งหมดที่ยังไม่ตรวจ</label><label><input type="radio" name="delegateScope" value="selected"> เลือกเฉพาะบางรายการ</label></fieldset><div id="delegateItemList" class="delegate-item-list"></div><label>เหตุผล<select id="delegateReason" required><option value="">เลือกเหตุผล</option><option>ลาพักร้อน</option><option>ลาป่วย</option><option>ออกหน่วย</option><option>อบรม/ประชุม</option><option>ติดภารกิจ</option><option>อื่น ๆ</option></select></label><label>รายละเอียดเพิ่มเติม<textarea id="delegateDetail" rows="2" placeholder="ระบุเพิ่มเติมได้"></textarea></label><p class="notice">${adminMode ? 'Admin มอบหมายแล้วมีผลทันที ผู้รับไม่ต้องกดยืนยัน แต่ระบบยังบันทึกผู้ตรวจจริงแยกจากเจ้าของวัสดุ' : 'ผู้รับต้องกดรับงานก่อน จึงจะสามารถตรวจแทนได้'}</p><button class="primary" type="submit">${adminMode ? 'มอบหมายทันที' : 'ส่งคำขอฝากตรวจ'}</button></form></section>`);
+
+  const ownerInput = $('#delegateOwner');
+  const list = $('#delegateItemList');
+  const drawItems = () => {
+    const ownerEmail = adminMode ? ownerInput?.value : profile.email;
+    const eligible = eligibleForOwner(ownerEmail);
+    const selectedMode = document.querySelector('input[name="delegateScope"]:checked')?.value === 'selected';
+    list.innerHTML = eligible.length ? `<div class="delegate-item-summary"><strong>${eligible.length} Lot ที่มอบหมายได้</strong><small>${selectedMode ? 'ติ๊กเลือกรายการด้านล่าง' : 'ระบบจะเลือกทั้งหมด'}</small></div>${eligible.map(x=>`<label class="delegate-item-option"><input type="checkbox" value="${esc(x.item_id)}" ${selectedMode?'':'checked disabled'}><span><strong>${esc(x.material_name)}</strong><small>${esc(lotKey(x))} · ${qty(x.current_balance)} ${esc(x.unit)}</small></span></label>`).join('')}` : '<div class="empty">ไม่มีรายการที่มอบหมายได้</div>';
+  };
+  ownerInput?.addEventListener('change', drawItems);
+  $$('input[name="delegateScope"]', $('#modalBody')).forEach(r=>r.addEventListener('change',drawItems));
+  drawItems();
+  $('#weeklyDelegateForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const ownerEmail = adminMode ? ownerInput?.value : profile.email;
+    const eligible = eligibleForOwner(ownerEmail);
+    const selectedMode = document.querySelector('input[name="delegateScope"]:checked')?.value === 'selected';
+    const ids = selectedMode ? $$(`#delegateItemList input[type="checkbox"]:checked`).map(x=>x.value) : eligible.map(x=>x.item_id);
+    const target = $('#delegateTarget').value;
+    const reason = $('#delegateReason').value;
+    const detail = $('#delegateDetail').value.trim();
+    if (!ids.length) return toast('กรุณาเลือกรายการอย่างน้อย 1 Lot', true);
+    if (!target) return toast('กรุณาเลือกผู้ตรวจแทน', true);
+    if (!reason) return toast('กรุณาเลือกเหตุผล', true);
+    const btn=e.submitter; btn.disabled=true;
+    const {error}=await sb.rpc('fn_delegate_weekly_items',{p_item_ids:ids,p_to_email:target,p_reason:detail?`${reason} — ${detail}`:reason,p_acting_mode:actingMode});
+    btn.disabled=false;
+    if(error)return toast(errMsg(error),true);
+    closeModal();
+    toast(adminMode ? `มอบหมาย ${ids.length} Lot แล้ว` : `ส่งคำขอฝากตรวจ ${ids.length} Lot แล้ว`);
+    renderWeekly();
+  });
 }
 
 async function renderWeekly() {
@@ -1957,27 +2091,37 @@ async function renderWeekly() {
   ]);
   if (error) throw error;
   if (staffRes.error) throw staffRes.error;
+  const staff = staffRes.data || [];
   const items = (data || []).filter(x => x.checked_at || !isExpired(x) || requiresExpiryConfirmation(x));
+  window._weeklyItems = items;
+  window._weeklyStaff = staff;
   const done = items.filter(x => x.checked_at).length;
   const pct = items.length ? Math.round(done * 100 / items.length) : 100;
   const expiredPending = items.filter(x => !x.checked_at && requiresExpiryConfirmation(x)).length;
+  const delegatedToMe = items.filter(x => !x.checked_at && ['ACCEPTED','ADMIN_ASSIGNED'].includes(String(x.delegation_status || '').toUpperCase()) && weeklyDelegatedEmail(x) === String(profile.email || '').toLowerCase()).length;
+  const incomingRequests = items.filter(x => !x.checked_at && weeklyDelegationWaiting(x) && weeklyDelegatedEmail(x) === String(profile.email || '').toLowerCase()).length;
   const ownerSet = new Map();
   items.forEach(i => { if (i.responsible_email && !ownerSet.has(i.responsible_email)) ownerSet.set(i.responsible_email, i.responsible_name || i.responsible_email); });
-  const ownerSelect = ['<option value="mine">ของฉัน</option>', '<option value="all">ทุกคน</option>'].concat([...ownerSet.entries()].sort((a,b)=>String(a[1]).localeCompare(String(b[1]), 'th')).map(([email, name]) => `<option value="${esc(email)}">${esc(name)}</option>`)).join('');
+  const ownerEntries=[...ownerSet.entries()].sort((a,b)=>String(a[1]).localeCompare(String(b[1]), 'th'));
+  if (isAdminMode() && weeklyAdminActingForEmail && !ownerSet.has(weeklyAdminActingForEmail)) weeklyAdminActingForEmail='';
+  const ownerSelect = ['<option value="mine">ของฉัน</option>', '<option value="all">ทุกคน</option>'].concat(ownerEntries.map(([email, name]) => `<option value="${esc(email)}">${esc(name)}</option>`)).join('');
+  const adminActingPanel = isAdminMode() ? `<section class="card admin-weekly-acting"><div class="admin-weekly-acting-copy"><span>${icon('user')}</span><div><p class="eyebrow">Admin acting</p><h3>ตรวจแทนเจ้าหน้าที่</h3><p>เลือกชื่อเจ้าของงานก่อนกดตรวจ ระบบจะเก็บชื่อ Admin เป็นผู้ตรวจจริง</p></div></div><label>กำลังทำแทน<select id="adminWeeklyActingFor"><option value="">เลือกชื่อเจ้าหน้าที่</option>${ownerEntries.map(([email,name])=>`<option value="${esc(email)}" ${email===weeklyAdminActingForEmail?'selected':''}>${esc(name)}</option>`).join('')}</select></label><button class="secondary" type="button" data-open-weekly-delegate>มอบหมายให้คนอื่น</button></section>` : '';
 
-  page.innerHTML = `<div class="page-head"><div><h2>ตรวจสต๊อกวันศุกร์</h2><p class="muted small">รอบวันที่ ${d(check.week_friday)}</p></div><button class="mini ghost" data-route="weekly-status">${icon('user')} สถานะผู้ตรวจ</button></div>
-  <section class="card weekly-header"><div class="weekly-ring small-ring" style="--pct:${pct}"><div><strong>${pct}%</strong><span>${done}/${items.length}</span></div></div><div><h3>ความคืบหน้า</h3><p class="muted">ยังไม่ตรวจ ${items.length-done} Lot · หมดอายุรอยืนยัน ${expiredPending} Lot</p></div></section>
-  <div class="weekly-tools"><label>กรองเจ้าหน้าที่<select id="weeklyOwnerFilter">${ownerSelect}</select></label><div class="filters horizontal-scroller" style="margin-bottom:0"><button class="chip active" data-wf="pending">ยังไม่ตรวจ</button><button class="chip" data-wf="mine">งานของฉัน</button><button class="chip" data-wf="expired">หมดอายุ</button><button class="chip" data-wf="mismatch">ไม่ตรง</button><button class="chip" data-wf="done">ตรวจแล้ว</button><button class="chip" data-wf="all">ทั้งหมด</button></div></div><div id="checkList" class="list"></div>${check.status !== 'COMPLETED' && isAdminMode() ? '<button id="completeCheck" class="primary wide-action">เสร็จสิ้นและปิดรอบตรวจ</button>' : ''}`;
+  page.innerHTML = `<div class="page-head"><div><h2>ตรวจสต๊อกวันศุกร์</h2><p class="muted small">รอบวันที่ ${d(check.week_friday)}</p></div><div class="weekly-head-actions"><button class="mini ghost" data-route="weekly-status">${icon('user')} สถานะผู้ตรวจ</button><button class="mini" type="button" data-open-weekly-delegate>${isAdminMode()?'มอบหมายผู้ตรวจแทน':'ฝากเพื่อนตรวจแทน'}</button></div></div>${adminActingPanel}
+  <section class="card weekly-header"><div class="weekly-ring small-ring" style="--pct:${pct}"><div><strong>${pct}%</strong><span>${done}/${items.length}</span></div></div><div><h3>ความคืบหน้า</h3><p class="muted">ยังไม่ตรวจ ${items.length-done} Lot · หมดอายุรอยืนยัน ${expiredPending} Lot${delegatedToMe?` · ได้รับฝาก ${delegatedToMe} Lot`:''}${incomingRequests?` · รอตอบรับ ${incomingRequests} คำขอ`:''}</p></div></section>
+  ${weeklyDelegationPanels(items)}
+  <div class="weekly-tools"><label>กรองเจ้าหน้าที่<select id="weeklyOwnerFilter">${ownerSelect}</select></label><div class="filters horizontal-scroller" style="margin-bottom:0"><button class="chip active" data-wf="pending">ยังไม่ตรวจ</button><button class="chip" data-wf="mine">งานของฉัน</button><button class="chip" data-wf="received">งานที่ได้รับฝาก${delegatedToMe?` ${delegatedToMe}`:''}</button><button class="chip" data-wf="expired">หมดอายุ</button><button class="chip" data-wf="mismatch">ไม่ตรง</button><button class="chip" data-wf="done">ตรวจแล้ว</button><button class="chip" data-wf="all">ทั้งหมด</button></div></div><div id="checkList" class="list"></div>${check.status !== 'COMPLETED' && isAdminMode() ? '<button id="completeCheck" class="primary wide-action">เสร็จสิ้นและปิดรอบตรวจ</button>' : ''}`;
 
   let f = 'pending';
   const ownerFilter = $('#weeklyOwnerFilter');
-  ownerFilter.value = isAdminMode() ? 'all' : 'mine';
+  ownerFilter.value = isAdminMode() ? (weeklyAdminActingForEmail || 'all') : 'mine';
   const draw = () => {
     let arr = items;
     const owner = ownerFilter.value;
-    if (owner === 'mine') arr = arr.filter(x => x.responsible_email === profile.email || x.checked_by_email === profile.email);
-    else if (owner !== 'all') arr = arr.filter(x => x.responsible_email === owner);
-    if (f === 'mine') arr = arr.filter(x => x.responsible_email === profile.email || x.checked_by_email === profile.email);
+    if (owner === 'mine') arr = arr.filter(x => weeklyOwnerEmail(x) === String(profile.email || '').toLowerCase() || String(x.checked_by_email || '').toLowerCase() === String(profile.email || '').toLowerCase());
+    else if (owner !== 'all') arr = arr.filter(x => weeklyOwnerEmail(x) === String(owner).toLowerCase());
+    if (f === 'mine') arr = arr.filter(x => weeklyOwnerEmail(x) === String(profile.email || '').toLowerCase());
+    if (f === 'received') arr = arr.filter(x => weeklyDelegatedEmail(x) === String(profile.email || '').toLowerCase() && ['PENDING','ACCEPTED','ADMIN_ASSIGNED','COMPLETED'].includes(String(x.delegation_status || '').toUpperCase()));
     if (f === 'pending') arr = arr.filter(x => !x.checked_at);
     if (f === 'expired') arr = arr.filter(x => requiresExpiryConfirmation(x) || x.result === 'EXPIRED_REMOVED');
     if (f === 'mismatch') arr = arr.filter(x => x.result === 'ADJUSTED');
@@ -1986,13 +2130,32 @@ async function renderWeekly() {
   };
   ownerFilter.addEventListener('change', draw);
   $$('[data-wf]').forEach(b => b.addEventListener('click', () => { f=b.dataset.wf; $$('[data-wf]').forEach(x=>x.classList.toggle('active',x===b)); draw(); }));
+  const adminSelect=$('#adminWeeklyActingFor');
+  if(adminSelect) adminSelect.addEventListener('change',()=>{
+    weeklyAdminActingForEmail=adminSelect.value;
+    ownerFilter.value=weeklyAdminActingForEmail || 'all';
+    f='pending';
+    $$('[data-wf]').forEach(x=>x.classList.toggle('active',x.dataset.wf==='pending'));
+    draw();
+    if(weeklyAdminActingForEmail) toast(`กำลังตรวจแทน ${adminSelect.options[adminSelect.selectedIndex].text}`);
+  });
+  $$('[data-open-weekly-delegate]').forEach(btn=>btn.addEventListener('click',()=>openWeeklyDelegateModal(items,staff,check)));
+  $$('[data-delegation-response]').forEach(btn=>btn.addEventListener('click',async()=>{
+    const accept=btn.dataset.delegationResponse==='accept'; btn.disabled=true;
+    const {error}=await sb.rpc('fn_respond_weekly_delegation',{p_batch_id:btn.dataset.delegationBatch,p_accept:accept});
+    if(error){btn.disabled=false;return toast(errMsg(error),true);} toast(accept?'รับงานตรวจแทนแล้ว':'ปฏิเสธคำขอแล้ว'); renderWeekly();
+  }));
+  $$('[data-delegation-cancel]').forEach(btn=>btn.addEventListener('click',async()=>{
+    if(!confirm('ยกเลิกการมอบหมายรายการนี้หรือไม่'))return; btn.disabled=true;
+    const {error}=await sb.rpc('fn_cancel_weekly_delegation',{p_batch_id:btn.dataset.delegationCancel,p_acting_mode:actingMode});
+    if(error){btn.disabled=false;return toast(errMsg(error),true);} toast('ยกเลิกการมอบหมายแล้ว'); renderWeekly();
+  }));
   draw();
   if ($('#completeCheck')) $('#completeCheck').onclick = async () => {
     const {error} = await sb.rpc('fn_complete_weekly_check', {p_check_id:check.id, p_acting_mode:actingMode});
     if (error) return toast(errMsg(error), true);
     toast('ปิดรอบตรวจสต๊อกแล้ว'); renderWeekly();
   };
-  window._weeklyItems = items;
 }
 
 async function renderWeeklyStatus() {
@@ -2009,11 +2172,11 @@ async function renderWeeklyStatus() {
     const people=new Map(),weeks=new Map();
     rows.forEach(r=>{
       const email=r.assigned_email||'unassigned';
-      if(!people.has(email))people.set(email,{name:r.assigned_name||'ยังไม่กำหนด',rounds:0,done:0,missed:0,pending:0,delegated:0});
-      const p=people.get(email);p.rounds++;p.pending+=Number(r.pending_items||0);p.delegated+=Number(r.checked_by_other_items||0);if(Number(r.pending_items||0)>0)p.missed++;else p.done++;
+      if(!people.has(email))people.set(email,{name:r.assigned_name||'ยังไม่กำหนด',rounds:0,done:0,missed:0,pending:0,delegated:0,delegationPending:0});
+      const p=people.get(email);p.rounds++;p.pending+=Number(r.pending_items||0);p.delegated+=Number(r.delegated_out_items??r.checked_by_other_items??0);p.delegationPending+=Number(r.delegation_pending_items||0);if(Number(r.pending_items||0)>0)p.missed++;else p.done++;
       const week=r.week_friday;if(!weeks.has(week))weeks.set(week,[]);weeks.get(week).push(r);
     });
-    const peopleHtml=[...people.values()].sort((a,b)=>b.missed-a.missed||a.name.localeCompare(b.name,'th')).map(p=>`<article><strong>${esc(p.name)}</strong><span>ครบ ${p.done}/${p.rounds} สัปดาห์</span><em class="${p.missed?'danger-text':'ok-text'}">ไม่ครบ ${p.missed}</em>${p.delegated?`<small>มีผู้ตรวจแทน ${p.delegated} Lot</small>`:''}</article>`).join('');
+    const peopleHtml=[...people.values()].sort((a,b)=>b.missed-a.missed||a.name.localeCompare(b.name,'th')).map(p=>`<article><strong>${esc(p.name)}</strong><span>ครบ ${p.done}/${p.rounds} สัปดาห์</span><em class="${p.missed?'danger-text':'ok-text'}">ไม่ครบ ${p.missed}</em>${p.delegated?`<small>มอบหมายผู้ตรวจแทน ${p.delegated} Lot</small>`:''}${p.delegationPending?`<small class="warn-text">รอยืนยัน ${p.delegationPending} Lot</small>`:''}</article>`).join('');
     const weekHtml=[...weeks.entries()].map(([week,items])=>{const pending=items.filter(x=>Number(x.pending_items||0)>0),done=items.filter(x=>Number(x.pending_items||0)===0&&Number(x.total_items||0)>0);return `<details class="weekly-round-card"><summary><strong>ศุกร์ ${d(week)}</strong><span>${done.length}/${items.length} คนครบ</span></summary><div class="weekly-round-columns"><div><h4>ยังไม่ครบ (${pending.length})</h4>${pending.map(x=>`<p><strong>${esc(x.assigned_name)}</strong><span>เหลือ ${qty(x.pending_items)} Lot</span></p>`).join('')||'<p class="ok-text">ทุกคนตรวจครบ</p>'}</div><div><h4>ตรวจครบแล้ว (${done.length})</h4>${done.map(x=>`<p><strong>${esc(x.assigned_name)}</strong><span>${qty(x.checked_items)}/${qty(x.total_items)} Lot</span></p>`).join('')||'<p class="muted">ยังไม่มี</p>'}</div></div></details>`;}).join('');
     $('#weeklyStatusResult').innerHTML=`<section class="card"><div class="section-title compact"><h3>สรุปตามเจ้าหน้าที่</h3><span class="badge info">${weeks.size} สัปดาห์</span></div><div class="weekly-staff-summary-grid">${peopleHtml||'<div class="empty">ไม่มีข้อมูล</div>'}</div></section><section class="weekly-round-list"><div class="section-title"><h3>รายละเอียดแต่ละวันศุกร์</h3></div>${weekHtml||'<div class="card empty">ไม่มีข้อมูลในช่วงวันที่เลือก</div>'}</section>`;
   };
@@ -2021,12 +2184,28 @@ async function renderWeeklyStatus() {
   await load();
 }
 
+function weeklyActingForEmail(x) {
+  if (!isAdminMode()) return null;
+  return weeklyAdminActingForEmail || x?.responsible_email || null;
+}
+
+function weeklyActingContextMarkup(x) {
+  const owner = x?.responsible_name || x?.responsible_email || 'ยังไม่กำหนด';
+  const actual = profile?.display_name || profile?.email || '-';
+  const delegated = weeklyDelegationActive(x) && x?.delegated_to_name
+    ? `<span><small>ผู้ได้รับมอบหมาย</small><strong>${esc(x.delegated_to_name)}</strong></span>` : '';
+  return `<div class="weekly-acting-context"><span><small>ผู้ดูแลหลัก</small><strong>${esc(owner)}</strong></span>${delegated}<span><small>ผู้ตรวจจริง</small><strong>${esc(actual)}</strong></span></div>`;
+}
+
 function openCheck(id) {
   const x = (window._weeklyItems || []).find(i => i.item_id === id);
   if (!x) return;
-  if (!canHandleItem(x)) return toast('รายการนี้เป็นความรับผิดชอบของ ' + (x.responsible_name || x.responsible_email), true);
+  if (!canHandleItem(x)) {
+    if (isAdminMode() && route === 'weekly' && !weeklyAdminActingForEmail) return toast('กรุณาเลือกชื่อเจ้าหน้าที่ที่ต้องการทำแทนก่อน', true);
+    return toast('รายการนี้ยังไม่ได้มอบหมายให้บัญชีของคุณ', true);
+  }
   if (isExpired(x)) return openExpiredRemoval(id);
-  openModal(`<h3>${esc(x.material_name)}</h3><p class="muted">${esc(lotKey(x))} · ยอดในระบบ ${qty(x.current_balance)} ${esc(x.unit)}</p><div class="check-adjustment-guide">${icon('check')}<div><strong>กรอกจำนวนที่นับได้จริง</strong><span>หากไม่เท่ากับยอดในระบบ ระบบจะปรับยอดคงเหลือให้เท่ากับจำนวนที่กรอก พร้อมเก็บชื่อผู้ตรวจและเหตุผลไว้ในประวัติ</span></div></div><form id="checkForm" class="form-grid"><label>จำนวนที่นับได้จริง<input id="actualQty" type="number" min="0" step="0.01" value="${Number(x.current_balance)}" required inputmode="decimal"></label><div id="adjustmentPreview" class="adjustment-preview matched">ยอดตรงกับระบบ ยังไม่มีการปรับจำนวน</div><div id="reasonFields" class="form-grid hidden"><label>เหตุผล<select id="reasonCode"><option value="">เลือกเหตุผล</option><option>นำออกแล้วไม่ได้บันทึก</option><option>รับเข้าหรือนำออกผิดจำนวน</option><option>สูญหายหรือหาไม่พบ</option><option>ชำรุด</option><option>นับครั้งก่อนผิด</option><option>Lot หรือสติ๊กเกอร์ไม่ตรง</option><option>อื่น ๆ</option></select></label><label>รายละเอียด<textarea id="reasonDetail" rows="3"></textarea></label></div><button class="primary" type="submit">บันทึกผลตรวจ</button></form>`);
+  openModal(`<h3>${esc(x.material_name)}</h3><p class="muted">${esc(lotKey(x))} · ยอดในระบบ ${qty(x.current_balance)} ${esc(x.unit)}</p>${weeklyActingContextMarkup(x)}<div class="check-adjustment-guide">${icon('check')}<div><strong>กรอกจำนวนที่นับได้จริง</strong><span>หากไม่เท่ากับยอดในระบบ ระบบจะปรับยอดคงเหลือให้เท่ากับจำนวนที่กรอก พร้อมเก็บเจ้าของงาน ผู้ตรวจแทน และผู้ตรวจจริงแยกกัน</span></div></div><form id="checkForm" class="form-grid"><label>จำนวนที่นับได้จริง<input id="actualQty" type="number" min="0" step="0.01" value="${Number(x.current_balance)}" required inputmode="decimal"></label><div id="adjustmentPreview" class="adjustment-preview matched">ยอดตรงกับระบบ ยังไม่มีการปรับจำนวน</div><div id="reasonFields" class="form-grid hidden"><label>เหตุผล<select id="reasonCode"><option value="">เลือกเหตุผล</option><option>นำออกแล้วไม่ได้บันทึก</option><option>รับเข้าหรือนำออกผิดจำนวน</option><option>สูญหายหรือหาไม่พบ</option><option>ชำรุด</option><option>นับครั้งก่อนผิด</option><option>Lot หรือสติ๊กเกอร์ไม่ตรง</option><option>อื่น ๆ</option></select></label><label>รายละเอียด<textarea id="reasonDetail" rows="3"></textarea></label></div><button class="primary" type="submit">บันทึกผลตรวจ</button></form>`);
   const toggle = () => {
     const actual=Number($('#actualQty').value);
     const current=Number(x.current_balance);
@@ -2048,13 +2227,16 @@ function openCheck(id) {
     const actual = Number($('#actualQty').value);
     const diff = actual !== Number(x.current_balance);
     if (diff && !$('#reasonCode').value) return toast('กรุณาเลือกเหตุผล', true);
+    const btn=e.submitter; btn.disabled=true;
     const {error} = await sb.rpc('fn_save_stock_check', {
       p_item_id:id,
       p_actual_qty:actual,
       p_reason_code:diff ? $('#reasonCode').value : null,
       p_reason_detail:diff ? $('#reasonDetail').value.trim() || null : null,
-      p_acting_mode:actingMode
+      p_acting_mode:actingMode,
+      p_acting_for_email:weeklyActingForEmail(x)
     });
+    btn.disabled=false;
     if (error) return toast(errMsg(error), true);
     closeModal();
     stockCache = []; scanLotsCache=[]; scanLotsLoadedAt=0;
@@ -2067,8 +2249,11 @@ function openCheck(id) {
 function openExpiredRemoval(id) {
   const x = (window._weeklyItems || []).find(i => i.item_id === id);
   if (!x) return;
-  if (!canHandleItem(x)) return toast('รายการนี้เป็นความรับผิดชอบของ ' + (x.responsible_name || x.responsible_email), true);
-  openModal(`<h3>ยืนยันนำ Lot หมดอายุออกจากพื้นที่</h3><div class="expired-confirm-card"><strong>${esc(x.material_name)}</strong><span>${esc(lotKey(x))}</span><span>EXP ${d(x.expiry_date)} · คงเหลือในระบบ ${qty(x.current_balance)} ${esc(x.unit)}</span></div><form id="expiredForm" class="form-grid"><label class="confirm-check"><input id="expiredConfirm" type="checkbox" required><span>ตรวจแล้วว่า Lot นี้ถูกนำออกจากชั้น/ตู้/พื้นที่ใช้งานจริง</span></label><label>หมายเหตุ<textarea id="expiredNote" rows="3" placeholder="เช่น นำไปจุดพักของหมดอายุแล้ว"></textarea></label><p class="notice">เมื่อยืนยัน ระบบจะตัดยอดเป็น 0 ปิด Lot และสัปดาห์หน้าจะไม่ต้องตรวจซ้ำ</p><button class="danger" type="submit">${icon('check')} ยืนยันนำออกจากพื้นที่แล้ว</button></form>`);
+  if (!canHandleItem(x)) {
+    if (isAdminMode() && route === 'weekly' && !weeklyAdminActingForEmail) return toast('กรุณาเลือกชื่อเจ้าหน้าที่ที่ต้องการทำแทนก่อน', true);
+    return toast('รายการนี้ยังไม่ได้มอบหมายให้บัญชีของคุณ', true);
+  }
+  openModal(`<h3>ยืนยันนำ Lot หมดอายุออกจากพื้นที่</h3>${weeklyActingContextMarkup(x)}<div class="expired-confirm-card"><strong>${esc(x.material_name)}</strong><span>${esc(lotKey(x))}</span><span>EXP ${d(x.expiry_date)} · คงเหลือในระบบ ${qty(x.current_balance)} ${esc(x.unit)}</span></div><form id="expiredForm" class="form-grid"><label class="confirm-check"><input id="expiredConfirm" type="checkbox" required><span>ตรวจแล้วว่า Lot นี้ถูกนำออกจากชั้น/ตู้/พื้นที่ใช้งานจริง</span></label><label>หมายเหตุ<textarea id="expiredNote" rows="3" placeholder="เช่น นำไปจุดพักของหมดอายุแล้ว"></textarea></label><p class="notice">เมื่อยืนยัน ระบบจะตัดยอดเป็น 0 ปิด Lot และสัปดาห์หน้าจะไม่ต้องตรวจซ้ำ</p><button class="danger" type="submit">${icon('check')} ยืนยันนำออกจากพื้นที่แล้ว</button></form>`);
   $('#expiredForm').addEventListener('submit', async e => {
     e.preventDefault();
     if (!$('#expiredConfirm').checked) return toast('กรุณายืนยันว่าได้นำออกจากพื้นที่จริงแล้ว', true);
@@ -2077,7 +2262,8 @@ function openExpiredRemoval(id) {
     const {error} = await sb.rpc('fn_confirm_expired_removal', {
       p_item_id:id,
       p_note:$('#expiredNote').value.trim() || null,
-      p_acting_mode:actingMode
+      p_acting_mode:actingMode,
+      p_acting_for_email:weeklyActingForEmail(x)
     });
     btn.disabled = false;
     if (error) return toast(errMsg(error), true);
@@ -2102,7 +2288,7 @@ async function renderActivity() {
     else if(type==='issue')q=q.eq('action','ISSUE');
     else if(type==='print')q=q.eq('action','LABEL_PRINT');
     else if(type==='expired')q=q.in('action',['EXPIRED_REMOVED','AUTO_EXPIRED']);
-    else if(type==='check')q=q.in('action',['STOCK_CHECK_MATCHED','STOCK_CHECK_ADJUSTED','WEEKLY_CHECK_COMPLETED']);
+    else if(type==='check')q=q.in('action',['STOCK_CHECK_MATCHED','STOCK_CHECK_ADJUSTED','WEEKLY_CHECK_COMPLETED','WEEKLY_DELEGATION_REQUESTED','WEEKLY_DELEGATION_ADMIN_ASSIGNED','WEEKLY_DELEGATION_ACCEPTED','WEEKLY_DELEGATION_REJECTED','WEEKLY_DELEGATION_CANCELLED']);
     const {data,error}=await q.limit(300);
     if(error){$('#activityList').innerHTML=`<div class="card notice">${esc(errMsg(error))}</div>`;return;}
     loaded=data||[];$('#activitySearch').disabled=false;draw();
@@ -2366,7 +2552,7 @@ function openMaterialEditor(code) {
 }
 
 function renderHelp() {
-  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>สร้างบัญชีครั้งแรก</h3><ol class="help-steps"><li>ใช้เฉพาะอีเมลมหิดล @mahidol.ac.th ที่ Admin อนุญาตไว้</li><li>ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว</li><li>กด “สร้างบัญชีครั้งแรก” แล้วกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</li></ol></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>พิมพ์ชื่อวัสดุบางส่วนแล้วเลือกจากรายการ</li><li>ตรวจชื่อผู้นำเข้าปัจจุบัน ใส่ Lot วันหมดอายุ และจำนวน แล้วบันทึก</li></ol></div><div class="card help-card"><h3>นำออก</h3><ol class="help-steps"><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าและวิธีนำออก แล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>ระบบบันทึกแยกเป็น “สแกน QR” หรือ “พิมพ์รหัสเอง” ในประวัติและรายงาน</li></ol></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแล</h3><p>มี 3 เมนูย่อย: ภาพรวม, ต้องเบิก และตั้งค่าการเตือน เลือกเตือนตามจำนวนขั้นต่ำ เตือนรอบเบิกรายเดือน หรือไม่แจ้งเตือนได้ การเตือนรายเดือนจะเริ่มตรวจรอบตั้งแต่เดือนถัดไปหลังบันทึก</p></div><div class="card help-card"><h3>ตรวจวันศุกร์</h3><p>กรอกจำนวนที่นับได้จริง หากไม่ตรงกับระบบ ให้เลือกเหตุผล ระบบจะปรับยอดและเก็บชื่อผู้ตรวจไว้ในประวัติ</p></div><div class="card help-card"><h3>สแกนตรวจ Lot</h3><p>เปิดกล้องหรือพิมพ์รหัส QR เพื่อดูยอด Lot ยอดรวม ผู้ดูแล ขั้นต่ำ และยืนยันตรวจหรือปรับยอดได้ทันที</p></div><div class="card help-card"><h3>สถานะผู้ตรวจ</h3><p>เปิดเมนู “สถานะผู้ตรวจ” แล้วกำหนดช่วงวันที่ เพื่อดูว่าแต่ละวันศุกร์ใครตรวจครบหรือยังไม่ครบ</p></div><div class="card help-card"><h3>สติ๊กเกอร์เดิม</h3><p>สติ๊กเกอร์รหัสเดิมยังสแกนได้ ไม่ต้องเปลี่ยนใหม่ทั้งหมด</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบไม่ตัดยอดเอง เปิดตรวจวันศุกร์และกด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์ถัดไป</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมดูได้ในหน้าประวัติและรายงาน</p></div><div class="card help-card"><h3>เครื่องพิมพ์สติ๊กเกอร์</h3><p>ฉลากกว้าง 25 mm สูง 20 mm ชื่อวัสดุจะย่อฟอนต์อัตโนมัติโดยไม่ตัด Lot/EXP ตั้ง Scale 100%, Margin None และปิด Header/Footer หากต้องการหลายดวงให้ใส่จำนวนในช่อง “จำนวนชุด” ของหน้าพิมพ์</p></div></div>`;
+  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>สร้างบัญชีครั้งแรก</h3><ol class="help-steps"><li>ใช้เฉพาะอีเมลมหิดล @mahidol.ac.th ที่ Admin อนุญาตไว้</li><li>ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว</li><li>กด “สร้างบัญชีครั้งแรก” แล้วกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</li></ol></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>พิมพ์ชื่อวัสดุบางส่วนแล้วเลือกจากรายการ</li><li>ตรวจชื่อผู้นำเข้าปัจจุบัน ใส่ Lot วันหมดอายุ และจำนวน แล้วบันทึก</li></ol></div><div class="card help-card"><h3>นำออก</h3><ol class="help-steps"><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าและวิธีนำออก แล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>ระบบบันทึกแยกเป็น “สแกน QR” หรือ “พิมพ์รหัสเอง” ในประวัติและรายงาน</li></ol></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแล</h3><p>มี 3 เมนูย่อย: ภาพรวม, ต้องเบิก และตั้งค่าการเตือน เลือกเตือนตามจำนวนขั้นต่ำ เตือนรอบเบิกรายเดือน หรือไม่แจ้งเตือนได้ การเตือนรายเดือนจะเริ่มตรวจรอบตั้งแต่เดือนถัดไปหลังบันทึก</p></div><div class="card help-card"><h3>ตรวจวันศุกร์</h3><p>กรอกจำนวนที่นับได้จริง หากไม่ตรงกับระบบ ให้เลือกเหตุผล สามารถฝากเพื่อนตรวจแทนเฉพาะรอบได้ ผู้รับต้องกดยืนยันก่อน ส่วน Admin เลือกชื่อเจ้าหน้าที่เพื่อทำแทนหรือมอบหมายให้คนอื่นได้ทันที ระบบเก็บผู้ดูแลหลัก ผู้ได้รับมอบหมาย และผู้ตรวจจริงแยกกัน</p></div><div class="card help-card"><h3>สแกนตรวจ Lot</h3><p>เปิดกล้องหรือพิมพ์รหัส QR เพื่อดูยอด Lot ยอดรวม ผู้ดูแล ขั้นต่ำ และยืนยันตรวจหรือปรับยอดได้ทันที</p></div><div class="card help-card"><h3>สถานะผู้ตรวจ</h3><p>เปิดเมนู “สถานะผู้ตรวจ” แล้วกำหนดช่วงวันที่ เพื่อดูว่าแต่ละวันศุกร์ใครตรวจครบหรือยังไม่ครบ</p></div><div class="card help-card"><h3>สติ๊กเกอร์เดิม</h3><p>สติ๊กเกอร์รหัสเดิมยังสแกนได้ ไม่ต้องเปลี่ยนใหม่ทั้งหมด</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบไม่ตัดยอดเอง เปิดตรวจวันศุกร์และกด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์ถัดไป</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมดูได้ในหน้าประวัติและรายงาน</p></div><div class="card help-card"><h3>เครื่องพิมพ์สติ๊กเกอร์</h3><p>ฉลากกว้าง 25 mm สูง 20 mm ชื่อวัสดุจะย่อฟอนต์อัตโนมัติโดยไม่ตัด Lot/EXP ตั้ง Scale 100%, Margin None และปิด Header/Footer หากต้องการหลายดวงให้ใส่จำนวนในช่อง “จำนวนชุด” ของหน้าพิมพ์</p></div></div>`;
   refreshInstallUI();
 }
 
