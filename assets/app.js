@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.3';
+const APP_VERSION = '1.4.4';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const C = window.APP_CONFIG || {};
 const configured = C.SUPABASE_URL && !C.SUPABASE_URL.includes('YOUR-PROJECT') && C.SUPABASE_ANON_KEY && !C.SUPABASE_ANON_KEY.includes('YOUR-ANON');
@@ -593,7 +593,7 @@ function globalClick(e) {
   if (issue) {
     e.preventDefault();
     const l = stockCache.find(x => x.lot_id === issue.dataset.issueLot);
-    if (l) openIssueModal(l);
+    if (l) openIssueModal(l, 'manual');
     return;
   }
   const scan = e.target.closest('[data-camera-scan]');
@@ -771,6 +771,24 @@ function activityMaterialInfo(detail = {}) {
   };
 }
 
+function normalizeIssueMethod(value) {
+  const method = String(value || '').trim().toUpperCase();
+  return method === 'QR_SCAN' ? 'QR_SCAN' : method === 'MANUAL_ENTRY' ? 'MANUAL_ENTRY' : '';
+}
+
+function issueMethodLabel(value) {
+  const method = normalizeIssueMethod(value);
+  if (method === 'QR_SCAN') return 'สแกน QR';
+  if (method === 'MANUAL_ENTRY') return 'พิมพ์รหัสเอง';
+  return 'ไม่ระบุ — ข้อมูลเดิม';
+}
+
+function issueMethodBadge(value) {
+  const method = normalizeIssueMethod(value);
+  const cls = method === 'QR_SCAN' ? 'ok' : method === 'MANUAL_ENTRY' ? 'info' : '';
+  return `<span class="badge ${cls}">${esc(issueMethodLabel(value))}</span>`;
+}
+
 function activityCard(a) {
   const detail = a.summary || {};
   const info = activityMaterialInfo(detail);
@@ -778,6 +796,7 @@ function activityCard(a) {
   const title = info.name ? `${actionText} · ${info.name}` : actionText;
   const detailParts = [];
   if (detail.lot_no) detailParts.push(`Lot ${detail.lot_no}`);
+  if (a.action === 'ISSUE') detailParts.push(`วิธีนำออก: ${issueMethodLabel(detail.issue_method)}`);
   if (detail.before !== undefined && detail.after !== undefined) {
     detailParts.push(`คงเหลือ ${qty(detail.before)} → ${qty(detail.after)}${info.unit ? ' ' + info.unit : ''}`);
   } else if (detail.quantity !== undefined) {
@@ -1223,8 +1242,8 @@ async function loadMaterials() {
   return materialsCache;
 }
 
-function transactionRows(rows) {
-  return (rows || []).map(x => `<tr><td>${dt(x.created_at)}</td><td><strong>${esc(x.material_name)}</strong></td><td><span class="code-pill">${esc(x.lot_key)}</span></td><td>${x.tx_type === 'RECEIVE' ? '+' : ''}${qty(x.quantity_delta)} ${esc(x.unit)}</td><td>${qty(x.quantity_after)}</td><td>${esc(x.created_by_name || x.created_by_email || 'SYSTEM')}</td></tr>`).join('');
+function transactionRows(rows, {showIssueMethod = false} = {}) {
+  return (rows || []).map(x => `<tr><td>${dt(x.created_at)}</td><td><strong>${esc(x.material_name)}</strong></td><td><span class="code-pill">${esc(x.lot_key)}</span></td><td>${x.tx_type === 'RECEIVE' ? '+' : ''}${qty(x.quantity_delta)} ${esc(x.unit)}</td><td>${qty(x.quantity_after)}</td>${showIssueMethod ? `<td>${issueMethodBadge(x.issue_method)}</td>` : ''}<td>${esc(x.created_by_name || x.created_by_email || 'SYSTEM')}</td></tr>`).join('');
 }
 
 async function renderScanStock() {
@@ -1410,7 +1429,7 @@ async function renderMove(defaultTab = 'receive') {
       const historyRes = await sb.from('v_transaction_history').select('*').eq('tx_type','ISSUE').limit(60);
       if (historyRes.error) throw historyRes.error;
       const historyRows=historyRes.data || [];
-      $('#movePane').innerHTML = `<div class="move-layout"><div><section class="card issue-scan-simple"><div class="scan-card simple"><div class="scan-icon">${icon('qr')}</div><div><h3>นำออกด้วย QR Sticker</h3></div></div><button class="primary camera-primary" type="button" data-camera-scan>${icon('camera')} เปิดกล้องสแกน</button><div class="issue-or"><span>หรือ</span></div><form id="manualIssueForm" class="form-grid"><label>พิมพ์รหัส QR / รหัสล็อต<div class="toolbar issue-code-row" style="margin:0"><input id="issueCode" autocomplete="off" placeholder="เช่น BB020-69020" required><button type="submit" class="secondary">ค้นหา</button></div></label></form></section></div><section class="card history-card"><div class="section-title compact"><div><h3>ประวัตินำออกล่าสุด</h3></div><button class="mini ghost" data-route="reports">ดูรายงาน</button></div><div class="table-wrap"><table class="data-table"><thead><tr><th>วันเวลา</th><th>สินค้า</th><th>Lot</th><th>จำนวน</th><th>ยอดหลังทำ</th><th>ผู้บันทึก</th></tr></thead><tbody>${transactionRows(historyRows.slice(0,30)) || '<tr><td colspan="6" class="empty">ไม่มีรายการ</td></tr>'}</tbody></table></div></section></div>`;
+      $('#movePane').innerHTML = `<div class="move-layout"><div><section class="card issue-scan-simple"><div class="scan-card simple"><div class="scan-icon">${icon('qr')}</div><div><h3>นำออกด้วย QR Sticker</h3></div></div><button class="primary camera-primary" type="button" data-camera-scan>${icon('camera')} เปิดกล้องสแกน</button><div class="issue-or"><span>หรือ</span></div><form id="manualIssueForm" class="form-grid"><label>พิมพ์รหัส QR / รหัสล็อต<div class="toolbar issue-code-row" style="margin:0"><input id="issueCode" autocomplete="off" placeholder="เช่น BB020-69020" required><button type="submit" class="secondary">ค้นหา</button></div></label></form></section></div><section class="card history-card"><div class="section-title compact"><div><h3>ประวัตินำออกล่าสุด</h3></div><button class="mini ghost" data-route="reports">ดูรายงาน</button></div><div class="table-wrap"><table class="data-table"><thead><tr><th>วันเวลา</th><th>สินค้า</th><th>Lot</th><th>จำนวน</th><th>ยอดหลังทำ</th><th>วิธีนำออก</th><th>ผู้บันทึก</th></tr></thead><tbody>${transactionRows(historyRows.slice(0,30), {showIssueMethod:true}) || '<tr><td colspan="7" class="empty">ไม่มีรายการ</td></tr>'}</tbody></table></div></section></div>`;
       $('#manualIssueForm').addEventListener('submit',e=>{e.preventDefault();const code=$('#issueCode').value.trim();if(!code)return toast('กรุณาพิมพ์รหัส QR หรือรหัสล็อต',true);resolveIssueCode(code);});
     }
   };
@@ -1477,13 +1496,14 @@ async function resolveIssueCode(code, source = 'manual') {
   const l = findLotByCode(code, lots);
   if (!l) return openIssueLookupNotFound(code, source);
   if (isExpired(l)) return toast('Lot นี้หมดอายุแล้ว ให้ยืนยันนำออกจากพื้นที่ในเมนูตรวจวันศุกร์', true);
-  openIssueModal(l);
+  openIssueModal(l, source);
 }
 
-function openIssueModal(l) {
+function openIssueModal(l, source = 'manual') {
   if (!l || Number(l.balance) <= 0) return toast('Lot นี้ไม่มียอดคงเหลือ', true);
   if (isExpired(l)) return toast('Lot นี้หมดอายุแล้ว ให้ยืนยันนำออกจากพื้นที่ในเมนูตรวจวันศุกร์', true);
-  openModal(`<h3>นำออกจาก QR Sticker</h3><div class="selected-lot"><div><strong>${esc(l.material_name)}</strong><small>${esc(lotKey(l))} · EXP ${d(l.expiry_date)}</small></div><span class="badge info">เหลือ ${qty(l.balance)} ${esc(l.unit)}</span></div><div class="notice">ระบบล็อกให้ตัดออกครั้งละ 1 หน่วยต่อ 1 ครั้ง</div><form id="quickIssueForm" class="form-grid" style="margin-top:15px"><label>หมายเหตุ<textarea id="quickIssueReason" rows="2" placeholder="ระบุเมื่อต้องการ"></textarea></label><button class="primary" type="submit">${icon('minus')} ยืนยันนำออก 1 หน่วย</button></form>`);
+  const issueMethod = source === 'scan' ? 'QR_SCAN' : 'MANUAL_ENTRY';
+  openModal(`<h3>ยืนยันนำออก</h3><div class="selected-lot"><div><strong>${esc(l.material_name)}</strong><small>${esc(lotKey(l))} · EXP ${d(l.expiry_date)}</small></div><span class="badge info">เหลือ ${qty(l.balance)} ${esc(l.unit)}</span></div><div class="notice">วิธีนำออก: <b>${esc(issueMethodLabel(issueMethod))}</b><br>ระบบล็อกให้ตัดออกครั้งละ 1 หน่วยต่อ 1 ครั้ง</div><form id="quickIssueForm" class="form-grid" style="margin-top:15px"><label>หมายเหตุ<textarea id="quickIssueReason" rows="2" placeholder="ระบุเมื่อต้องการ"></textarea></label><button class="primary" type="submit">${icon('minus')} ยืนยันนำออก 1 หน่วย</button></form>`);
   $('#quickIssueForm').addEventListener('submit', async e => {
     e.preventDefault();
     const btn = e.submitter;
@@ -1491,7 +1511,8 @@ function openIssueModal(l) {
     const {error} = await sb.rpc('fn_issue_stock', {
       p_lot_id:l.lot_id,
       p_quantity:1,
-      p_reason_detail:$('#quickIssueReason').value.trim() || null
+      p_reason_detail:$('#quickIssueReason').value.trim() || null,
+      p_issue_method:issueMethod
     });
     btn.disabled = false;
     if (error) return toast(errMsg(error), true);
@@ -1511,22 +1532,23 @@ async function openPendingIssue() {
     u.searchParams.delete('lot');
     history.replaceState({}, '', u.pathname + u.search + u.hash);
   } catch (_) {}
-  if (code) await resolveIssueCode(code);
+  if (code) await resolveIssueCode(code, 'scan');
 }
 
 async function startCameraScanner(mode = 'issue') {
   const inspectMode = mode === 'inspect';
   const resolveCode = inspectMode ? resolveStockCheckCode : resolveIssueCode;
+  const submitCode = (value, source = 'manual') => inspectMode ? resolveCode(value) : resolveCode(value, source);
   const title = inspectMode ? 'สแกนตรวจ Lot' : 'สแกน QR Sticker';
   const description = inspectMode ? 'หันกล้องไปที่ QR เพื่อดูยอดคงเหลือและบันทึกผลตรวจ' : 'หันกล้องหลังไปที่ QR และให้อยู่ภายในกรอบ';
   if (!navigator.mediaDevices?.getUserMedia) {
     openModal(`<h3>อุปกรณ์นี้เปิดกล้องไม่ได้</h3><p>กรุณาเปิดแอปผ่าน Safari หรือ Chrome และตรวจว่าเว็บไซต์ได้รับอนุญาตให้ใช้กล้อง</p><form id="manualScanForm" class="form-grid"><label>พิมพ์รหัส QR<input id="manualScanCode" placeholder="เช่น BB319-09062026" autocomplete="off"></label><button class="primary" type="submit">${inspectMode?'ตรวจสอบ Lot':'ค้นหา Lot'}</button></form>`);
-    $('#manualScanForm').addEventListener('submit', e => { e.preventDefault(); const code = $('#manualScanCode').value; closeModal(); resolveCode(code); });
+    $('#manualScanForm').addEventListener('submit', e => { e.preventDefault(); const code = $('#manualScanCode').value; closeModal(); submitCode(code, 'manual'); });
     return;
   }
 
   openModal(`<div class="scanner-head"><div><h3>${title}</h3><p>${description}</p></div><button class="icon-button modal-close" type="button" aria-label="ปิด">×</button></div><div class="scan-video-wrap"><video id="scanVideo" autoplay playsinline muted></video><canvas id="scanCanvas" hidden></canvas><div class="scan-frame"></div><div id="scanStatus" class="scan-status">กำลังเปิดกล้อง…</div></div><p class="muted small">รองรับ QR Sticker ใหม่ รหัสเดิม และรหัส Lot เดิม</p><form id="manualScanForm" class="scanner-manual form-grid"><label>หรือพิมพ์รหัส QR<input id="manualScanCode" placeholder="เช่น BB319-09062026" autocomplete="off"></label><button class="secondary" type="submit">${inspectMode?'ตรวจสอบ Lot':'ค้นหา Lot'}</button></form>`);
-  $('#manualScanForm').addEventListener('submit', e => { e.preventDefault(); const code = $('#manualScanCode').value; closeModal(); resolveCode(code); });
+  $('#manualScanForm').addEventListener('submit', e => { e.preventDefault(); const code = $('#manualScanCode').value; closeModal(); submitCode(code, 'manual'); });
 
   const status = $('#scanStatus');
   try {
@@ -1556,7 +1578,7 @@ async function startCameraScanner(mode = 'issue') {
       if (!value) return false;
       stopScanner();
       closeModal();
-      resolveCode(value);
+      submitCode(value, 'scan');
       return true;
     };
     const scan = async () => {
@@ -1605,7 +1627,7 @@ async function startCameraScanner(mode = 'issue') {
           ? 'กล้องอาจถูกแอปอื่นใช้งานอยู่ กรุณาปิดแอปกล้องแล้วลองใหม่'
           : errMsg(e);
     $('#modalBody').innerHTML = `<h3>เปิดกล้องไม่สำเร็จ</h3><p>${esc(message)}</p><form id="manualScanForm" class="form-grid"><label>พิมพ์รหัส QR<input id="manualScanCode" placeholder="เช่น BB319-09062026" autocomplete="off"></label><button class="primary" type="submit">${inspectMode?'ตรวจสอบ Lot':'ค้นหา Lot'}</button></form>`;
-    $('#manualScanForm').addEventListener('submit', ev => { ev.preventDefault(); const code = $('#manualScanCode').value; closeModal(); resolveCode(code); });
+    $('#manualScanForm').addEventListener('submit', ev => { ev.preventDefault(); const code = $('#manualScanCode').value; closeModal(); submitCode(code, 'manual'); });
   }
 }
 
@@ -1820,7 +1842,16 @@ function exportReport(kind) {
     saveCsv(`CNMI_Inventory_Stock_${stamp}.csv`, [['รหัสวัสดุ','ชื่อวัสดุ','Lot','วันหมดอายุ','คงเหลือ','หน่วย','ผู้ดูแล','สถานะ','รหัสเดิมที่สแกนได้'], ...rows.map(x => [x.material_code,x.material_name,x.lot_no,x.expiry_date || '',x.balance,x.unit,x.responsible_name || '',isExpired(x)?'หมดอายุรอนำออก':'ใช้งาน',pgArray(x.legacy_lot_keys).join(' | ')])]);
   } else {
     const rows = (window._reportRows || []).filter(x => kind === 'receive' ? x.tx_type === 'RECEIVE' : kind === 'issue' ? x.tx_type === 'ISSUE' : x.tx_type === 'EXPIRED');
-    saveCsv(`CNMI_Inventory_${kind}_${stamp}.csv`, [['วันเวลา','ประเภท','รหัสหลัก','รหัสเดิม','ชื่อวัสดุ','Lot','วันหมดอายุ','จำนวนเปลี่ยนแปลง','ยอดก่อน','ยอดหลัง','หน่วย','ผู้บันทึก','เหตุผล'], ...rows.map(x => [x.created_at,x.tx_type,x.canonical_code,x.legacy_material_code || '',x.material_name,x.lot_no,x.expiry_date || '',x.quantity_delta,x.quantity_before,x.quantity_after,x.unit,x.created_by_name || x.created_by_email || 'SYSTEM',x.reason_detail || x.reason_code || ''])]);
+    const header = ['วันเวลา','ประเภท','รหัสหลัก','รหัสเดิม','ชื่อวัสดุ','Lot','วันหมดอายุ','จำนวนเปลี่ยนแปลง','ยอดก่อน','ยอดหลัง','หน่วย'];
+    if (kind === 'issue') header.push('วิธีนำออก');
+    header.push('ผู้บันทึก','เหตุผล');
+    const dataRows = rows.map(x => {
+      const row = [x.created_at,x.tx_type,x.canonical_code,x.legacy_material_code || '',x.material_name,x.lot_no,x.expiry_date || '',x.quantity_delta,x.quantity_before,x.quantity_after,x.unit];
+      if (kind === 'issue') row.push(issueMethodLabel(x.issue_method));
+      row.push(x.created_by_name || x.created_by_email || 'SYSTEM',x.reason_detail || x.reason_code || '');
+      return row;
+    });
+    saveCsv(`CNMI_Inventory_${kind}_${stamp}.csv`, [header, ...dataRows]);
   }
   toast('ส่งออก CSV แล้ว');
 }
@@ -1842,7 +1873,8 @@ async function renderReports(defaultTab = '') {
     if(error)throw error;
     const filtered=data||[];
     window._reportRows=filtered;
-    $('#reportPane').innerHTML = `<div class="report-actions"><span class="muted">แสดง ${filtered.length} รายการล่าสุด</span><button class="primary" data-export-report="${tab}">${icon('download')} ส่งออก CSV</button></div><div class="table-wrap"><table class="data-table"><thead><tr><th>วันเวลา</th><th>สินค้า</th><th>Lot</th><th>จำนวน</th><th>ยอดหลังทำ</th><th>ผู้บันทึก</th></tr></thead><tbody>${transactionRows(filtered) || '<tr><td colspan="6" class="empty">ไม่มีรายการ</td></tr>'}</tbody></table></div>`;
+    const showIssueMethod = tab === 'issue';
+    $('#reportPane').innerHTML = `<div class="report-actions"><span class="muted">แสดง ${filtered.length} รายการล่าสุด</span><button class="primary" data-export-report="${tab}">${icon('download')} ส่งออก CSV</button></div><div class="table-wrap"><table class="data-table"><thead><tr><th>วันเวลา</th><th>สินค้า</th><th>Lot</th><th>จำนวน</th><th>ยอดหลังทำ</th>${showIssueMethod ? '<th>วิธีนำออก</th>' : ''}<th>ผู้บันทึก</th></tr></thead><tbody>${transactionRows(filtered, {showIssueMethod}) || `<tr><td colspan="${showIssueMethod ? 7 : 6}" class="empty">ไม่มีรายการ</td></tr>`}</tbody></table></div>`;
   };
   $$('[data-report-tab]').forEach(b => b.addEventListener('click', () => draw(b.dataset.reportTab).catch(e=>{$('#reportPane').innerHTML=`<div class="card notice">${esc(errMsg(e))}</div>`;})));
   if(defaultTab) await draw(defaultTab);
@@ -1909,7 +1941,7 @@ function openMaterialEditor(code) {
 }
 
 function renderHelp() {
-  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>สร้างบัญชีครั้งแรก</h3><ol class="help-steps"><li>ใช้เฉพาะอีเมลมหิดล @mahidol.ac.th ที่ Admin อนุญาตไว้</li><li>ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว</li><li>กด “สร้างบัญชีครั้งแรก” แล้วกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</li></ol></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>กรองผู้ดูแลหรือพิมพ์ชื่อวัสดุบางส่วนแล้วเลือก</li><li>ใส่ Lot วันหมดอายุ และจำนวน แล้วบันทึก</li></ol></div><div class="card help-card"><h3>นำออก</h3><ol class="help-steps"><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าแล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>ใช้หลายหน่วยให้สแกนและยืนยันซ้ำ</li></ol></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแล</h3><p>มี 3 เมนูย่อย: ภาพรวม, ต้องเบิก และตั้งค่าการเตือน เลือกเตือนตามจำนวนขั้นต่ำ เตือนรอบเบิกรายเดือน หรือไม่แจ้งเตือนได้ การเตือนรายเดือนจะเริ่มตรวจรอบตั้งแต่เดือนถัดไปหลังบันทึก</p></div><div class="card help-card"><h3>ตรวจวันศุกร์</h3><p>กรอกจำนวนที่นับได้จริง หากไม่ตรงกับระบบ ให้เลือกเหตุผล ระบบจะปรับยอดและเก็บชื่อผู้ตรวจไว้ในประวัติ</p></div><div class="card help-card"><h3>สแกนตรวจ Lot</h3><p>เปิดกล้องหรือพิมพ์รหัส QR เพื่อดูยอด Lot ยอดรวม ผู้ดูแล ขั้นต่ำ และยืนยันตรวจหรือปรับยอดได้ทันที</p></div><div class="card help-card"><h3>สถานะผู้ตรวจ</h3><p>เปิดเมนู “สถานะผู้ตรวจ” แล้วกำหนดช่วงวันที่ เพื่อดูว่าแต่ละวันศุกร์ใครตรวจครบหรือยังไม่ครบ</p></div><div class="card help-card"><h3>สติ๊กเกอร์เดิม</h3><p>สติ๊กเกอร์รหัสเดิมยังสแกนได้ ไม่ต้องเปลี่ยนใหม่ทั้งหมด</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบไม่ตัดยอดเอง เปิดตรวจวันศุกร์และกด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์ถัดไป</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมดูได้ในหน้าประวัติและรายงาน</p></div><div class="card help-card"><h3>เครื่องพิมพ์สติ๊กเกอร์</h3><p>ฉลากกว้าง 25 mm สูง 20 mm ชื่อวัสดุจะย่อฟอนต์อัตโนมัติโดยไม่ตัด Lot/EXP ตั้ง Scale 100%, Margin None และปิด Header/Footer หากต้องการหลายดวงให้ใส่จำนวนในช่อง “จำนวนชุด” ของหน้าพิมพ์</p></div></div>`;
+  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>สร้างบัญชีครั้งแรก</h3><ol class="help-steps"><li>ใช้เฉพาะอีเมลมหิดล @mahidol.ac.th ที่ Admin อนุญาตไว้</li><li>ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว</li><li>กด “สร้างบัญชีครั้งแรก” แล้วกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</li></ol></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>กรองผู้ดูแลหรือพิมพ์ชื่อวัสดุบางส่วนแล้วเลือก</li><li>ใส่ Lot วันหมดอายุ และจำนวน แล้วบันทึก</li></ol></div><div class="card help-card"><h3>นำออก</h3><ol class="help-steps"><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าและวิธีนำออก แล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>ระบบบันทึกแยกเป็น “สแกน QR” หรือ “พิมพ์รหัสเอง” ในประวัติและรายงาน</li></ol></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแล</h3><p>มี 3 เมนูย่อย: ภาพรวม, ต้องเบิก และตั้งค่าการเตือน เลือกเตือนตามจำนวนขั้นต่ำ เตือนรอบเบิกรายเดือน หรือไม่แจ้งเตือนได้ การเตือนรายเดือนจะเริ่มตรวจรอบตั้งแต่เดือนถัดไปหลังบันทึก</p></div><div class="card help-card"><h3>ตรวจวันศุกร์</h3><p>กรอกจำนวนที่นับได้จริง หากไม่ตรงกับระบบ ให้เลือกเหตุผล ระบบจะปรับยอดและเก็บชื่อผู้ตรวจไว้ในประวัติ</p></div><div class="card help-card"><h3>สแกนตรวจ Lot</h3><p>เปิดกล้องหรือพิมพ์รหัส QR เพื่อดูยอด Lot ยอดรวม ผู้ดูแล ขั้นต่ำ และยืนยันตรวจหรือปรับยอดได้ทันที</p></div><div class="card help-card"><h3>สถานะผู้ตรวจ</h3><p>เปิดเมนู “สถานะผู้ตรวจ” แล้วกำหนดช่วงวันที่ เพื่อดูว่าแต่ละวันศุกร์ใครตรวจครบหรือยังไม่ครบ</p></div><div class="card help-card"><h3>สติ๊กเกอร์เดิม</h3><p>สติ๊กเกอร์รหัสเดิมยังสแกนได้ ไม่ต้องเปลี่ยนใหม่ทั้งหมด</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบไม่ตัดยอดเอง เปิดตรวจวันศุกร์และกด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์ถัดไป</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมดูได้ในหน้าประวัติและรายงาน</p></div><div class="card help-card"><h3>เครื่องพิมพ์สติ๊กเกอร์</h3><p>ฉลากกว้าง 25 mm สูง 20 mm ชื่อวัสดุจะย่อฟอนต์อัตโนมัติโดยไม่ตัด Lot/EXP ตั้ง Scale 100%, Margin None และปิด Header/Footer หากต้องการหลายดวงให้ใส่จำนวนในช่อง “จำนวนชุด” ของหน้าพิมพ์</p></div></div>`;
   refreshInstallUI();
 }
 

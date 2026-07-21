@@ -10,11 +10,11 @@
 html,body{margin:0;padding:0;background:#eef2f3;font-family:Tahoma,"Leelawadee UI","Noto Sans Thai",Arial,sans-serif;color:#000;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .preview{width:25mm;height:20mm;background:#fff}
 .label{width:25mm;height:20mm;padding:.75mm .95mm;display:grid;grid-template-columns:minmax(0,13.9mm) minmax(0,8.65mm);gap:.55mm;overflow:hidden;background:#fff;border:0}
-.text{min-width:0;display:grid;grid-template-rows:minmax(0,1fr) auto auto;align-content:stretch;overflow:hidden;padding:.08mm .25mm .05mm .05mm}
-.name{min-width:0;font-size:6.2pt;font-weight:900;line-height:1.02;letter-spacing:-.01em;display:flex;align-items:flex-start;overflow:hidden;overflow-wrap:anywhere;word-break:normal;padding-top:.05mm}
-.name.medium{font-size:5.35pt;line-height:1.03}.name.long{font-size:4.6pt;line-height:1.03}.name.xlong{font-size:4pt;line-height:1.02}
-.code{font-size:3.05pt;font-weight:700;letter-spacing:.01em;line-height:1.1;white-space:nowrap;overflow:hidden;color:#4a4a4a;margin:.22mm 0 .35mm}
-.meta-stack{display:grid;gap:.16mm;margin-top:.16mm}
+.text{min-width:0;display:flex;flex-direction:column;justify-content:center;align-items:stretch;gap:.22mm;overflow:hidden;padding:.08mm .25mm .05mm .05mm}
+.name{min-width:0;flex:0 0 auto;font-size:6.75pt;font-weight:900;line-height:1.02;letter-spacing:-.015em;display:block;overflow:visible;overflow-wrap:anywhere;word-break:normal}
+.name.medium{font-size:5.75pt;line-height:1.03}.name.long{font-size:4.95pt;line-height:1.03}.name.xlong{font-size:4.3pt;line-height:1.02}
+.code{flex:0 0 auto;font-size:3.05pt;font-weight:700;letter-spacing:.01em;line-height:1.1;white-space:nowrap;overflow:hidden;color:#4a4a4a;margin:0}
+.meta-stack{flex:0 0 auto;display:grid;gap:.14mm;margin:0}
 .meta{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:baseline;gap:.32mm;font-size:4pt;line-height:1.1;white-space:nowrap}
 .meta span{font-weight:700;color:#444}.meta b{font-weight:900;overflow:hidden;white-space:nowrap}
 .qr-wrap{min-width:0;display:grid;grid-template-rows:auto auto;align-content:center;justify-items:center;gap:.34mm;padding-left:.55mm;border-left:.09mm solid #b7b7b7}
@@ -28,7 +28,7 @@ html,body{margin:0;padding:0;background:#eef2f3;font-family:Tahoma,"Leelawadee U
 <body>
 <div class="preview"><div class="label"><div class="text"><div class="name" id="name"></div><div class="code" id="code"></div><div class="meta-stack"><div class="meta"><span>Lot</span><b id="lot"></b></div><div class="meta"><span>EXP</span><b id="exp"></b></div></div></div><div class="qr-wrap"><div id="qr"></div><div class="key" id="key"></div></div></div></div>
 <div class="screen-status" id="screenStatus">กำลังเปิดหน้าพิมพ์อัตโนมัติ…</div>
-<script src="assets/qr-lite.js?v=1.4.3"></script>
+<script src="assets/qr-lite.js?v=1.4.4"></script>
 <script>
 'use strict';
 const p=new URLSearchParams(location.search);
@@ -39,6 +39,7 @@ const key=safe(p.get('key'),`${code}-${lot}`);
 const qrText=safe(p.get('qr'),key);
 const statusEl=document.getElementById('screenStatus');
 const nameEl=document.getElementById('name');
+const textEl=document.querySelector('.text');
 const codeEl=document.getElementById('code');
 const name=safe(p.get('name'));
 nameEl.textContent=name;
@@ -50,10 +51,16 @@ if(name.length>52)nameEl.classList.add('xlong');else if(name.length>36)nameEl.cl
 try{document.getElementById('qr').innerHTML=window.CNMIQRCode.svg(qrText,{level:'L',margin:1});}catch(e){document.getElementById('qr').textContent='QR';console.error(e);}
 function fitName(){
   let size=parseFloat(getComputedStyle(nameEl).fontSize);
-  const min=3.45;
+  const min=4;
   let guard=0;
-  while((nameEl.scrollHeight>nameEl.clientHeight+1||nameEl.scrollWidth>nameEl.clientWidth+1)&&size>min&&guard<28){
-    size-=.25;nameEl.style.fontSize=`${size}px`;guard++;
+  const tooTall=()=>{
+    const style=getComputedStyle(nameEl);
+    const lineHeight=parseFloat(style.lineHeight)||size;
+    const lines=Math.ceil(nameEl.getBoundingClientRect().height/lineHeight-.01);
+    return textEl.scrollHeight>textEl.clientHeight+.5||nameEl.scrollWidth>nameEl.clientWidth+.5||lines>4;
+  };
+  while(tooTall()&&size>min&&guard<36){
+    size-=.2;nameEl.style.fontSize=`${size}px`;guard++;
   }
 }
 function fitKey(){
