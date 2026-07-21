@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.6';
+const APP_VERSION = '1.4.7';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const C = window.APP_CONFIG || {};
 const configured = C.SUPABASE_URL && !C.SUPABASE_URL.includes('YOUR-PROJECT') && C.SUPABASE_ANON_KEY && !C.SUPABASE_ANON_KEY.includes('YOUR-ANON');
@@ -282,7 +282,7 @@ function ensureQrDecoder() {
       return;
     }
     const script = document.createElement('script');
-    script.src = 'third_party/jsQR-1.4.0.js?v=1.4.6';
+    script.src = 'third_party/jsQR-1.4.0.js?v=1.4.7';
     script.async = false;
     script.dataset.jsqrLoader = '1';
     script.onload = () => resolve(typeof window.jsQR === 'function');
@@ -1334,10 +1334,19 @@ function transactionRows(rows, {showIssueMethod = false} = {}) {
   }).join('');
 }
 
+function operatorNickname(value) {
+  const text = String(value || '').trim();
+  const match = text.match(/[（(]\s*([^()（）]+?)\s*[)）]\s*$/);
+  if (match?.[1]) return match[1].trim();
+  if (text.includes('@')) return text.split('@')[0].trim() || 'ผู้ใช้';
+  const first = text.split(/\s+/).filter(Boolean)[0];
+  return first || 'ผู้ใช้';
+}
+
 function currentOperatorMarkup(title = 'ผู้บันทึกรายการ') {
   const name = profile?.display_name || profile?.email || 'ผู้ใช้งานปัจจุบัน';
-  const initial = String(name).trim().charAt(0) || '?';
-  return `<div class="current-operator"><span class="operator-avatar">${esc(initial)}</span><div><small>${esc(title)}</small><strong>${esc(name)}</strong><span>ใช้ชื่อจากบัญชีที่เข้าสู่ระบบ เปลี่ยนเป็นคนอื่นไม่ได้</span></div></div>`;
+  const nickname = operatorNickname(name);
+  return `<div class="current-operator" title="${esc(name)}" aria-label="${esc(title)} ${esc(nickname)}"><small>${esc(title)}</small><strong class="operator-nickname">${esc(nickname)}</strong></div>`;
 }
 
 async function fetchTransactionPage(txType, pageNumber = 1, pageSize = MOVE_HISTORY_PAGE_SIZE) {
@@ -1576,7 +1585,7 @@ async function renderMove(defaultTab = 'receive') {
       $('#receiveForm').addEventListener('submit', receive);
       await loadHistory('RECEIVE');
     } else {
-      $('#movePane').innerHTML = `<div class="move-layout move-layout-v145"><section class="card issue-scan-simple move-action-card"><div class="form-title"><span>${icon('qr')}</span><div><p class="eyebrow">Issue stock</p><h3>นำออกด้วย QR Sticker</h3></div></div>${currentOperatorMarkup('ผู้บันทึกการนำออก')}<button class="primary camera-primary large" type="button" data-camera-scan>${icon('camera')} เปิดกล้องสแกน</button><div class="issue-or"><span>หรือพิมพ์รหัสเอง</span></div><form id="manualIssueForm" class="form-grid"><label>รหัส QR / รหัสล็อต<div class="toolbar issue-code-row" style="margin:0"><input id="issueCode" autocomplete="off" placeholder="เช่น BB020-69020" required><button type="submit" class="secondary">ค้นหา</button></div></label></form></section><aside class="card move-side-card issue-method-guide"><div class="move-side-icon">${icon('history')}</div><div><p class="eyebrow">บันทึกวิธีอัตโนมัติ</p><h3>ระบบแยกสแกนกับพิมพ์เอง</h3><p>รายการใหม่จะแสดงวิธีนำออกชัดเจนในประวัติและรายงาน ส่วนข้อมูลเดิมจะแสดงว่าไม่ระบุ</p></div><div class="method-preview"><span class="badge ok">สแกน QR</span><span class="badge info">พิมพ์รหัสเอง</span><span class="badge">ไม่ระบุ — ข้อมูลเดิม</span></div></aside><section id="moveHistory" class="card history-card move-history-wide"></section></div>`;
+      $('#movePane').innerHTML = `<div class="move-layout move-layout-v145"><section class="card issue-scan-simple move-action-card"><div class="form-title"><span>${icon('qr')}</span><div><p class="eyebrow">Issue stock</p><h3>นำออกด้วย QR Sticker</h3></div></div>${currentOperatorMarkup('ผู้นำออก')}<button class="primary camera-primary large" type="button" data-camera-scan>${icon('camera')} เปิดกล้องสแกน</button><div class="issue-or"><span>หรือพิมพ์รหัสเอง</span></div><form id="manualIssueForm" class="form-grid"><label>รหัส QR / รหัสล็อต<div class="toolbar issue-code-row" style="margin:0"><input id="issueCode" autocomplete="off" placeholder="เช่น BB020-69020" required><button type="submit" class="secondary">ค้นหา</button></div></label></form></section><aside class="card move-side-card issue-method-guide"><div class="move-side-icon">${icon('history')}</div><div><p class="eyebrow">บันทึกวิธีอัตโนมัติ</p><h3>ระบบแยกสแกนกับพิมพ์เอง</h3><p>รายการใหม่จะแสดงวิธีนำออกชัดเจนในประวัติและรายงาน ส่วนข้อมูลเดิมจะแสดงว่าไม่ระบุ</p></div><div class="method-preview"><span class="badge ok">สแกน QR</span><span class="badge info">พิมพ์รหัสเอง</span><span class="badge">ไม่ระบุ — ข้อมูลเดิม</span></div></aside><section id="moveHistory" class="card history-card move-history-wide"></section></div>`;
       $('#manualIssueForm').addEventListener('submit',e=>{e.preventDefault();const code=$('#issueCode').value.trim();if(!code)return toast('กรุณาพิมพ์รหัส QR หรือรหัสล็อต',true);resolveIssueCode(code);});
       await loadHistory('ISSUE');
     }
@@ -1707,11 +1716,27 @@ function decodeQrCanvas(canvas, ctx) {
     const image = ctx.getImageData(x,y,w,h);
     const normal = window.jsQR(image.data,image.width,image.height,{inversionAttempts:'attemptBoth'});
     if (normal?.data) return normal.data;
-    const enhanced = enhanceQrImage(image,1.65);
-    const strong = window.jsQR(enhanced.data,enhanced.width,enhanced.height,{inversionAttempts:'attemptBoth'});
-    if (strong?.data) return strong.data;
+    for (const contrast of [1.35, 1.7, 2.05]) {
+      const enhanced = enhanceQrImage(image,contrast);
+      const decoded = window.jsQR(enhanced.data,enhanced.width,enhanced.height,{inversionAttempts:'attemptBoth'});
+      if (decoded?.data) return decoded.data;
+    }
   }
   return null;
+}
+
+function drawVideoFrame(video, canvas, ctx) {
+  const sourceW = Number(video.videoWidth || 0);
+  const sourceH = Number(video.videoHeight || 0);
+  if (!sourceW || !sourceH) return false;
+  const maxSide = 1920;
+  const scale = Math.min(1, maxSide / Math.max(sourceW, sourceH));
+  const targetW = Math.max(1, Math.round(sourceW * scale));
+  const targetH = Math.max(1, Math.round(sourceH * scale));
+  if (canvas.width !== targetW) canvas.width = targetW;
+  if (canvas.height !== targetH) canvas.height = targetH;
+  ctx.drawImage(video, 0, 0, targetW, targetH);
+  return true;
 }
 
 async function bitmapFromFile(file) {
@@ -1734,8 +1759,8 @@ async function decodeQrPhoto(file) {
   if (!sourceW || !sourceH) throw new Error('รูปไม่มีขนาดที่อ่านได้');
   const scale = Math.min(1, 2400 / Math.max(sourceW,sourceH));
   const canvas = document.createElement('canvas');
-  canvas.width = Math.max(640,Math.round(sourceW*scale));
-  canvas.height = Math.max(640,Math.round(sourceH*scale));
+  canvas.width = Math.max(1,Math.round(sourceW*scale));
+  canvas.height = Math.max(1,Math.round(sourceH*scale));
   const ctx = canvas.getContext('2d',{willReadFrequently:true});
   ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);
   bitmap.close?.();
@@ -1784,7 +1809,7 @@ async function startCameraScanner(mode = 'issue') {
     return;
   }
 
-  openModal(`<div class="scanner-head"><div><h3>${title}</h3><p>${description}</p></div><button class="icon-button modal-close" type="button" aria-label="ปิด">×</button></div><div class="scan-video-wrap"><video id="scanVideo" autoplay playsinline muted></video><canvas id="scanCanvas" hidden></canvas><div class="scan-frame"><span>วาง QR ในกรอบ</span></div><div id="scanStatus" class="scan-status">กำลังเปิดกล้อง…</div></div><div class="scanner-actions"><label class="photo-scan-button secondary">${icon('camera')} ถ่ายรูป/เลือกรูป QR<input id="scanPhotoInput" type="file" accept="image/*" capture="environment" hidden></label><button type="button" class="secondary hidden" id="scannerTorchBtn">เปิดไฟฉาย</button></div><div id="photoScanStatus" class="field-hint"></div><p class="muted small scanner-tip">รองรับ QR Sticker ใหม่ รหัสเดิม และรหัส Lot เดิม · หากภาพเบลอ ให้ถอยออกเล็กน้อยแทนการจ่อใกล้</p><form id="manualScanForm" class="scanner-manual form-grid"><label>หรือพิมพ์รหัส QR<input id="manualScanCode" placeholder="เช่น BB319-09062026" autocomplete="off"></label><button class="secondary" type="submit">${inspectMode?'ตรวจสอบ Lot':'ค้นหา Lot'}</button></form>`);
+  openModal(`<div class="scanner-head"><div><h3>${title}</h3><p>${description}</p></div><button class="icon-button modal-close" type="button" aria-label="ปิด">×</button></div><div class="scan-video-wrap"><video id="scanVideo" autoplay playsinline muted></video><canvas id="scanCanvas" hidden></canvas><div class="scan-frame"><span>วาง QR ในกรอบ</span></div><div id="scanStatus" class="scan-status">กำลังเปิดกล้อง…</div></div><div class="scanner-actions"><label class="photo-scan-button secondary">${icon('camera')} ถ่ายรูป/เลือกรูป QR<input id="scanPhotoInput" type="file" accept="image/*" capture="environment" hidden></label><button type="button" class="secondary hidden" id="scannerTorchBtn">เปิดไฟฉาย</button></div><div id="photoScanStatus" class="field-hint"></div><p class="muted small scanner-tip">รองรับ iPhone/iPad และ Android · หากภาพเบลอ ให้ถอยออกเล็กน้อยและถือให้นิ่ง</p><form id="manualScanForm" class="scanner-manual form-grid"><label>หรือพิมพ์รหัส QR<input id="manualScanCode" placeholder="เช่น BB319-09062026" autocomplete="off"></label><button class="secondary" type="submit">${inspectMode?'ตรวจสอบ Lot':'ค้นหา Lot'}</button></form>`);
   $('#modal').classList.add('scanner-open');
   bindScannerFallback({inspectMode,submitCode});
 
@@ -1801,8 +1826,19 @@ async function startCameraScanner(mode = 'issue') {
     const video = $('#scanVideo');
     const canvas = $('#scanCanvas');
     const ctx = canvas.getContext('2d',{willReadFrequently:true});
-    video.srcObject = scannerStream;
+    video.autoplay = true;
+    video.muted = true;
+    video.playsInline = true;
     video.setAttribute('playsinline','');
+    video.setAttribute('webkit-playsinline','');
+    video.disablePictureInPicture = true;
+    video.srcObject = scannerStream;
+    if (!video.videoWidth) {
+      await Promise.race([
+        new Promise(resolve => video.addEventListener('loadedmetadata', resolve, {once:true})),
+        new Promise(resolve => setTimeout(resolve, 1800))
+      ]);
+    }
     await video.play();
 
     const track = scannerStream.getVideoTracks()[0];
@@ -1859,13 +1895,7 @@ async function startCameraScanner(mode = 'issue') {
             const codes = await detector.detect(video);
             value = codes?.[0]?.rawValue || '';
           }
-          if (!value && typeof window.jsQR === 'function') {
-            const sourceW = video.videoWidth || 1280;
-            const sourceH = video.videoHeight || 720;
-            const scale = Math.min(1, 1920 / Math.max(sourceW,sourceH));
-            canvas.width = Math.max(720,Math.round(sourceW*scale));
-            canvas.height = Math.max(540,Math.round(sourceH*scale));
-            ctx.drawImage(video,0,0,canvas.width,canvas.height);
+          if (!value && typeof window.jsQR === 'function' && drawVideoFrame(video,canvas,ctx)) {
             value = decodeQrCanvas(canvas,ctx) || '';
           }
           if (finish(value)) return;
