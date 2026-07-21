@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.5';
+const APP_VERSION = '1.4.6';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const C = window.APP_CONFIG || {};
 const configured = C.SUPABASE_URL && !C.SUPABASE_URL.includes('YOUR-PROJECT') && C.SUPABASE_ANON_KEY && !C.SUPABASE_ANON_KEY.includes('YOUR-ANON');
@@ -69,9 +69,72 @@ function normalizeMaterialSearch(value) {
   return String(value ?? '').normalize('NFKC').toLocaleLowerCase('th-TH').replace(/\s+/g, ' ').trim();
 }
 
+function useMobileMaterialPicker() {
+  const narrow = window.matchMedia?.('(max-width: 700px)').matches;
+  const coarse = window.matchMedia?.('(pointer: coarse)').matches;
+  return Boolean(narrow || (coarse && window.innerWidth <= 900));
+}
+
 function materialComboboxMarkup({id, label = 'สินค้า', placeholder = 'พิมพ์ชื่อสินค้าบางส่วน', materials = [], initialCode = '', hint = ''}) {
   const selected = materials.find(m => m.code === initialCode);
-  return `<label class="material-combo-label">${esc(label)}<div class="material-combobox" id="${esc(id)}Combo"><div class="material-combo-input-wrap">${icon('search')}<input id="${esc(id)}Search" class="material-combo-search" type="search" inputmode="search" enterkeyhint="search" autocomplete="off" spellcheck="false" placeholder="${esc(placeholder)}" value="${esc(selected?.name || '')}" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${esc(id)}Results"><button type="button" class="material-combo-clear ${selected ? '' : 'hidden'}" id="${esc(id)}Clear" aria-label="ล้างสินค้าที่เลือก">×</button></div><input type="hidden" id="${esc(id)}" value="${esc(selected?.code || '')}"><div class="material-combo-results hidden" id="${esc(id)}Results" role="listbox"></div></div>${hint ? `<small class="field-hint">${esc(hint)}</small>` : ''}</label>`;
+  return `<label class="material-combo-label">${esc(label)}<div class="material-combobox" id="${esc(id)}Combo"><div class="material-combo-input-wrap">${icon('search')}<input id="${esc(id)}Search" class="material-combo-search" type="search" inputmode="search" enterkeyhint="search" autocomplete="off" spellcheck="false" placeholder="${esc(placeholder)}" value="${esc(selected?.name || '')}" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${esc(id)}Results" aria-haspopup="dialog"><button type="button" class="material-combo-clear ${selected ? '' : 'hidden'}" id="${esc(id)}Clear" aria-label="ล้างสินค้าที่เลือก">×</button></div><input type="hidden" id="${esc(id)}" value="${esc(selected?.code || '')}"><div class="material-combo-results hidden" id="${esc(id)}Results" role="listbox"></div><div class="material-selected-card ${selected ? '' : 'hidden'}" id="${esc(id)}SelectedCard"></div></div>${hint ? `<small class="field-hint">${esc(hint)}</small>` : ''}</label>`;
+}
+
+function rankMaterials(materials, query = '', ownerEmail = '') {
+  const q = normalizeMaterialSearch(query);
+  return materials.map(m => ({
+    ...m,
+    _name:normalizeMaterialSearch(m.name),
+    _label:normalizeMaterialSearch(m.label_name),
+    _code:normalizeMaterialSearch(m.code),
+    _unit:normalizeMaterialSearch(m.unit),
+    _owner:normalizeMaterialSearch(m.responsible_name || m.responsible_email)
+  })).filter(m => !ownerEmail || m.responsible_email === ownerEmail).map(m => {
+    let score = q ? 99 : 0;
+    if (!q) score = 0;
+    else if (m._name.startsWith(q)) score = 0;
+    else if (m._name.includes(q)) score = 1;
+    else if (m._label.startsWith(q)) score = 2;
+    else if (m._label.includes(q)) score = 3;
+    else if (m._code.startsWith(q)) score = 4;
+    else if (m._code.includes(q)) score = 5;
+    else if (m._owner.includes(q)) score = 6;
+    else if (m._unit.includes(q)) score = 7;
+    return {m,score};
+  }).filter(x => x.score < 99).sort((a,b) => a.score - b.score || String(a.m.name).localeCompare(String(b.m.name),'th'));
+}
+
+function mobileMaterialPicker({materials, selectedCode = '', ownerEmail = '', onChoose}) {
+  openModal(`<section class="mobile-material-picker"><header class="mobile-material-picker-head"><div><p class="eyebrow">Material search</p><h3>เลือกวัสดุ</h3><p>พิมพ์ชื่อหรือรหัสอย่างน้อย 2 ตัวอักษร</p></div><button class="icon-button" id="materialPickerClose" type="button" aria-label="ปิด">×</button></header><div class="mobile-material-picker-search">${icon('search')}<input id="mobileMaterialSearch" type="search" inputmode="search" enterkeyhint="search" autocomplete="off" spellcheck="false" placeholder="เช่น กระดาษ A4 หรือ BB020"></div><div class="mobile-material-picker-results" id="mobileMaterialResults"></div><footer class="mobile-material-picker-footer"><button class="secondary" type="button" id="mobileMaterialClear">ล้างรายการที่เลือก</button></footer></section>`);
+  $('#modal').classList.add('material-picker-open');
+  const search = $('#mobileMaterialSearch');
+  const results = $('#mobileMaterialResults');
+  const draw = () => {
+    const q = normalizeMaterialSearch(search.value);
+    if (q.length < 2) {
+      results.innerHTML = `<div class="mobile-material-picker-empty">${icon('search')}<strong>เริ่มค้นหาได้เลย</strong><span>พิมพ์อย่างน้อย 2 ตัวอักษร เพื่อให้รายการสั้นและแตะเลือกง่าย</span></div>`;
+      return;
+    }
+    const ranked = rankMaterials(materials, q, ownerEmail).slice(0, 80);
+    results.innerHTML = ranked.length ? ranked.map(({m}) => `<button type="button" class="mobile-material-option ${m.code === selectedCode ? 'selected' : ''}" data-mobile-material="${esc(m.code)}"><span class="mobile-material-option-main"><strong>${esc(m.name)}</strong><small>${esc(m.code)}${m.unit ? ` · หน่วย ${esc(m.unit)}` : ''}</small></span><span class="mobile-material-option-owner">${esc(m.responsible_name || 'ยังไม่กำหนดผู้ดูแล')}</span></button>`).join('') : `<div class="mobile-material-picker-empty">${icon('search')}<strong>ไม่พบวัสดุ</strong><span>ลองใช้ชื่อสั้นลง รหัส BB หรือคำอื่น</span></div>`;
+  };
+  search.addEventListener('input', draw);
+  results.addEventListener('click', e => {
+    const option = e.target.closest('[data-mobile-material]');
+    if (!option) return;
+    const item = materials.find(m => m.code === option.dataset.mobileMaterial) || null;
+    closeModal();
+    onChoose(item?.code || '', item);
+  });
+  $('#materialPickerClose').addEventListener('click', closeModal);
+  $('#mobileMaterialClear').addEventListener('click', () => {
+    closeModal();
+    onChoose('', null);
+  });
+  requestAnimationFrame(() => {
+    search.focus({preventScroll:true});
+    draw();
+  });
 }
 
 function setupMaterialCombobox(id, materials, {onChange = null, maxResults = 12, ownerSelectId = ''} = {}) {
@@ -79,18 +142,16 @@ function setupMaterialCombobox(id, materials, {onChange = null, maxResults = 12,
   const hidden = $(`#${id}`);
   const results = $(`#${id}Results`);
   const clearBtn = $(`#${id}Clear`);
+  const selectedCard = $(`#${id}SelectedCard`);
   const ownerFilter = ownerSelectId ? $(`#${ownerSelectId}`) : null;
   if (!input || !hidden || !results || !clearBtn) return {clear(){}, select(){}};
   let activeIndex = -1;
-  const normalized = materials.map(m => ({
-    ...m,
-    _name:normalizeMaterialSearch(m.name),
-    _label:normalizeMaterialSearch(m.label_name),
-    _code:normalizeMaterialSearch(m.code),
-    _unit:normalizeMaterialSearch(m.unit),
-    _owner:normalizeMaterialSearch(m.responsible_name || m.responsible_email)
-  }));
   const close = () => { results.classList.add('hidden'); input.setAttribute('aria-expanded','false'); activeIndex = -1; };
+  const renderSelected = item => {
+    if (!selectedCard) return;
+    selectedCard.classList.toggle('hidden', !item);
+    selectedCard.innerHTML = item ? `<span class="material-selected-icon">${icon('check')}</span><span><strong>${esc(item.name)}</strong><small>${esc(item.code)}${item.unit ? ` · หน่วย ${esc(item.unit)}` : ''}${item.responsible_name ? ` · ผู้ดูแล ${esc(item.responsible_name)}` : ''}</small></span>` : '';
+  };
   const setActive = index => {
     const options = [...results.querySelectorAll('[data-material-option]')];
     if (!options.length) return;
@@ -99,21 +160,29 @@ function setupMaterialCombobox(id, materials, {onChange = null, maxResults = 12,
     options[activeIndex]?.scrollIntoView({block:'nearest'});
   };
   const choose = (code, trigger = true) => {
-    const item = materials.find(m => m.code === code);
+    const item = materials.find(m => m.code === code) || null;
     hidden.value = item?.code || '';
     input.value = item?.name || '';
     clearBtn.classList.toggle('hidden', !item);
     input.setCustomValidity('');
+    renderSelected(item);
     close();
-    if (trigger && onChange) onChange(hidden.value, item || null);
+    input.blur();
+    if (trigger && onChange) onChange(hidden.value, item);
   };
+  const openMobile = () => mobileMaterialPicker({
+    materials,
+    selectedCode:hidden.value,
+    ownerEmail:ownerFilter?.value || '',
+    onChoose:(code,item) => choose(code, true)
+  });
   const render = () => {
+    if (useMobileMaterialPicker()) return;
     const q = normalizeMaterialSearch(input.value);
     const owner = ownerFilter?.value || '';
     hidden.value = '';
     clearBtn.classList.toggle('hidden', !input.value);
-    let pool = normalized;
-    if (owner) pool = pool.filter(m => m.responsible_email === owner);
+    let ranked = rankMaterials(materials, q, owner);
     if (!q && !owner) {
       results.innerHTML = '<div class="material-combo-empty">พิมพ์ชื่อบางส่วน หรือเลือกผู้ดูแลก่อน</div>';
       results.classList.remove('hidden');
@@ -121,32 +190,39 @@ function setupMaterialCombobox(id, materials, {onChange = null, maxResults = 12,
       activeIndex = -1;
       return;
     }
-    const ranked = pool.map(m => {
-      let score = q ? 99 : 0;
-      if (!q) score = 0;
-      else if (m._name.startsWith(q)) score = 0;
-      else if (m._name.includes(q)) score = 1;
-      else if (m._label.startsWith(q)) score = 2;
-      else if (m._label.includes(q)) score = 3;
-      else if (m._code.includes(q)) score = 4;
-      else if (m._owner.includes(q)) score = 5;
-      else if (m._unit.includes(q)) score = 6;
-      return {m,score};
-    }).filter(x => x.score < 99).sort((a,b) => a.score - b.score || String(a.m.name).localeCompare(String(b.m.name),'th'));
     const shown = ranked.slice(0,maxResults);
     results.innerHTML = shown.map(({m}) => `<button type="button" data-material-option="${esc(m.code)}" role="option"><span>${esc(m.name)}</span><small>${esc(m.responsible_name || 'ยังไม่กำหนดผู้ดูแล')}${m.unit ? ` · ${esc(m.unit)}` : ''}</small></button>`).join('') + (ranked.length > maxResults ? `<div class="material-combo-more">พบอีก ${ranked.length-maxResults} รายการ พิมพ์เพิ่มเพื่อกรองให้แคบลง</div>` : '') || '<div class="material-combo-empty">ไม่พบสินค้า ลองพิมพ์คำอื่นหรือเปลี่ยนผู้ดูแล</div>';
     results.classList.remove('hidden');
     input.setAttribute('aria-expanded','true');
     activeIndex = -1;
   };
-  input.addEventListener('focus', render);
+  input.addEventListener('pointerdown', e => {
+    if (!useMobileMaterialPicker()) return;
+    e.preventDefault();
+    input.blur();
+    openMobile();
+  });
+  input.addEventListener('focus', () => {
+    if (useMobileMaterialPicker()) {
+      input.blur();
+      openMobile();
+      return;
+    }
+    render();
+  });
   input.addEventListener('input', () => {
+    if (useMobileMaterialPicker()) return;
     input.setCustomValidity('');
     hidden.value = '';
+    renderSelected(null);
     if (onChange) onChange('', null);
     render();
   });
   input.addEventListener('keydown', e => {
+    if (useMobileMaterialPicker()) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openMobile(); }
+      return;
+    }
     const options = [...results.querySelectorAll('[data-material-option]')];
     if (e.key === 'ArrowDown') { e.preventDefault(); if (results.classList.contains('hidden')) render(); setActive(activeIndex + 1); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(activeIndex <= 0 ? options.length - 1 : activeIndex - 1); }
@@ -159,27 +235,32 @@ function setupMaterialCombobox(id, materials, {onChange = null, maxResults = 12,
     if (option) choose(option.dataset.materialOption);
   });
   input.addEventListener('blur', () => setTimeout(close, 120));
-  clearBtn.addEventListener('click', () => {
+  clearBtn.addEventListener('click', e => {
+    e.preventDefault();
     hidden.value = '';
     input.value = '';
     clearBtn.classList.add('hidden');
-    input.focus();
-    render();
+    renderSelected(null);
+    close();
     if (onChange) onChange('', null);
+    if (useMobileMaterialPicker()) openMobile();
+    else { input.focus(); render(); }
   });
   ownerFilter?.addEventListener('change', () => {
     const selected = materials.find(m => m.code === hidden.value);
     if (selected && ownerFilter.value && selected.responsible_email !== ownerFilter.value) {
-      hidden.value=''; input.value=''; clearBtn.classList.add('hidden');
+      hidden.value=''; input.value=''; clearBtn.classList.add('hidden'); renderSelected(null);
       if (onChange) onChange('',null);
     }
     render();
   });
+  renderSelected(materials.find(m => m.code === hidden.value) || null);
   return {
     clear(trigger = true) {
       hidden.value = '';
       input.value = '';
       clearBtn.classList.add('hidden');
+      renderSelected(null);
       close();
       if (trigger && onChange) onChange('', null);
     },
@@ -194,19 +275,20 @@ function ensureQrDecoder() {
   qrDecoderPromise = new Promise(resolve => {
     const existing = document.querySelector('script[data-jsqr-loader]');
     if (existing) {
+      if (typeof window.jsQR === 'function') return resolve(true);
       existing.addEventListener('load', () => resolve(typeof window.jsQR === 'function'), {once:true});
       existing.addEventListener('error', () => resolve(false), {once:true});
-      setTimeout(() => resolve(typeof window.jsQR === 'function'), 8000);
+      setTimeout(() => resolve(typeof window.jsQR === 'function'), 2500);
       return;
     }
     const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
-    script.async = true;
+    script.src = 'third_party/jsQR-1.4.0.js?v=1.4.6';
+    script.async = false;
     script.dataset.jsqrLoader = '1';
     script.onload = () => resolve(typeof window.jsQR === 'function');
     script.onerror = () => resolve(false);
     document.head.appendChild(script);
-    setTimeout(() => resolve(typeof window.jsQR === 'function'), 8000);
+    setTimeout(() => resolve(typeof window.jsQR === 'function'), 2500);
   });
   return qrDecoderPromise;
 }
@@ -231,6 +313,7 @@ function openModal(html) {
 function closeModal() {
   stopScanner();
   $('#modal').classList.add('hidden');
+  $('#modal').classList.remove('material-picker-open','scanner-open');
   $('#modal').setAttribute('aria-hidden', 'true');
   $('#modalBody').innerHTML = '';
 }
@@ -1600,50 +1683,170 @@ async function openPendingIssue() {
   if (code) await resolveIssueCode(code, 'scan');
 }
 
+function enhanceQrImage(imageData, contrast = 1.45) {
+  const out = {data:new Uint8ClampedArray(imageData.data),width:imageData.width,height:imageData.height};
+  const data = out.data;
+  for (let i = 0; i < data.length; i += 4) {
+    const gray = Math.round(data[i] * .299 + data[i + 1] * .587 + data[i + 2] * .114);
+    const value = Math.max(0, Math.min(255, Math.round((gray - 128) * contrast + 128)));
+    data[i] = data[i + 1] = data[i + 2] = value;
+  }
+  return out;
+}
+
+function decodeQrCanvas(canvas, ctx) {
+  if (typeof window.jsQR !== 'function' || !canvas.width || !canvas.height) return null;
+  const attempts = [
+    [0,0,canvas.width,canvas.height],
+    [Math.round(canvas.width*.08),Math.round(canvas.height*.08),Math.round(canvas.width*.84),Math.round(canvas.height*.84)],
+    [Math.round(canvas.width*.18),Math.round(canvas.height*.16),Math.round(canvas.width*.64),Math.round(canvas.height*.68)],
+    [Math.round(canvas.width*.25),Math.round(canvas.height*.22),Math.round(canvas.width*.50),Math.round(canvas.height*.56)]
+  ];
+  for (const [x,y,w,h] of attempts) {
+    if (w < 80 || h < 80) continue;
+    const image = ctx.getImageData(x,y,w,h);
+    const normal = window.jsQR(image.data,image.width,image.height,{inversionAttempts:'attemptBoth'});
+    if (normal?.data) return normal.data;
+    const enhanced = enhanceQrImage(image,1.65);
+    const strong = window.jsQR(enhanced.data,enhanced.width,enhanced.height,{inversionAttempts:'attemptBoth'});
+    if (strong?.data) return strong.data;
+  }
+  return null;
+}
+
+async function bitmapFromFile(file) {
+  if ('createImageBitmap' in window) return await createImageBitmap(file);
+  return await new Promise((resolve,reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => { URL.revokeObjectURL(url); resolve(image); };
+    image.onerror = () => { URL.revokeObjectURL(url); reject(new Error('เปิดรูปไม่สำเร็จ')); };
+    image.src = url;
+  });
+}
+
+async function decodeQrPhoto(file) {
+  if (!file) return '';
+  if (!(await ensureQrDecoder())) throw new Error('ตัวอ่าน QR ในแอปยังโหลดไม่สำเร็จ กรุณารีเฟรชหน้าแล้วลองใหม่');
+  const bitmap = await bitmapFromFile(file);
+  const sourceW = bitmap.width || bitmap.naturalWidth || 0;
+  const sourceH = bitmap.height || bitmap.naturalHeight || 0;
+  if (!sourceW || !sourceH) throw new Error('รูปไม่มีขนาดที่อ่านได้');
+  const scale = Math.min(1, 2400 / Math.max(sourceW,sourceH));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(640,Math.round(sourceW*scale));
+  canvas.height = Math.max(640,Math.round(sourceH*scale));
+  const ctx = canvas.getContext('2d',{willReadFrequently:true});
+  ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);
+  bitmap.close?.();
+  return decodeQrCanvas(canvas,ctx) || '';
+}
+
+function scannerFallbackMarkup(inspectMode, message = '') {
+  return `<div class="scanner-fallback"><h3>${message ? 'เปิดกล้องหรืออ่าน QR ไม่สำเร็จ' : 'สแกนจากรูปหรือพิมพ์รหัส'}</h3>${message ? `<p>${esc(message)}</p>` : ''}<label class="photo-scan-button secondary">${icon('camera')} ถ่ายรูป/เลือกรูป QR<input id="scanPhotoInput" type="file" accept="image/*" capture="environment" hidden></label><div id="photoScanStatus" class="field-hint"></div><form id="manualScanForm" class="form-grid"><label>พิมพ์รหัส QR<input id="manualScanCode" placeholder="เช่น BB319-09062026" autocomplete="off"></label><button class="primary" type="submit">${inspectMode?'ตรวจสอบ Lot':'ค้นหา Lot'}</button></form></div>`;
+}
+
+function bindScannerFallback({inspectMode, submitCode, closeOnSuccess = true}) {
+  $('#manualScanForm')?.addEventListener('submit', e => {
+    e.preventDefault();
+    const code = $('#manualScanCode')?.value || '';
+    if (closeOnSuccess) closeModal();
+    submitCode(code,'manual');
+  });
+  $('#scanPhotoInput')?.addEventListener('change', async e => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const status = $('#photoScanStatus') || $('#scanStatus');
+    if (status) status.textContent = 'กำลังอ่าน QR จากรูป…';
+    try {
+      const value = await decodeQrPhoto(file);
+      if (!value) throw new Error('ยังไม่พบ QR ในรูป ลองถ่ายให้ QR ตรง ไม่เบลอ และมีแสงพอ');
+      if (closeOnSuccess) closeModal();
+      submitCode(value,'scan');
+    } catch (err) {
+      if (status) status.textContent = errMsg(err);
+      toast(errMsg(err),true);
+    } finally {
+      e.target.value = '';
+    }
+  });
+}
+
 async function startCameraScanner(mode = 'issue') {
   const inspectMode = mode === 'inspect';
   const resolveCode = inspectMode ? resolveStockCheckCode : resolveIssueCode;
   const submitCode = (value, source = 'manual') => inspectMode ? resolveCode(value) : resolveCode(value, source);
   const title = inspectMode ? 'สแกนตรวจ Lot' : 'สแกน QR Sticker';
-  const description = inspectMode ? 'หันกล้องไปที่ QR เพื่อดูยอดคงเหลือและบันทึกผลตรวจ' : 'หันกล้องหลังไปที่ QR และให้อยู่ภายในกรอบ';
+  const description = inspectMode ? 'หันกล้องไปที่ QR เพื่อดูยอดคงเหลือและบันทึกผลตรวจ' : 'ถือโทรศัพท์ห่างประมาณ 15–25 ซม. ให้ QR อยู่กลางกรอบและภาพชัด';
   if (!navigator.mediaDevices?.getUserMedia) {
-    openModal(`<h3>อุปกรณ์นี้เปิดกล้องไม่ได้</h3><p>กรุณาเปิดแอปผ่าน Safari หรือ Chrome และตรวจว่าเว็บไซต์ได้รับอนุญาตให้ใช้กล้อง</p><form id="manualScanForm" class="form-grid"><label>พิมพ์รหัส QR<input id="manualScanCode" placeholder="เช่น BB319-09062026" autocomplete="off"></label><button class="primary" type="submit">${inspectMode?'ตรวจสอบ Lot':'ค้นหา Lot'}</button></form>`);
-    $('#manualScanForm').addEventListener('submit', e => { e.preventDefault(); const code = $('#manualScanCode').value; closeModal(); submitCode(code, 'manual'); });
+    openModal(scannerFallbackMarkup(inspectMode,'อุปกรณ์นี้ไม่รองรับการเปิดกล้องสดผ่านเว็บ ใช้การถ่ายรูป QR หรือพิมพ์รหัสแทนได้'));
+    bindScannerFallback({inspectMode,submitCode});
     return;
   }
 
-  openModal(`<div class="scanner-head"><div><h3>${title}</h3><p>${description}</p></div><button class="icon-button modal-close" type="button" aria-label="ปิด">×</button></div><div class="scan-video-wrap"><video id="scanVideo" autoplay playsinline muted></video><canvas id="scanCanvas" hidden></canvas><div class="scan-frame"></div><div id="scanStatus" class="scan-status">กำลังเปิดกล้อง…</div></div><p class="muted small">รองรับ QR Sticker ใหม่ รหัสเดิม และรหัส Lot เดิม</p><form id="manualScanForm" class="scanner-manual form-grid"><label>หรือพิมพ์รหัส QR<input id="manualScanCode" placeholder="เช่น BB319-09062026" autocomplete="off"></label><button class="secondary" type="submit">${inspectMode?'ตรวจสอบ Lot':'ค้นหา Lot'}</button></form>`);
-  $('#manualScanForm').addEventListener('submit', e => { e.preventDefault(); const code = $('#manualScanCode').value; closeModal(); submitCode(code, 'manual'); });
+  openModal(`<div class="scanner-head"><div><h3>${title}</h3><p>${description}</p></div><button class="icon-button modal-close" type="button" aria-label="ปิด">×</button></div><div class="scan-video-wrap"><video id="scanVideo" autoplay playsinline muted></video><canvas id="scanCanvas" hidden></canvas><div class="scan-frame"><span>วาง QR ในกรอบ</span></div><div id="scanStatus" class="scan-status">กำลังเปิดกล้อง…</div></div><div class="scanner-actions"><label class="photo-scan-button secondary">${icon('camera')} ถ่ายรูป/เลือกรูป QR<input id="scanPhotoInput" type="file" accept="image/*" capture="environment" hidden></label><button type="button" class="secondary hidden" id="scannerTorchBtn">เปิดไฟฉาย</button></div><div id="photoScanStatus" class="field-hint"></div><p class="muted small scanner-tip">รองรับ QR Sticker ใหม่ รหัสเดิม และรหัส Lot เดิม · หากภาพเบลอ ให้ถอยออกเล็กน้อยแทนการจ่อใกล้</p><form id="manualScanForm" class="scanner-manual form-grid"><label>หรือพิมพ์รหัส QR<input id="manualScanCode" placeholder="เช่น BB319-09062026" autocomplete="off"></label><button class="secondary" type="submit">${inspectMode?'ตรวจสอบ Lot':'ค้นหา Lot'}</button></form>`);
+  $('#modal').classList.add('scanner-open');
+  bindScannerFallback({inspectMode,submitCode});
 
   const status = $('#scanStatus');
   try {
     let stream;
+    const preferred = {video:{facingMode:{ideal:'environment'},width:{ideal:1920,min:640},height:{ideal:1080,min:480}},audio:false};
     try {
-      stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{exact:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});
+      stream = await navigator.mediaDevices.getUserMedia(preferred);
     } catch (_) {
-      stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});
+      stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false});
     }
     scannerStream = stream;
     const video = $('#scanVideo');
     const canvas = $('#scanCanvas');
-    const ctx = canvas.getContext('2d', {willReadFrequently:true});
+    const ctx = canvas.getContext('2d',{willReadFrequently:true});
     video.srcObject = scannerStream;
+    video.setAttribute('playsinline','');
     await video.play();
+
+    const track = scannerStream.getVideoTracks()[0];
+    try {
+      const caps = track.getCapabilities?.() || {};
+      const advanced = {};
+      if (Array.isArray(caps.focusMode) && caps.focusMode.includes('continuous')) advanced.focusMode = 'continuous';
+      if (Array.isArray(caps.exposureMode) && caps.exposureMode.includes('continuous')) advanced.exposureMode = 'continuous';
+      if (Object.keys(advanced).length) await track.applyConstraints({advanced:[advanced]});
+      if (caps.torch) {
+        const torch = $('#scannerTorchBtn');
+        torch.classList.remove('hidden');
+        let torchOn = false;
+        torch.addEventListener('click', async () => {
+          torchOn = !torchOn;
+          try {
+            await track.applyConstraints({advanced:[{torch:torchOn}]});
+            torch.textContent = torchOn ? 'ปิดไฟฉาย' : 'เปิดไฟฉาย';
+          } catch (_) {
+            torchOn = false;
+            torch.classList.add('hidden');
+          }
+        });
+      }
+    } catch (_) {}
 
     let detector = null;
     if ('BarcodeDetector' in window) {
-      try { detector = new BarcodeDetector({formats:['qr_code']}); } catch (_) {}
+      try {
+        const supported = await BarcodeDetector.getSupportedFormats?.();
+        if (!supported || supported.includes('qr_code')) detector = new BarcodeDetector({formats:['qr_code']});
+      } catch (_) {}
     }
-    const decoderReady = detector ? true : await ensureQrDecoder();
-    if (!detector && !decoderReady) throw new Error('โหลดตัวอ่าน QR ไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่');
+    const decoderReady = await ensureQrDecoder();
+    if (!detector && !decoderReady) throw new Error('ตัวอ่าน QR ภายในแอปโหลดไม่สำเร็จ กรุณารีเฟรชหน้าแล้วลองใหม่');
     status.textContent = 'พร้อมสแกน QR';
 
     let busy = false;
+    let scans = 0;
     const finish = value => {
       if (!value) return false;
       stopScanner();
       closeModal();
-      submitCode(value, 'scan');
+      submitCode(value,'scan');
       return true;
     };
     const scan = async () => {
@@ -1651,34 +1854,30 @@ async function startCameraScanner(mode = 'issue') {
       if (!busy && video.readyState >= 2) {
         busy = true;
         try {
+          let value = '';
           if (detector) {
             const codes = await detector.detect(video);
-            if (finish(codes?.[0]?.rawValue)) return;
-          } else if (typeof window.jsQR === 'function') {
-            const sourceW = video.videoWidth || 640;
-            const sourceH = video.videoHeight || 480;
-            const scale = Math.min(1, 1280 / Math.max(sourceW, sourceH));
-            canvas.width = Math.max(480, Math.round(sourceW * scale));
-            canvas.height = Math.max(360, Math.round(sourceH * scale));
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            let image = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            let result = window.jsQR(image.data, image.width, image.height, {inversionAttempts:'attemptBoth'});
-            if (!result) {
-              const cropX = Math.round(canvas.width * 0.12);
-              const cropY = Math.round(canvas.height * 0.18);
-              const cropW = Math.round(canvas.width * 0.76);
-              const cropH = Math.round(canvas.height * 0.64);
-              image = ctx.getImageData(cropX, cropY, cropW, cropH);
-              result = window.jsQR(image.data, image.width, image.height, {inversionAttempts:'attemptBoth'});
-            }
-            if (finish(result?.data)) return;
+            value = codes?.[0]?.rawValue || '';
           }
+          if (!value && typeof window.jsQR === 'function') {
+            const sourceW = video.videoWidth || 1280;
+            const sourceH = video.videoHeight || 720;
+            const scale = Math.min(1, 1920 / Math.max(sourceW,sourceH));
+            canvas.width = Math.max(720,Math.round(sourceW*scale));
+            canvas.height = Math.max(540,Math.round(sourceH*scale));
+            ctx.drawImage(video,0,0,canvas.width,canvas.height);
+            value = decodeQrCanvas(canvas,ctx) || '';
+          }
+          if (finish(value)) return;
+          scans += 1;
+          if (scans === 30) status.textContent = 'ขยับให้ QR อยู่กลางกรอบและรอภาพชัด';
+          if (scans === 75) status.textContent = 'ยังอ่านไม่ได้ ลองถ่ายรูป QR ด้านล่าง';
         } catch (_) {
         } finally {
           busy = false;
         }
       }
-      scannerTimer = setTimeout(scan, 160);
+      scannerTimer = setTimeout(scan,120);
     };
     scan();
   } catch (e) {
@@ -1691,8 +1890,8 @@ async function startCameraScanner(mode = 'issue') {
         : name === 'NotReadableError'
           ? 'กล้องอาจถูกแอปอื่นใช้งานอยู่ กรุณาปิดแอปกล้องแล้วลองใหม่'
           : errMsg(e);
-    $('#modalBody').innerHTML = `<h3>เปิดกล้องไม่สำเร็จ</h3><p>${esc(message)}</p><form id="manualScanForm" class="form-grid"><label>พิมพ์รหัส QR<input id="manualScanCode" placeholder="เช่น BB319-09062026" autocomplete="off"></label><button class="primary" type="submit">${inspectMode?'ตรวจสอบ Lot':'ค้นหา Lot'}</button></form>`;
-    $('#manualScanForm').addEventListener('submit', ev => { ev.preventDefault(); const code = $('#manualScanCode').value; closeModal(); submitCode(code, 'manual'); });
+    $('#modalBody').innerHTML = scannerFallbackMarkup(inspectMode,message);
+    bindScannerFallback({inspectMode,submitCode});
   }
 }
 

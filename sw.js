@@ -1,8 +1,8 @@
 const CACHE_PREFIX='cnmi-inventory-';
-const CACHE=CACHE_PREFIX+'v1.4.5';
+const CACHE=CACHE_PREFIX+'v1.4.6';
 const ASSETS=[
   './','./index.html','./label.html','./assets/app.css','./assets/app.js','./assets/qr-lite.js',
-  './manifest.webmanifest','./icons/favicon-32.png','./icons/icon-192.png','./icons/icon-512.png',
+  './manifest.webmanifest','./third_party/jsQR-1.4.0.js','./icons/favicon-32.png','./icons/icon-192.png','./icons/icon-512.png',
   './icons/icon-maskable-192.png','./icons/icon-maskable-512.png','./icons/icon-180.png'
 ];
 self.addEventListener('install',event=>{event.waitUntil((async()=>{const cache=await caches.open(CACHE);await Promise.allSettled(ASSETS.map(async url=>{const response=await fetch(new Request(url,{cache:'reload'}));if(response&&response.ok)await cache.put(url,response.clone())}));await self.skipWaiting()})())});
