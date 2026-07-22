@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.16';
+const APP_VERSION = '1.4.17';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const DEFAULT_EXPIRY_ALERT_MONTHS = 1;
 const MAX_EXPIRY_ALERT_MONTHS = 8;
@@ -31,8 +31,8 @@ const MOVE_HISTORY_PAGE_SIZE = 7;
 const REPORT_PAGE_SIZE = 10;
 const LABEL_QUEUE_PAGE_SIZE = 10;
 const LABEL_PRINTERS = Object.freeze({
-  tsc:{key:'tsc',name:'TSC 310',fullName:'TSC 310',profileCode:'TSC_310',className:'tsc',note:'ฉลาก 25 × 20 mm · ปรับขนาดสำหรับ TSC'},
-  zebra:{key:'zebra',name:'Zebra 420t',fullName:'Zebra GC420t',profileCode:'ZEBRA_420T',className:'zebra',note:'ฉลาก 25 × 20 mm · แบบภาพคงที่ ไม่แยกข้ามดวง'}
+  tsc:{key:'tsc',name:'TSC 310',fullName:'TSC 310',profileCode:'TSC_310',className:'tsc',note:'ฉลาก 25 × 20 mm · QR ใหญ่ตามหัวพิมพ์ 300 dpi'},
+  zebra:{key:'zebra',name:'Zebra 420t',fullName:'Zebra GC420t',profileCode:'ZEBRA_420T',className:'zebra',note:'ฉลาก 25 × 20 mm · QR ใหญ่ตามหัวพิมพ์ 203 dpi'}
 });
 const LABEL_PRINTER_STORAGE_KEY = 'cnmi-inventory-label-printer';
 
@@ -1397,7 +1397,7 @@ function openPrinterChooser(lotId, defaultCopies = 1) {
   const cached = stockCache.find(x => x.lot_id === lotId);
   const title = cached?.material_name || cached?.label_name || 'QR Sticker';
   const lotText = cached ? `Lot ${cached.lot_no}` : '';
-  openModal(`<section class="printer-picker"><div class="printer-picker-head"><span>${icon('print')}</span><div><p class="eyebrow">Label printer</p><h3>เลือกเครื่องพิมพ์</h3><p>${esc(title)}${lotText ? ` · ${esc(lotText)}` : ''}</p></div></div><label class="label-copy-field">จำนวนสติ๊กเกอร์<input id="labelCopyCount" type="number" min="1" max="100" step="1" inputmode="numeric" value="${normalizedLabelCopies(defaultCopies)}"></label><div class="printer-picker-grid">${Object.values(LABEL_PRINTERS).map(p => `<button type="button" class="printer-choice ${p.className} ${preferred === p.key ? 'preferred' : ''}" data-modal-printer="${p.key}">${icon('print')}<span><strong>${esc(p.name)}</strong><small>${esc(p.note)}${preferred === p.key ? ' · เครื่องที่เลือกไว้' : ''}</small></span></button>`).join('')}</div><p class="printer-picker-note">สติ๊กเกอร์สร้างเป็นภาพคงที่ขนาด 25 × 20 mm เพื่อป้องกันฟอนต์ขยายและข้อความแยกข้ามดวง ในหน้าพิมพ์เลือกเครื่องจริงให้ตรงกับปุ่ม และใช้ Scale 100% หรือ Actual size</p></section>`);
+  openModal(`<section class="printer-picker"><div class="printer-picker-head"><span>${icon('print')}</span><div><p class="eyebrow">Label printer</p><h3>เลือกเครื่องพิมพ์</h3><p>${esc(title)}${lotText ? ` · ${esc(lotText)}` : ''}</p></div></div><label class="label-copy-field">จำนวนสติ๊กเกอร์<input id="labelCopyCount" type="number" min="1" max="100" step="1" inputmode="numeric" value="${normalizedLabelCopies(defaultCopies)}"></label><div class="printer-picker-grid">${Object.values(LABEL_PRINTERS).map(p => `<button type="button" class="printer-choice ${p.className} ${preferred === p.key ? 'preferred' : ''}" data-modal-printer="${p.key}">${icon('print')}<span><strong>${esc(p.name)}</strong><small>${esc(p.note)}${preferred === p.key ? ' · เครื่องที่เลือกไว้' : ''}</small></span></button>`).join('')}</div><p class="printer-picker-note">สติ๊กเกอร์ขนาด 25 × 20 mm ใช้ QR ขนาดใหญ่และวาดตามจำนวนจุดจริงของหัวพิมพ์ เพื่อลดเส้นประและเพิ่มระยะสแกน ในหน้าพิมพ์เลือกเครื่องจริงให้ตรงกับปุ่ม และใช้ Scale 100% หรือ Actual size</p></section>`);
   $$('[data-modal-printer]', $('#modal')).forEach(button => button.addEventListener('click', () => {
     const printer = button.dataset.modalPrinter;
     const copies = normalizedLabelCopies($('#labelCopyCount')?.value, defaultCopies);
@@ -1898,15 +1898,19 @@ async function openPendingIssue() {
   if (code) await resolveIssueCode(code, 'scan');
 }
 
-function enhanceQrImage(imageData, contrast = 1.45) {
+function enhanceQrImage(imageData, contrast = 1.45, targetMean = 128) {
   const out = {data:new Uint8ClampedArray(imageData.data),width:imageData.width,height:imageData.height};
   const data = out.data;
+  let total = 0;
+  const pixels = Math.max(1, data.length / 4);
+  for (let i = 0; i < data.length; i += 4) total += data[i] * .299 + data[i + 1] * .587 + data[i + 2] * .114;
+  const sourceMean = total / pixels;
   for (let i = 0; i < data.length; i += 4) {
-    const gray = Math.round(data[i] * .299 + data[i + 1] * .587 + data[i + 2] * .114);
-    const value = Math.max(0, Math.min(255, Math.round((gray - 128) * contrast + 128)));
+    const gray = data[i] * .299 + data[i + 1] * .587 + data[i + 2] * .114;
+    const value = Math.max(0, Math.min(255, Math.round((gray - sourceMean) * contrast + targetMean)));
     data[i] = data[i + 1] = data[i + 2] = value;
   }
-  return out;
+  return { ...out, sourceMean };
 }
 
 function decodeQrCanvas(canvas, ctx) {
@@ -1922,8 +1926,10 @@ function decodeQrCanvas(canvas, ctx) {
     const image = ctx.getImageData(x,y,w,h);
     const normal = window.jsQR(image.data,image.width,image.height,{inversionAttempts:'attemptBoth'});
     if (normal?.data) return normal.data;
-    for (const contrast of [1.35, 1.7, 2.05]) {
-      const enhanced = enhanceQrImage(image,contrast);
+
+    /* ปรับความสว่างตามค่าเฉลี่ยจริงของภาพ ช่วยกล้องรุ่นที่ภาพมืดหรือย้อนแสง */
+    for (const [contrast,targetMean] of [[1.35,132],[1.7,142],[2.05,150]]) {
+      const enhanced = enhanceQrImage(image,contrast,targetMean);
       const decoded = window.jsQR(enhanced.data,enhanced.width,enhanced.height,{inversionAttempts:'attemptBoth'});
       if (decoded?.data) return decoded.data;
     }
@@ -2048,26 +2054,36 @@ async function startCameraScanner(mode = 'issue') {
     await video.play();
 
     const track = scannerStream.getVideoTracks()[0];
+    let torchSupported = false;
+    let torchOn = false;
+    let setTorch = async () => false;
     try {
       const caps = track.getCapabilities?.() || {};
       const advanced = {};
       if (Array.isArray(caps.focusMode) && caps.focusMode.includes('continuous')) advanced.focusMode = 'continuous';
       if (Array.isArray(caps.exposureMode) && caps.exposureMode.includes('continuous')) advanced.exposureMode = 'continuous';
+      if (caps.exposureCompensation && Number.isFinite(caps.exposureCompensation.max)) {
+        advanced.exposureCompensation = Math.min(caps.exposureCompensation.max, Math.max(caps.exposureCompensation.min || 0, .5));
+      }
       if (Object.keys(advanced).length) await track.applyConstraints({advanced:[advanced]});
       if (caps.torch) {
+        torchSupported = true;
         const torch = $('#scannerTorchBtn');
         torch.classList.remove('hidden');
-        let torchOn = false;
-        torch.addEventListener('click', async () => {
-          torchOn = !torchOn;
+        setTorch = async next => {
           try {
-            await track.applyConstraints({advanced:[{torch:torchOn}]});
+            await track.applyConstraints({advanced:[{torch:Boolean(next)}]});
+            torchOn = Boolean(next);
             torch.textContent = torchOn ? 'ปิดไฟฉาย' : 'เปิดไฟฉาย';
+            return true;
           } catch (_) {
+            torchSupported = false;
             torchOn = false;
             torch.classList.add('hidden');
+            return false;
           }
-        });
+        };
+        torch.addEventListener('click', async () => { await setTorch(!torchOn); });
       }
     } catch (_) {}
 
@@ -2106,7 +2122,10 @@ async function startCameraScanner(mode = 'issue') {
           }
           if (finish(value)) return;
           scans += 1;
-          if (scans === 30) status.textContent = 'ขยับให้ QR อยู่กลางกรอบและรอภาพชัด';
+          if (scans === 24 && torchSupported && !torchOn) {
+            if (await setTorch(true)) status.textContent = 'แสงค่อนข้างน้อย ระบบเปิดไฟฉายให้อัตโนมัติ';
+          }
+          if (scans === 30 && !torchOn) status.textContent = 'ขยับให้ QR อยู่กลางกรอบและรอภาพชัด';
           if (scans === 75) status.textContent = 'ยังอ่านไม่ได้ ลองถ่ายรูป QR ด้านล่าง';
         } catch (_) {
         } finally {
@@ -2786,7 +2805,7 @@ function openMaterialEditor(code) {
 }
 
 function renderHelp() {
-  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>สร้างบัญชีครั้งแรก</h3><ol class="help-steps"><li>ใช้เฉพาะอีเมลมหิดล @mahidol.ac.th ที่ Admin อนุญาตไว้</li><li>ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว</li><li>กด “สร้างบัญชีครั้งแรก” แล้วกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</li></ol></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>พิมพ์ชื่อวัสดุบางส่วนแล้วเลือกจากรายการ</li><li>ตรวจชื่อผู้นำเข้าปัจจุบัน ใส่ Lot วันหมดอายุ และจำนวน แล้วบันทึก</li></ol></div><div class="card help-card"><h3>นำออก</h3><ol class="help-steps"><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าและวิธีนำออก แล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>ระบบบันทึกแยกเป็น “สแกน QR” หรือ “พิมพ์รหัสเอง” ในประวัติและรายงาน</li></ol></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแล</h3><p>มี 3 เมนูย่อย: ภาพรวม, ต้องเบิก และตั้งค่าการเตือน เลือกเตือนตามจำนวนขั้นต่ำ เตือนรอบเบิกรายเดือน หรือไม่แจ้งเตือนได้ และกำหนดเกณฑ์ใกล้หมดอายุแยกต่อวัสดุเป็น 1 เดือนหรือ 8 เดือน การเตือนรายเดือนจะเริ่มตรวจรอบตั้งแต่เดือนถัดไปหลังบันทึก</p></div><div class="card help-card"><h3>ตรวจวันศุกร์</h3><p>กรอกจำนวนที่นับได้จริง หากไม่ตรงกับระบบ ให้เลือกเหตุผล สามารถฝากเพื่อนตรวจแทนเฉพาะรอบได้ ผู้รับต้องกดยืนยันก่อน ส่วน Admin เลือกชื่อเจ้าหน้าที่เพื่อทำแทนหรือมอบหมายให้คนอื่นได้ทันที ระบบเก็บผู้ดูแลหลัก ผู้ได้รับมอบหมาย และผู้ตรวจจริงแยกกัน</p></div><div class="card help-card"><h3>สแกนตรวจ Lot</h3><p>เปิดกล้องหรือพิมพ์รหัส QR เพื่อดูยอด Lot ยอดรวม ผู้ดูแล ขั้นต่ำ และยืนยันตรวจหรือปรับยอดได้ทันที</p></div><div class="card help-card"><h3>สถานะผู้ตรวจ</h3><p>เปิดเมนู “สถานะผู้ตรวจ” แล้วกำหนดช่วงวันที่ เพื่อดูว่าแต่ละวันศุกร์ใครตรวจครบหรือยังไม่ครบ</p></div><div class="card help-card"><h3>สติ๊กเกอร์เดิม</h3><p>สติ๊กเกอร์รหัสเดิมยังสแกนได้ ไม่ต้องเปลี่ยนใหม่ทั้งหมด</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบไม่ตัดยอดเอง เปิดตรวจวันศุกร์และกด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์ถัดไป</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมดูได้ในหน้าประวัติและรายงาน</p></div><div class="card help-card"><h3>พิมพ์สติ๊กเกอร์ภายหลัง</h3><p>หลังรับเข้าผ่านโทรศัพท์ ให้เปิดเมนู “พิมพ์สติ๊กเกอร์” บนคอมพิวเตอร์ที่ต่อเครื่องพิมพ์ รายการรับเข้าจะอยู่ในคิวอัตโนมัติ เลือกจำนวนดวงแล้วกด TSC 310 หรือ Zebra 420t</p></div><div class="card help-card"><h3>เครื่องพิมพ์สติ๊กเกอร์</h3><p>ฉลากจริง 25 × 20 mm ระบบสร้างสติ๊กเกอร์เป็นภาพคงที่แยกสำหรับ TSC 310 และ Zebra 420t เพื่อไม่ให้ข้อความขยายหรือแยกข้ามดวง ในหน้าพิมพ์ Chrome ให้เลือกชื่อเครื่องจริงให้ตรงกับปุ่มที่กด ใช้ Scale 100% หรือ Actual size ปิด Header/Footer และใช้ Margin None</p></div></div>`;
+  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>สร้างบัญชีครั้งแรก</h3><ol class="help-steps"><li>ใช้เฉพาะอีเมลมหิดล @mahidol.ac.th ที่ Admin อนุญาตไว้</li><li>ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว</li><li>กด “สร้างบัญชีครั้งแรก” แล้วกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</li></ol></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>พิมพ์ชื่อวัสดุบางส่วนแล้วเลือกจากรายการ</li><li>ตรวจชื่อผู้นำเข้าปัจจุบัน ใส่ Lot วันหมดอายุ และจำนวน แล้วบันทึก</li></ol></div><div class="card help-card"><h3>นำออก</h3><ol class="help-steps"><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าและวิธีนำออก แล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>ระบบบันทึกแยกเป็น “สแกน QR” หรือ “พิมพ์รหัสเอง” ในประวัติและรายงาน</li></ol></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแล</h3><p>มี 3 เมนูย่อย: ภาพรวม, ต้องเบิก และตั้งค่าการเตือน เลือกเตือนตามจำนวนขั้นต่ำ เตือนรอบเบิกรายเดือน หรือไม่แจ้งเตือนได้ และกำหนดเกณฑ์ใกล้หมดอายุแยกต่อวัสดุเป็น 1 เดือนหรือ 8 เดือน การเตือนรายเดือนจะเริ่มตรวจรอบตั้งแต่เดือนถัดไปหลังบันทึก</p></div><div class="card help-card"><h3>ตรวจวันศุกร์</h3><p>กรอกจำนวนที่นับได้จริง หากไม่ตรงกับระบบ ให้เลือกเหตุผล สามารถฝากเพื่อนตรวจแทนเฉพาะรอบได้ ผู้รับต้องกดยืนยันก่อน ส่วน Admin เลือกชื่อเจ้าหน้าที่เพื่อทำแทนหรือมอบหมายให้คนอื่นได้ทันที ระบบเก็บผู้ดูแลหลัก ผู้ได้รับมอบหมาย และผู้ตรวจจริงแยกกัน</p></div><div class="card help-card"><h3>สแกนตรวจ Lot</h3><p>เปิดกล้องหรือพิมพ์รหัส QR เพื่อดูยอด Lot ยอดรวม ผู้ดูแล ขั้นต่ำ และยืนยันตรวจหรือปรับยอดได้ทันที</p></div><div class="card help-card"><h3>สถานะผู้ตรวจ</h3><p>เปิดเมนู “สถานะผู้ตรวจ” แล้วกำหนดช่วงวันที่ เพื่อดูว่าแต่ละวันศุกร์ใครตรวจครบหรือยังไม่ครบ</p></div><div class="card help-card"><h3>สติ๊กเกอร์เดิม</h3><p>สติ๊กเกอร์รหัสเดิมยังสแกนได้ ไม่ต้องเปลี่ยนใหม่ทั้งหมด</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบไม่ตัดยอดเอง เปิดตรวจวันศุกร์และกด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์ถัดไป</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมดูได้ในหน้าประวัติและรายงาน</p></div><div class="card help-card"><h3>พิมพ์สติ๊กเกอร์ภายหลัง</h3><p>หลังรับเข้าผ่านโทรศัพท์ ให้เปิดเมนู “พิมพ์สติ๊กเกอร์” บนคอมพิวเตอร์ที่ต่อเครื่องพิมพ์ รายการรับเข้าจะอยู่ในคิวอัตโนมัติ เลือกจำนวนดวงแล้วกด TSC 310 หรือ Zebra 420t</p></div><div class="card help-card"><h3>เครื่องพิมพ์สติ๊กเกอร์</h3><p>ฉลากจริง 25 × 20 mm ระบบสร้างสติ๊กเกอร์แยกตามความละเอียดจริงของ TSC 310 และ Zebra 420t พร้อม QR ขนาดใหญ่และขอบขาวมาตรฐาน เพื่อให้สแกนได้ไกลและลดเส้นประ ในหน้าพิมพ์ Chrome ให้เลือกชื่อเครื่องจริงให้ตรงกับปุ่มที่กด ใช้ Scale 100% หรือ Actual size ปิด Header/Footer และใช้ Margin None</p></div></div>`;
   refreshInstallUI();
 }
 
