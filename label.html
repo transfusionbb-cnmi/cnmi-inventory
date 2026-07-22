@@ -25,7 +25,7 @@ html,body{margin:0;padding:0;width:var(--paper-w);background:#eef2f3;font-family
 <body>
 <div id="printPages"></div>
 <div class="screen-status" id="screenStatus">กำลังสร้างสติ๊กเกอร์แบบภาพคงที่…</div>
-<script src="assets/qr-lite.js?v=1.4.22"></script>
+<script src="assets/qr-lite.js?v=1.4.23"></script>
 <script>
 'use strict';
 const p=new URLSearchParams(location.search);
@@ -185,54 +185,68 @@ function drawLabelZebra(canvas,qrImg){
   const ctx=canvas.getContext('2d',{alpha:false});
   ctx.save();ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.restore();
 
-  const padX=6, padY=5;
-  const qrSize=qrImg.size; // fixed about 1x1 cm for Zebra
-  const qrX=canvas.width-padX-qrSize;
-  const qrY=10;
-  const sepX=qrX-5;
-  const leftX=padX;
+  // Zebra GC420t: 203 dpi ~= 8 dots/mm. Target QR about 10 x 10 mm.
+  const qrSize=80;               // ~10 mm
+  const leftPad=6;               // ~0.75 mm
+  const rightPad=4;              // ~0.5 mm
+  const topPad=4;                // ~0.5 mm
+  const bottomPad=4;             // ~0.5 mm
+  const gapToSep=4;
+  const sepX=canvas.width-rightPad-qrSize-gapToSep;
+  const qrX=canvas.width-rightPad-qrSize;
+  const qrY=topPad;
+  const leftX=leftPad;
   const leftW=sepX-leftX-4;
-  const topInfoY=12;
-  const bottomBlockY=114;
+  const fullBottomW=canvas.width-leftPad-rightPad;
 
   ctx.save();
   ctx.strokeStyle='#111';
   ctx.lineWidth=1;
   ctx.beginPath();
-  ctx.moveTo(sepX+0.5,padY);
-  ctx.lineTo(sepX+0.5,canvas.height-padY);
+  ctx.moveTo(sepX+0.5,topPad);
+  ctx.lineTo(sepX+0.5,canvas.height-bottomPad);
   ctx.stroke();
   ctx.restore();
 
-  // Decide where to place material name.
-  const shortNameFit=fitWrappedLines(ctx,name,leftW,12,8,2,900);
-  const isShort=shortNameFit.lines.length<=2 && shortNameFit.size>=9;
+  const shortName=fitWrappedLines(ctx,name,leftW,13,9,2,900);
+  const shortNameFits=shortName.lines.length<=2 && shortName.size>=9;
 
-  let y=topInfoY;
-  if(isShort){
-    y=drawMultiline(ctx,shortNameFit.lines,leftX,y,shortNameFit.size,900,shortNameFit.lineHeight)+3;
-  }
+  if(shortNameFits){
+    let y=24;
+    y=drawMultiline(ctx,shortName.lines,leftX,y,shortName.size,900,shortName.lineHeight)+5;
+    const codeFit=fitWrappedLines(ctx,`รหัส ${code}`,leftW,8,7,1,800);
+    y=drawMultiline(ctx,codeFit.lines,leftX,y,codeFit.size,800,codeFit.lineHeight)+1;
+    const lotFit=fitWrappedLines(ctx,`Lot ${lot}`,leftW,9,7,2,900);
+    y=drawMultiline(ctx,lotFit.lines,leftX,y,lotFit.size,900,lotFit.lineHeight)+1;
+    const expFit=fitWrappedLines(ctx,`EXP ${exp}`,leftW,9,7,2,900);
+    drawMultiline(ctx,expFit.lines,leftX,y,expFit.size,900,expFit.lineHeight);
+  } else {
+    let y=18;
+    const codeFit=fitWrappedLines(ctx,`รหัส ${code}`,leftW,8,7,1,800);
+    y=drawMultiline(ctx,codeFit.lines,leftX,y,codeFit.size,800,codeFit.lineHeight)+1;
+    const lotFit=fitWrappedLines(ctx,`Lot ${lot}`,leftW,9,7,2,900);
+    y=drawMultiline(ctx,lotFit.lines,leftX,y,lotFit.size,900,lotFit.lineHeight)+1;
+    const expFit=fitWrappedLines(ctx,`EXP ${exp}`,leftW,9,7,2,900);
+    drawMultiline(ctx,expFit.lines,leftX,y,expFit.size,900,expFit.lineHeight);
 
-  const infoW=leftW;
-  const codeFit=fitWrappedLines(ctx,`รหัส ${code}`,infoW,10,8,1,800);
-  y=drawMultiline(ctx,codeFit.lines,leftX,y,codeFit.size,800,codeFit.lineHeight)+1;
-  const lotFit=fitWrappedLines(ctx,`Lot ${lot}`,infoW,10,8,2,900);
-  y=drawMultiline(ctx,lotFit.lines,leftX,y,lotFit.size,900,lotFit.lineHeight)+1;
-  const expFit=fitWrappedLines(ctx,`EXP ${exp}`,infoW,10,8,2,900);
-  y=drawMultiline(ctx,expFit.lines,leftX,y,expFit.size,900,expFit.lineHeight);
-
-  if(!isShort){
-    const bottomFit=fitWrappedLines(ctx,name,canvas.width-padX*2,10,8,2,900);
-    let by=bottomBlockY;
-    drawMultiline(ctx,bottomFit.lines,leftX,by,bottomFit.size,900,bottomFit.lineHeight);
+    const bottomName=fitWrappedLines(ctx,name,fullBottomW,11,8,2,900);
+    const bottomBlockH=bottomName.lines.length*bottomName.lineHeight;
+    const by=canvas.height-bottomPad-bottomBlockH-2;
+    drawMultiline(ctx,bottomName.lines,leftX,by,bottomName.size,900,bottomName.lineHeight);
   }
 
   ctx.save();
   ctx.imageSmoothingEnabled=false;
-  ctx.drawImage(qrImg.canvas,qrX,qrY,qrImg.size,qrImg.size);
+  // Center the source QR inside fixed 80x80 target to guarantee ~10x10 mm on paper.
+  const dx=qrX+Math.round((qrSize-qrImg.size)/2);
+  const dy=qrY+Math.round((qrSize-qrImg.size)/2);
+  ctx.drawImage(qrImg.canvas,dx,dy,qrImg.size,qrImg.size);
   ctx.restore();
-  const keySize=fitSingleLine(ctx,key,qrImg.size,8,6,900);
-  drawText(ctx,key,qrX+qrImg.size/2,Math.min(canvas.height-6,qrY+qrImg.size+keySize+1),900,keySize,'center');
+
+  const keyFit=fitWrappedLines(ctx,key,qrSize,7,6,2,900);
+  const keyH=keyFit.lines.length*keyFit.lineHeight;
+  const keyY=Math.min(canvas.height-bottomPad-keyH, qrY+qrSize+7);
+  drawMultiline(ctx,keyFit.lines,qrX+qrSize/2,keyY,keyFit.size,900,keyFit.lineHeight,'center');
 }
 
 function drawLabel(canvas,qrImg){
@@ -243,7 +257,7 @@ function drawLabel(canvas,qrImg){
 async function prepare(){
   if(document.fonts&&document.fonts.ready){try{await document.fonts.ready;}catch(_){}}
   const qrImg = profile==='zebra'
-    ? renderQrImage(96,3,3)
+    ? renderQrImage(80,3,3)
     : renderQrImage(profileLayout().qrSize,4);
   const canvases=Array.from({length:copies},makeCanvas);
   canvases.forEach(c=>pages.appendChild(c));
@@ -268,7 +282,7 @@ async function startPrint(){
 }
 window.addEventListener('afterprint',()=>setTimeout(()=>window.close(),180));
 window.addEventListener('load',()=>{
-  statusEl.innerHTML=`โปรไฟล์ ${profileName}<small>Zebra ปรับ QR เป็นประมาณ 1 × 1 ซม. และจัดข้อความสั้น/ยาวอัตโนมัติ</small>`;
+  statusEl.innerHTML=`โปรไฟล์ ${profileName}<small>Zebra ปรับ QR เป็น 10 × 10 มม. และขยายงานให้เต็มฉลากมากขึ้น</small>`;
   if(p.get('auto')==='1')startPrint();else prepare();
 },{once:true});
 setTimeout(()=>{if(p.get('auto')==='1'&&!document.hidden)statusEl.innerHTML=`หากหน้าพิมพ์ยังไม่เปิด กรุณากด Ctrl + P<small>เลือก ${profileName} และ Scale 100%</small>`;},6000);

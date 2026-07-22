@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.22';
+const APP_VERSION = '1.4.23';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const DEFAULT_EXPIRY_ALERT_MONTHS = 1;
 const MAX_EXPIRY_ALERT_MONTHS = 8;
