@@ -6,29 +6,30 @@
 <title>พิมพ์ QR Sticker</title>
 <style>
 *{box-sizing:border-box}
-:root{--paper-w:25mm;--paper-h:20mm}
+:root{--paper-w:25mm;--paper-h:20mm;--label-h:19.72mm}
 html,body{margin:0;padding:0;width:var(--paper-w);background:#eef2f3;font-family:Tahoma,"Leelawadee UI","Noto Sans Thai",Arial,sans-serif;color:#000;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 #printPages{width:var(--paper-w);margin:0;padding:0;line-height:0}
-.label-page{position:relative;display:block;width:var(--paper-w);height:var(--paper-h);margin:0;padding:0;background:#fff;overflow:hidden;break-inside:avoid;page-break-inside:avoid;break-after:page;page-break-after:always}
-.label-page:last-child{break-after:auto;page-break-after:auto}
-.label-canvas,.label-vector{position:absolute;inset:0;display:block;width:var(--paper-w);height:var(--paper-h);margin:0;padding:0;background:transparent;overflow:hidden}
-.label-canvas{image-rendering:pixelated}
-.label-vector{pointer-events:none}
-.screen-status{position:fixed;left:29mm;top:5mm;width:390px;padding:14px 16px;border-radius:12px;background:#fff;color:#087b6f;box-shadow:0 8px 28px rgba(0,0,0,.16);font-size:13px;font-weight:700;line-height:1.45}
+/*
+  ไม่สั่ง page-break หลังแต่ละดวง และลดความสูงลงเล็กน้อย
+  เพื่อกัน Chrome/Driver ปัดเศษจนสร้างหน้าว่างคั่นหนึ่งดวง
+*/
+.label-page{position:relative;display:block;width:var(--paper-w);height:var(--label-h);margin:0;padding:0;background:#fff;overflow:hidden;break-inside:avoid;page-break-inside:avoid}
+.label-vector{position:absolute;inset:0;display:block;width:var(--paper-w);height:var(--label-h);margin:0;padding:0;background:#fff;overflow:hidden;text-rendering:geometricPrecision}
+.screen-status{position:fixed;left:29mm;top:5mm;width:410px;padding:14px 16px;border-radius:12px;background:#fff;color:#087b6f;box-shadow:0 8px 28px rgba(0,0,0,.16);font-size:13px;font-weight:700;line-height:1.45}
 .screen-status small{display:block;margin-top:4px;color:#667a76;font-weight:500}
 @page{size:25mm 20mm;margin:0}
 @media print{
   html,body{width:var(--paper-w)!important;height:auto!important;min-height:0!important;margin:0!important;padding:0!important;overflow:visible!important;background:#fff!important;line-height:0!important}
   #printPages{width:var(--paper-w)!important;margin:0!important;padding:0!important;line-height:0!important}
-  .label-page,.label-canvas,.label-vector{display:block!important;width:var(--paper-w)!important;height:var(--paper-h)!important;margin:0!important;padding:0!important}
+  .label-page,.label-vector{display:block!important;width:var(--paper-w)!important;height:var(--label-h)!important;margin:0!important;padding:0!important}
   .screen-status{display:none!important}
 }
 </style>
 </head>
 <body>
 <div id="printPages"></div>
-<div class="screen-status" id="screenStatus">กำลังสร้างสติ๊กเกอร์ QR ขนาดใหญ่…</div>
-<script src="assets/qr-lite.js?v=1.4.24"></script>
+<div class="screen-status" id="screenStatus">กำลังสร้างสติ๊กเกอร์แบบคมชัด…</div>
+<script src="assets/qr-lite.js?v=1.4.25"></script>
 <script>
 'use strict';
 const p=new URLSearchParams(location.search);
@@ -45,124 +46,112 @@ const profileName=profile==='zebra'?'Zebra GC420t':'TSC 310';
 const statusEl=document.getElementById('screenStatus');
 const pages=document.getElementById('printPages');
 
-/*
-  วาดภาพตามจำนวนจุดจริงของหัวพิมพ์ เพื่อลดการย่อภาพจาก Browser
-  ซึ่งเป็นสาเหตุให้เส้นตรงและช่อง QR กลายเป็นจุด/เส้นประบนกระดาษ
-*/
+/* ขนาดจุดจริงของหัวพิมพ์: Zebra 203 dpi / TSC 300 dpi */
 const DEVICE=profile==='zebra'
-  ? {dpi:203,w:200,h:160}
-  : {dpi:300,w:295,h:236};
+  ? {dpi:203,w:200,h:160,labelHeight:'19.62mm'}
+  : {dpi:300,w:295,h:236,labelHeight:'19.78mm'};
 const PX_W=DEVICE.w, PX_H=DEVICE.h;
+document.documentElement.style.setProperty('--label-h',DEVICE.labelHeight);
 
+function svgNode(tag,attrs={}){
+  const node=document.createElementNS('http://www.w3.org/2000/svg',tag);
+  Object.entries(attrs).forEach(([k,v])=>node.setAttribute(k,String(v)));
+  return node;
+}
 function makePage(){
   const page=document.createElement('div');
   page.className='label-page';
   page.setAttribute('aria-label',`สติ๊กเกอร์ ${name} Lot ${lot}`);
-  const canvas=document.createElement('canvas');
-  canvas.className='label-canvas';
-  canvas.width=PX_W;
-  canvas.height=PX_H;
-  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
-  svg.classList.add('label-vector');
-  svg.setAttribute('viewBox',`0 0 ${PX_W} ${PX_H}`);
-  svg.setAttribute('preserveAspectRatio','none');
-  svg.setAttribute('shape-rendering','crispEdges');
-  page.append(canvas,svg);
-  return {page,canvas,svg};
+  const svg=svgNode('svg',{
+    class:'label-vector',viewBox:`0 0 ${PX_W} ${PX_H}`,
+    preserveAspectRatio:'none','aria-hidden':'true'
+  });
+  const defs=svgNode('defs');
+  const leftClip=svgNode('clipPath',{id:`left-${Math.random().toString(36).slice(2)}`});
+  const leftRect=svgNode('rect');leftClip.appendChild(leftRect);
+  const rightClip=svgNode('clipPath',{id:`right-${Math.random().toString(36).slice(2)}`});
+  const rightRect=svgNode('rect');rightClip.appendChild(rightRect);
+  defs.append(leftClip,rightClip);svg.appendChild(defs);
+  page.appendChild(svg);
+  return {page,svg,leftClip,leftRect,rightClip,rightRect};
 }
 
-function setFont(ctx,weight,size){ctx.font=`${weight} ${Math.max(1,Math.round(size))}px Tahoma, "Leelawadee UI", Arial, sans-serif`;}
-function fitSingleLine(ctx,text,maxWidth,start,min,weight=900){
+const measureCanvas=document.createElement('canvas');
+const measureCtx=measureCanvas.getContext('2d');
+function setMeasureFont(weight,size){measureCtx.font=`${weight} ${Math.max(1,size)}px Tahoma, "Leelawadee UI", Arial, sans-serif`;}
+function fitSingleLine(text,maxWidth,start,min,weight=700){
   let size=start;
-  while(size>min){setFont(ctx,weight,size);if(ctx.measureText(text).width<=maxWidth)return size;size-=.5;}
+  while(size>min){setMeasureFont(weight,size);if(measureCtx.measureText(text).width<=maxWidth)return size;size-=.25;}
   return min;
 }
-function splitToken(ctx,token,maxWidth){
+function splitToken(token,maxWidth){
   const chars=Array.from(token),parts=[];let line='';
-  for(const ch of chars){const test=line+ch;if(line&&ctx.measureText(test).width>maxWidth){parts.push(line);line=ch;}else line=test;}
+  for(const ch of chars){const test=line+ch;if(line&&measureCtx.measureText(test).width>maxWidth){parts.push(line);line=ch;}else line=test;}
   if(line)parts.push(line);return parts;
 }
-function wrapText(ctx,text,maxWidth){
+function wrapText(text,maxWidth){
   const words=String(text||'-').trim().split(/\s+/).filter(Boolean);
   const lines=[];
   for(const word of words){
-    const pieces=ctx.measureText(word).width>maxWidth?splitToken(ctx,word,maxWidth):[word];
+    const pieces=measureCtx.measureText(word).width>maxWidth?splitToken(word,maxWidth):[word];
     for(const piece of pieces){
       const current=lines[lines.length-1]||'';
       const test=current?`${current} ${piece}`:piece;
-      if(current&&ctx.measureText(test).width>maxWidth)lines.push(piece);
+      if(current&&measureCtx.measureText(test).width>maxWidth)lines.push(piece);
       else if(lines.length)lines[lines.length-1]=test;
       else lines.push(test);
     }
   }
   return lines;
 }
-function fitName(ctx,text,maxWidth,maxHeight,start,min,maxLines){
+function fitName(text,maxWidth,maxHeight,start,min,maxLines){
   let size=start,lines=[];
-  const absoluteMin=Math.max(profile==='zebra'?8.5:12,min-3);
+  const absoluteMin=Math.max(profile==='zebra'?9.5:13,min-2);
   while(size>=absoluteMin){
-    setFont(ctx,900,size);
-    lines=wrapText(ctx,text,maxWidth);
+    setMeasureFont(700,size);
+    lines=wrapText(text,maxWidth);
     const allowedLines=size>=min?maxLines:maxLines+1;
-    const lineHeight=size*1.04;
-    const widest=Math.max(0,...lines.map(x=>ctx.measureText(x).width));
+    const lineHeight=size*1.08;
+    const widest=Math.max(0,...lines.map(x=>measureCtx.measureText(x).width));
     if(lines.length&&lines.length<=allowedLines&&widest<=maxWidth+.5&&lines.length*lineHeight<=maxHeight+.5)return {size,lines,lineHeight};
-    size-=.5;
+    size-=.25;
   }
-  setFont(ctx,900,absoluteMin);
-  lines=wrapText(ctx,text,maxWidth).slice(0,maxLines+1);
-  return {size:absoluteMin,lines,lineHeight:absoluteMin*1.04};
+  setMeasureFont(700,absoluteMin);
+  lines=wrapText(text,maxWidth).slice(0,maxLines+1);
+  return {size:absoluteMin,lines,lineHeight:absoluteMin*1.08};
 }
-function drawText(ctx,text,x,y,weight,size,align='left'){
-  setFont(ctx,weight,size);ctx.textAlign=align;ctx.textBaseline='alphabetic';ctx.fillStyle='#000';ctx.fillText(text,x,y);
+function svgRect(parent,x,y,w,h,fill='#000',extra={}){
+  const rect=svgNode('rect',{x,y,width:w,height:h,fill,...extra});parent.appendChild(rect);return rect;
+}
+function svgText(parent,text,x,y,{weight=700,size=12,anchor='start',clipId=''}={}){
+  const node=svgNode('text',{
+    x,y,fill:'#000','font-family':'Tahoma, Leelawadee UI, Noto Sans Thai, Arial, sans-serif',
+    'font-size':size,'font-weight':weight,'text-anchor':anchor,
+    'dominant-baseline':'alphabetic'
+  });
+  if(clipId)node.setAttribute('clip-path',`url(#${clipId})`);
+  node.textContent=text;parent.appendChild(node);return node;
 }
 
 function profileLayout(){
   if(profile==='zebra'){
     return {
-      x:4,y:4,w:192,h:152,sepRatio:.44,
-      nameStart:17,nameMin:11.5,codeSize:8.5,metaSize:11.5,keyStart:8,keyMin:6.5,
-      separator:2,quietModules:4,maxNameLines:4
+      x:5,y:5,w:190,h:150,sepRatio:.405,
+      nameStart:17.5,nameMin:12,metaSize:11.5,codeStart:8,codeMin:6.5,
+      separator:1,quietModules:3,maxNameLines:4
     };
   }
   return {
-    x:5,y:5,w:285,h:226,sepRatio:.46,
-    nameStart:25,nameMin:16,codeSize:11.5,metaSize:16,keyStart:11,keyMin:8.5,
-    separator:2,quietModules:4,maxNameLines:4
+    x:6,y:6,w:283,h:224,sepRatio:.43,
+    nameStart:25,nameMin:17,metaSize:16,codeStart:11,codeMin:8.5,
+    separator:1.5,quietModules:3,maxNameLines:4
   };
 }
 
 /*
-  วาด QR จาก matrix โดยตรง ทุก module เป็นจำนวน pixel เต็ม
-  ไม่มี SVG/Canvas downsampling และเว้น quiet zone 4 modules ตามมาตรฐาน
+  ขยาย module ของ QR ให้ใหญ่ขึ้นจริง โดยคงช่องขาวรอบ QR ชัดเจน
+  ช่วยให้รอยหมึกที่บวมจากความร้อนไม่เชื่อมช่องดำง่ายเหมือน QR ขนาดเล็ก
 */
-function drawQrMatrix(ctx,matrix,boxX,boxY,boxW,boxH,quietModules){
-  const count=matrix.length;
-  const totalModules=count+quietModules*2;
-  const modulePx=Math.max(2,Math.floor(Math.min(boxW,boxH)/totalModules));
-  const qrPx=totalModules*modulePx;
-  const x=Math.round(boxX+(boxW-qrPx)/2);
-  const y=Math.round(boxY+(boxH-qrPx)/2);
-  ctx.save();
-  ctx.imageSmoothingEnabled=false;
-  ctx.fillStyle='#fff';
-  ctx.fillRect(x,y,qrPx,qrPx);
-  ctx.fillStyle='#000';
-  for(let r=0;r<count;r++){
-    for(let c=0;c<count;c++){
-      if(matrix[r][c])ctx.fillRect(x+(c+quietModules)*modulePx,y+(r+quietModules)*modulePx,modulePx,modulePx);
-    }
-  }
-  ctx.restore();
-  return {x,y,size:qrPx,modulePx};
-}
-
-function svgRect(svg,x,y,w,h,fill='#000'){
-  const rect=document.createElementNS('http://www.w3.org/2000/svg','rect');
-  rect.setAttribute('x',String(x));rect.setAttribute('y',String(y));
-  rect.setAttribute('width',String(w));rect.setAttribute('height',String(h));
-  rect.setAttribute('fill',fill);svg.appendChild(rect);return rect;
-}
 function drawQrVector(svg,matrix,boxX,boxY,boxW,boxH,quietModules){
   const count=matrix.length;
   const totalModules=count+quietModules*2;
@@ -170,52 +159,52 @@ function drawQrVector(svg,matrix,boxX,boxY,boxW,boxH,quietModules){
   const qrPx=totalModules*modulePx;
   const x=Math.round(boxX+(boxW-qrPx)/2);
   const y=Math.round(boxY+(boxH-qrPx)/2);
-  svgRect(svg,x,y,qrPx,qrPx,'#fff');
+  const group=svgNode('g',{'shape-rendering':'crispEdges'});
+  svgRect(group,x,y,qrPx,qrPx,'#fff');
   for(let r=0;r<count;r++){
     for(let c=0;c<count;c++){
-      if(matrix[r][c])svgRect(svg,x+(c+quietModules)*modulePx,y+(r+quietModules)*modulePx,modulePx,modulePx,'#000');
+      if(matrix[r][c])svgRect(group,x+(c+quietModules)*modulePx,y+(r+quietModules)*modulePx,modulePx,modulePx,'#000');
     }
   }
+  svg.appendChild(group);
   return {x,y,size:qrPx,modulePx};
 }
 
-function drawLabel(canvas,svg,matrix){
-  const ctx=canvas.getContext('2d',{alpha:false});
-  ctx.fillStyle='#fff';ctx.fillRect(0,0,PX_W,PX_H);
+function drawLabel(item,matrix){
+  const {svg,leftClip,leftRect,rightClip,rightRect}=item;
   const L=profileLayout();
+  svgRect(svg,0,0,PX_W,PX_H,'#fff');
   const sepX=Math.round(L.x+L.w*L.sepRatio);
   const leftX=L.x+2;
   const leftW=sepX-leftX-4;
   const rightX=sepX+4;
   const rightW=L.x+L.w-rightX-1;
-  const codeH=L.codeSize*1.2,metaH=L.metaSize*1.12;
-  const fixedHeight=codeH+metaH*2+(profile==='zebra'?7:10);
-  const nameMaxH=Math.max(profile==='zebra'?48:72,L.h-fixedHeight);
-  const fitted=fitName(ctx,name,leftW,nameMaxH,L.nameStart,L.nameMin,L.maxNameLines);
-  const totalH=fitted.lines.length*fitted.lineHeight+codeH+metaH*2+(profile==='zebra'?5:8);
-  let y=L.y+Math.max(0,(L.h-totalH)/2)+fitted.size;
-  fitted.lines.forEach(line=>{drawText(ctx,line,leftX,y,900,fitted.size);y+=fitted.lineHeight;});
-  y+=profile==='zebra'?1:2;
-  drawText(ctx,`รหัส ${code}`,leftX,y,800,L.codeSize);y+=codeH;
-  drawText(ctx,`Lot ${lot}`,leftX,y,900,L.metaSize);y+=metaH;
-  drawText(ctx,`EXP ${exp}`,leftX,y,900,L.metaSize);
+  const leftClipId=leftClip.id,rightClipId=rightClip.id;
+  Object.entries({x:leftX,y:L.y,width:leftW,height:L.h}).forEach(([k,v])=>leftRect.setAttribute(k,String(v)));
+  Object.entries({x:rightX,y:L.y,width:rightW,height:L.h}).forEach(([k,v])=>rightRect.setAttribute(k,String(v)));
 
-  const keyAreaH=profile==='zebra'?13:19;
-  const qrBoxH=L.h-keyAreaH-2;
-  let qr;
-  if(profile==='zebra'){
-    // Keep the v1.4.17 layout exactly. Only QR and divider are vector objects,
-    // so the Zebra driver receives solid black geometry instead of a dithered bitmap.
-    svgRect(svg,sepX,L.y,L.separator,L.h,'#000');
-    qr=drawQrVector(svg,matrix,rightX,L.y,rightW,qrBoxH,L.quietModules);
-  }else{
-    ctx.fillStyle='#000';
-    ctx.fillRect(sepX,L.y,L.separator,L.h);
-    qr=drawQrMatrix(ctx,matrix,rightX,L.y,rightW,qrBoxH,L.quietModules);
-  }
-  const keySize=fitSingleLine(ctx,key,rightW,L.keyStart,L.keyMin,900);
-  const keyY=Math.min(L.y+L.h-1,qr.y+qr.size+keySize+1);
-  drawText(ctx,key,rightX+rightW/2,keyY,900,keySize,'center');
+  const lotText=`Lot ${lot}`;
+  const expText=`EXP ${exp}`;
+  const lotSize=fitSingleLine(lotText,leftW,L.metaSize,profile==='zebra'?8.5:12,700);
+  const expSize=fitSingleLine(expText,leftW,L.metaSize,profile==='zebra'?8.5:12,700);
+  const metaH=Math.max(lotSize,expSize)*1.22;
+  const fixedHeight=metaH*2+(profile==='zebra'?8:12);
+  const nameMaxH=Math.max(profile==='zebra'?66:92,L.h-fixedHeight);
+  const fitted=fitName(name,leftW,nameMaxH,L.nameStart,L.nameMin,L.maxNameLines);
+  const totalH=fitted.lines.length*fitted.lineHeight+metaH*2+(profile==='zebra'?5:8);
+  let y=L.y+Math.max(0,(L.h-totalH)/2)+fitted.size;
+  fitted.lines.forEach(line=>{svgText(svg,line,leftX,y,{weight:700,size:fitted.size,clipId:leftClipId});y+=fitted.lineHeight;});
+  y+=profile==='zebra'?2:3;
+  svgText(svg,lotText,leftX,y,{weight:700,size:lotSize,clipId:leftClipId});y+=metaH;
+  svgText(svg,expText,leftX,y,{weight:700,size:expSize,clipId:leftClipId});
+
+  svgRect(svg,sepX,L.y,L.separator,L.h,'#000');
+  const codeAreaH=profile==='zebra'?13:19;
+  const qrBoxH=L.h-codeAreaH-2;
+  const qr=drawQrVector(svg,matrix,rightX,L.y,rightW,qrBoxH,L.quietModules);
+  const codeSize=fitSingleLine(code,rightW-2,L.codeStart,L.codeMin,700);
+  const codeY=Math.min(L.y+L.h-1,qr.y+qr.size+codeSize+1.5);
+  svgText(svg,code,rightX+rightW/2,codeY,{weight:700,size:codeSize,anchor:'middle',clipId:rightClipId});
 }
 
 async function prepare(){
@@ -223,21 +212,21 @@ async function prepare(){
   const matrix=window.CNMIQRCode.matrix(qrText,'L');
   const items=Array.from({length:copies},makePage);
   items.forEach(item=>pages.appendChild(item.page));
-  items.forEach(item=>drawLabel(item.canvas,item.svg,matrix));
+  items.forEach(item=>drawLabel(item,matrix));
   await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
 }
 
 async function startPrint(){
   try{
     await prepare();
-    statusEl.innerHTML=`กำลังเปิดหน้าพิมพ์ ${profileName}…<small>${copies} ดวง · รูปแบบ v1.4.17 · Zebra ใช้ QR เวกเตอร์ทึบ ลดอาการเป็นประ</small>`;
+    statusEl.innerHTML=`กำลังเปิดหน้าพิมพ์ ${profileName}…<small>${copies} ดวง · QR module ใหญ่ขึ้น · ตัวหนังสือแบบเวกเตอร์ · ไม่เว้นสติ๊กเกอร์เปล่า</small>`;
     await new Promise(resolve=>setTimeout(resolve,180));
     window.focus();window.print();
   }catch(e){statusEl.innerHTML='สร้างสติ๊กเกอร์ไม่สำเร็จ กรุณาปิดหน้านี้แล้วลองใหม่';console.error(e);}
 }
 window.addEventListener('afterprint',()=>setTimeout(()=>window.close(),180));
 window.addEventListener('load',()=>{
-  statusEl.innerHTML=`โปรไฟล์ ${profileName}<small>รูปแบบสติ๊กเกอร์เหมือน v1.4.17 · Zebra เปลี่ยนเฉพาะ QR และเส้นแบ่งเป็นเวกเตอร์ทึบ</small>`;
+  statusEl.innerHTML=`โปรไฟล์ ${profileName}<small>v1.4.25: QR ใหญ่ขึ้น สแกนง่าย ตัวหนังสือคม และไม่มีกระดาษว่างคั่น</small>`;
   if(p.get('auto')==='1')startPrint();else prepare();
 },{once:true});
 setTimeout(()=>{if(p.get('auto')==='1'&&!document.hidden)statusEl.innerHTML=`หากหน้าพิมพ์ยังไม่เปิด กรุณากด Ctrl + P<small>เลือก ${profileName} และ Scale 100% / Actual size</small>`;},6000);
