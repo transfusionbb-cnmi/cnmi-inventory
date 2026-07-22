@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.30';
+const APP_VERSION = '1.4.33';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const DEFAULT_EXPIRY_ALERT_MONTHS = 1;
 const MAX_EXPIRY_ALERT_MONTHS = 8;
@@ -45,6 +45,33 @@ const icon = (name, cls = 'icon') => `<svg class="${cls}" aria-hidden="true"><us
 const isAdminAccount = () => profile?.role === 'admin';
 const isAdminMode = () => isAdminAccount() && actingMode === 'admin';
 const isMahidolEmail = email => /^[^@\s]+@mahidol\.ac\.th$/i.test(String(email || '').trim());
+
+const normalizedEmail = value => String(value || '').trim().toLowerCase();
+function ownerRoleFor(row, email) {
+  const target = normalizedEmail(email);
+  if (!target) return '';
+  const primary = normalizedEmail(row?.responsible_email) === target;
+  const assistant = normalizedEmail(row?.assistant_responsible_email) === target;
+  return primary && assistant ? 'both' : primary ? 'primary' : assistant ? 'assistant' : '';
+}
+function ownerMatches(row, email, role = 'both') {
+  if (!email) return true;
+  const matched = ownerRoleFor(row, email);
+  if (role === 'primary') return matched === 'primary' || matched === 'both';
+  if (role === 'assistant') return matched === 'assistant' || matched === 'both';
+  return Boolean(matched);
+}
+function ownerEntriesFromRows(rows = []) {
+  const map = new Map();
+  rows.forEach(row => {
+    if (row.responsible_email) map.set(row.responsible_email, row.responsible_name || row.responsible_email);
+    if (row.assistant_responsible_email) map.set(row.assistant_responsible_email, row.assistant_responsible_name || row.assistant_responsible_email);
+  });
+  return [...map.entries()].sort((a,b)=>String(a[1]).localeCompare(String(b[1]),'th'));
+}
+function ownerPairMarkup(row) {
+  return `<span class="dual-owner-lines"><span><small>หลัก</small>${esc(row.responsible_name || 'ยังไม่กำหนด')}</span><span><small>ผู้ช่วย</small>${esc(row.assistant_responsible_name || 'ยังไม่กำหนด')}</span></span>`;
+}
 
 
 let responsiveTableQueued = false;
@@ -1096,7 +1123,7 @@ function buildMaterialGroups(summaries = [], lots = []) {
     if (!map.has(l.material_code)) map.set(l.material_code, {
       material_code:l.material_code, material_name:l.material_name, label_name:l.label_name,
       unit:l.unit, min_qty:l.min_qty, responsible_email:l.responsible_email,
-      responsible_name:l.responsible_name, total_balance:0, active_lots:0,
+      responsible_name:l.responsible_name, assistant_responsible_email:l.assistant_responsible_email, assistant_responsible_name:l.assistant_responsible_name, total_balance:0, active_lots:0,
       nearest_expiry:null, expired_pending_lots:0, expired_pending_balance:0, alert_mode:l.alert_mode || 'MINIMUM', reorder_day:l.reorder_day || 1, expiry_alert_months:expiryAlertMonths(l), needs_reorder:false, lots:[]
     });
     map.get(l.material_code).lots.push(l);
@@ -1147,7 +1174,7 @@ function materialStockCard(g) {
   const ownerKey = g.responsible_email || 'unassigned';
   return `<article class="material-stock-card status-${st.key}">
     <div class="material-stock-main">
-      <div class="material-ident"><button class="material-title-link" type="button" data-material-detail="${esc(g.material_code)}">${esc(g.material_name)}</button><button class="owner-inline-link" type="button" data-owner-detail="${esc(ownerKey)}">${icon('user')} ${esc(g.responsible_name || 'ยังไม่กำหนด')}</button></div>
+      <div class="material-ident"><button class="material-title-link" type="button" data-material-detail="${esc(g.material_code)}">${esc(g.material_name)}</button><div class="material-owner-pair">${icon('user')} ${ownerPairMarkup(g)}</div></div>
       <div class="material-balance"><span>คงเหลือรวม</span><div><strong>${qty(g.total_balance)}</strong><small>${esc(g.unit)}</small></div><div class="level-track" title="เทียบกับขั้นต่ำ ${qty(g.min_qty)}"><i style="width:${ratio}%"></i></div><small>ขั้นต่ำ ${qty(g.min_qty)} ${esc(g.unit)}</small></div>
       <div class="material-facts"><div><span>Lot ที่ใช้งาน</span><strong>${g.active_lots}</strong></div><div><span>หมดอายุใกล้สุด</span><strong>${g.nearest_expiry ? d(g.nearest_expiry) : '-'}</strong></div><div><span>สถานะ</span><span class="material-status-badges"><em class="badge ${st.badge}">${st.label}</em>${expiryBadge}</span></div></div>
     </div>
@@ -1201,40 +1228,38 @@ async function openOwnerDetail(ownerKey) {
 }
 
 
-async function renderMyStock(tab = 'overview') {
+async function renderMyStock(tab = 'overview', selectedOwner = null, selectedRole = null) {
   myStockTab = ['overview','reorder','settings'].includes(tab) ? tab : 'overview';
-  const {data,error} = await sb.from('v_inventory_summary').select('*').or(`responsible_email.eq.${profile.email},assistant_responsible_email.eq.${profile.email}`).order('material_name');
+  const adminMode = isAdminMode();
+  const {data:allRows,error} = await sb.from('v_inventory_summary').select('*').order('material_name');
   if (error) throw error;
-  const groups = buildMaterialGroups(data || [], []);
+  const rows = allRows || [];
+  const ownerEntries = ownerEntriesFromRows(rows);
+  const ownerParam = selectedOwner !== null ? selectedOwner : (adminMode ? '' : profile.email);
+  const roleParam = selectedRole || 'both';
+  const groups = buildMaterialGroups(rows.filter(g => ownerMatches(g, ownerParam, roleParam)), []);
   const reorder = groups.filter(g => g.needs_reorder);
   const monthly = groups.filter(g => g.alert_mode === 'MONTHLY').length;
+  const ownerName = ownerEntries.find(([email])=>email===ownerParam)?.[1] || (ownerParam==='all'?'ทุกคน':'');
+  const filterPanel = adminMode ? `<section class="card admin-owner-filter"><div><p class="eyebrow">Admin view</p><h3>เลือกเจ้าหน้าที่ที่ต้องการดู</h3><p>ผู้ดูแลระบบเห็นข้อมูลทั้งหมด แต่ระบบจะยังไม่แสดงรายการจนกว่าจะเลือกชื่อหรือเลือกทุกคน</p></div><div class="admin-owner-filter-controls"><label>ผู้ดูแล<select id="myStockAdminOwner"><option value="">กรุณาเลือกชื่อ</option><option value="all" ${ownerParam==='all'?'selected':''}>ทุกคน</option>${ownerEntries.map(([email,name])=>`<option value="${esc(email)}" ${email===ownerParam?'selected':''}>${esc(name)}</option>`).join('')}</select></label><label>บทบาท<select id="myStockAdminRole"><option value="both" ${roleParam==='both'?'selected':''}>ทั้งผู้ดูแลหลักและผู้ช่วย</option><option value="primary" ${roleParam==='primary'?'selected':''}>ผู้ดูแลหลักเท่านั้น</option><option value="assistant" ${roleParam==='assistant'?'selected':''}>ผู้ช่วยดูแลเท่านั้น</option></select></label></div></section>` : '';
   const tabBar = `<div class="my-stock-tabs"><button data-my-stock-tab="overview" class="${myStockTab==='overview'?'active':''}">ภาพรวม</button><button data-my-stock-tab="reorder" class="${myStockTab==='reorder'?'active':''}">ต้องเบิก <span>${reorder.length}</span></button><button data-my-stock-tab="settings" class="${myStockTab==='settings'?'active':''}">ตั้งค่าการเตือน</button></div>`;
-  const summary = `<div class="my-stock-kpis"><div><span>ดูแลทั้งหมด</span><strong>${groups.length}</strong><small>รายการ</small></div><div><span>ต้องเบิก</span><strong>${reorder.length}</strong><small>รายการ</small></div><div><span>เตือนรายเดือน</span><strong>${monthly}</strong><small>รายการ</small></div></div>`;
-  const overviewCards = groups.map(g=>{const st=materialGroupStatus(g);return `<article class="my-stock-card"><div class="my-stock-title"><div><h3>${esc(g.material_name)}</h3><p>คงเหลือ ${qty(g.total_balance)} ${esc(g.unit)} · ${g.active_lots} Lot</p></div><em class="badge ${st.badge}">${st.label}</em></div><div class="my-stock-meta"><span>${g.alert_mode==='MONTHLY' ? `เตือนวันที่ ${g.reorder_day} ของเดือน` : g.alert_mode==='NONE' ? 'ไม่เปิดแจ้งเตือน' : `ขั้นต่ำ ${qty(g.min_qty)} ${esc(g.unit)}`}</span><span>เตือนใกล้หมดอายุล่วงหน้า ${expiryAlertLabel(g)}</span></div><div class="my-stock-actions"><button type="button" class="mini ghost" data-material-detail="${esc(g.material_code)}">ดู Lot</button><button type="button" class="mini" data-material-usage="${esc(g.material_code)}">${icon('chart')} วิเคราะห์</button></div></article>`;}).join('');
-  const reorderCards = reorder.map(g=>{const st=materialGroupStatus(g);return `<article class="my-stock-card needs-reorder"><div class="my-stock-title"><div><h3>${esc(g.material_name)}</h3><p>คงเหลือ ${qty(g.total_balance)} ${esc(g.unit)}</p></div><em class="badge ${st.badge}">${st.label}</em></div><div class="my-stock-actions"><button type="button" class="primary" data-route="move" data-move-tab="receive">รับเข้า</button><button type="button" class="mini" data-material-usage="${esc(g.material_code)}">ดูการใช้</button></div></article>`;}).join('');
-  const settingsCards = groups.map(g=>`<form class="my-stock-card my-stock-setting-card" data-my-settings-form data-material-code="${esc(g.material_code)}"><div class="my-stock-title"><div><h3>${esc(g.material_name)}</h3><p>คงเหลือ ${qty(g.total_balance)} ${esc(g.unit)}</p></div></div><div class="stock-setting-grid"><label>รูปแบบแจ้งเตือน<select name="alert_mode"><option value="MINIMUM" ${g.alert_mode==='MINIMUM'?'selected':''}>เตือนตามจำนวนขั้นต่ำ</option><option value="MONTHLY" ${g.alert_mode==='MONTHLY'?'selected':''}>เตือนรอบเบิกรายเดือน</option><option value="NONE" ${g.alert_mode==='NONE'?'selected':''}>ไม่แจ้งเตือน</option></select></label><label data-minimum-field>จำนวนขั้นต่ำ<input name="minimum" type="number" min="0" step="0.01" value="${Number(g.min_qty || 0)}" inputmode="decimal"></label><label data-reorder-field>วันที่เตือนของเดือน (1–28)<input name="reorder_day" type="number" min="1" max="28" step="1" value="${Number(g.reorder_day || 1)}" inputmode="numeric"></label><label>แจ้งใกล้หมดอายุล่วงหน้า<select name="expiry_alert_months"><option value="1" ${expiryAlertMonths(g)===1?'selected':''}>1 เดือน — รายการทั่วไป</option><option value="8" ${expiryAlertMonths(g)===8?'selected':''}>8 เดือน — ต้องเคลมหรือจัดการล่วงหน้า</option></select></label></div><p class="field-hint">เกณฑ์นี้ใช้เฉพาะการขึ้นสถานะ “ใกล้หมดอายุ” ของวัสดุรายการนี้</p><button class="primary" type="submit">บันทึกการตั้งค่า</button></form>`).join('');
-  const body = myStockTab==='settings' ? settingsCards : myStockTab==='reorder' ? (reorderCards || '<div class="card empty">ยังไม่มีสินค้าที่ถึงรอบเบิก</div>') : overviewCards;
-  page.innerHTML = `<div class="page-head"><div><h2>สต๊อกที่ฉันดูแล</h2></div></div>${tabBar}${summary}<div class="my-stock-list">${body || '<div class="card empty">ยังไม่มีสินค้าที่กำหนดให้คุณดูแล</div>'}</div>`;
-  $$('[data-my-stock-tab]').forEach(b=>b.addEventListener('click',()=>renderMyStock(b.dataset.myStockTab)));
+  const primaryCount = ownerParam && ownerParam!=='all' ? rows.filter(g=>ownerMatches(g,ownerParam,'primary')).length : groups.length;
+  const assistantCount = ownerParam && ownerParam!=='all' ? rows.filter(g=>ownerMatches(g,ownerParam,'assistant')).length : groups.filter(g=>g.assistant_responsible_email).length;
+  const summary = `<div class="my-stock-kpis"><div><span>รายการที่แสดง</span><strong>${groups.length}</strong><small>รายการ</small></div><div><span>ดูแลหลัก</span><strong>${primaryCount}</strong><small>รายการ</small></div><div><span>ช่วยดูแล</span><strong>${assistantCount}</strong><small>รายการ</small></div><div><span>ต้องเบิก</span><strong>${reorder.length}</strong><small>รายการ</small></div></div>`;
+  const overviewCards = groups.map(g=>{const st=materialGroupStatus(g);const role=ownerParam&&ownerParam!=='all'?ownerRoleFor(g,ownerParam):'';return `<article class="my-stock-card"><div class="my-stock-title"><div><h3>${esc(g.material_name)}</h3><p>คงเหลือ ${qty(g.total_balance)} ${esc(g.unit)} · ${g.active_lots} Lot</p></div><div>${role?`<em class="badge info">${role==='primary'?'ผู้ดูแลหลัก':'ผู้ช่วยดูแล'}</em>`:''}<em class="badge ${st.badge}">${st.label}</em></div></div><div class="my-stock-meta"><span>${ownerPairMarkup(g)}</span><span>${g.alert_mode==='MONTHLY' ? `เตือนวันที่ ${g.reorder_day} ของเดือน` : g.alert_mode==='NONE' ? 'ไม่เปิดแจ้งเตือน' : `ขั้นต่ำ ${qty(g.min_qty)} ${esc(g.unit)}`}</span><span>เตือนใกล้หมดอายุล่วงหน้า ${expiryAlertLabel(g)}</span></div><div class="my-stock-actions"><button type="button" class="mini ghost" data-material-detail="${esc(g.material_code)}">ดู Lot</button><button type="button" class="mini" data-material-usage="${esc(g.material_code)}">${icon('chart')} วิเคราะห์</button></div></article>`;}).join('');
+  const reorderCards = reorder.map(g=>{const st=materialGroupStatus(g);return `<article class="my-stock-card needs-reorder"><div class="my-stock-title"><div><h3>${esc(g.material_name)}</h3><p>คงเหลือ ${qty(g.total_balance)} ${esc(g.unit)}</p></div><em class="badge ${st.badge}">${st.label}</em></div><div class="my-stock-meta">${ownerPairMarkup(g)}</div><div class="my-stock-actions"><button type="button" class="primary" data-route="move" data-move-tab="receive">รับเข้า</button><button type="button" class="mini" data-material-usage="${esc(g.material_code)}">ดูการใช้</button></div></article>`;}).join('');
+  const settingsCards = groups.map(g=>`<form class="my-stock-card my-stock-setting-card" data-my-settings-form data-material-code="${esc(g.material_code)}"><div class="my-stock-title"><div><h3>${esc(g.material_name)}</h3><p>คงเหลือ ${qty(g.total_balance)} ${esc(g.unit)}</p></div></div><div class="my-stock-meta">${ownerPairMarkup(g)}</div><div class="stock-setting-grid"><label>รูปแบบแจ้งเตือน<select name="alert_mode"><option value="MINIMUM" ${g.alert_mode==='MINIMUM'?'selected':''}>เตือนตามจำนวนขั้นต่ำ</option><option value="MONTHLY" ${g.alert_mode==='MONTHLY'?'selected':''}>เตือนรอบเบิกรายเดือน</option><option value="NONE" ${g.alert_mode==='NONE'?'selected':''}>ไม่แจ้งเตือน</option></select></label><label data-minimum-field>จำนวนขั้นต่ำ<input name="minimum" type="number" min="0" step="0.01" value="${Number(g.min_qty || 0)}" inputmode="decimal"></label><label data-reorder-field>วันที่เตือนของเดือน (1–28)<input name="reorder_day" type="number" min="1" max="28" step="1" value="${Number(g.reorder_day || 1)}" inputmode="numeric"></label><label>แจ้งใกล้หมดอายุล่วงหน้า<select name="expiry_alert_months"><option value="1" ${expiryAlertMonths(g)===1?'selected':''}>1 เดือน — รายการทั่วไป</option><option value="8" ${expiryAlertMonths(g)===8?'selected':''}>8 เดือน — ต้องเคลมหรือจัดการล่วงหน้า</option></select></label></div><p class="field-hint">เกณฑ์นี้ใช้เฉพาะการขึ้นสถานะ “ใกล้หมดอายุ” ของวัสดุรายการนี้</p><button class="primary" type="submit">บันทึกการตั้งค่า</button></form>`).join('');
+  const noSelection = adminMode && !ownerParam;
+  const body = noSelection ? `<div class="card select-first-state">${icon('user')}<div><strong>กรุณาเลือกเจ้าหน้าที่ก่อน</strong><span>เลือกชื่อเพื่อดูทั้งรายการที่เป็นผู้ดูแลหลักและผู้ช่วยดูแล</span></div></div>` : myStockTab==='settings' ? settingsCards : myStockTab==='reorder' ? (reorderCards || '<div class="card empty">ยังไม่มีสินค้าที่ถึงรอบเบิก</div>') : overviewCards;
+  page.innerHTML = `<div class="page-head"><div><h2>${adminMode?'สต๊อกตามผู้ดูแล':'สต๊อกที่ฉันดูแล'}</h2>${ownerName?`<p class="muted small">กำลังดู: ${esc(ownerName)}</p>`:''}</div></div>${filterPanel}${noSelection?'':tabBar}${noSelection?'':summary}<div class="my-stock-list">${body || '<div class="card empty">ยังไม่มีสินค้าที่กำหนดให้ดูแล</div>'}</div>`;
+  $('#myStockAdminOwner')?.addEventListener('change',e=>renderMyStock(myStockTab,e.target.value,$('#myStockAdminRole').value));
+  $('#myStockAdminRole')?.addEventListener('change',e=>renderMyStock(myStockTab,$('#myStockAdminOwner').value,e.target.value));
+  $$('[data-my-stock-tab]').forEach(b=>b.addEventListener('click',()=>renderMyStock(b.dataset.myStockTab,ownerParam,roleParam)));
   $$('[data-my-settings-form]').forEach(form=>{
     const mode=form.elements.alert_mode;
-    const toggle=()=>{
-      form.querySelector('[data-minimum-field]').classList.toggle('hidden',mode.value!=='MINIMUM');
-      form.querySelector('[data-reorder-field]').classList.toggle('hidden',mode.value!=='MONTHLY');
-    };
+    const toggle=()=>{form.querySelector('[data-minimum-field]').classList.toggle('hidden',mode.value!=='MINIMUM');form.querySelector('[data-reorder-field]').classList.toggle('hidden',mode.value!=='MONTHLY');};
     mode.addEventListener('change',toggle); toggle();
-    form.addEventListener('submit',async e=>{
-      e.preventDefault();
-      const fd=new FormData(form);
-      const min=Number(fd.get('minimum') || 0);
-      const day=Number(fd.get('reorder_day') || 1);
-      const expiryMonths=Number(fd.get('expiry_alert_months') || DEFAULT_EXPIRY_ALERT_MONTHS);
-      const btn=e.submitter; btn.disabled=true;
-      const {error}=await sb.rpc('fn_update_my_stock_settings_v2',{p_material_code:form.dataset.materialCode,p_min_qty:min,p_alert_mode:String(fd.get('alert_mode')),p_reorder_day:day,p_acting_mode:actingMode,p_expiry_alert_months:expiryMonths});
-      btn.disabled=false;
-      if(error)return toast(errMsg(error),true);
-      inventorySummaryCache=[]; toast('บันทึกการตั้งค่าแล้ว'); renderMyStock('settings');
-    });
+    form.addEventListener('submit',async e=>{e.preventDefault();const fd=new FormData(form);const btn=e.submitter;btn.disabled=true;const {error}=await sb.rpc('fn_update_my_stock_settings_v2',{p_material_code:form.dataset.materialCode,p_min_qty:Number(fd.get('minimum')||0),p_alert_mode:String(fd.get('alert_mode')),p_reorder_day:Number(fd.get('reorder_day')||1),p_acting_mode:actingMode,p_expiry_alert_months:Number(fd.get('expiry_alert_months')||DEFAULT_EXPIRY_ALERT_MONTHS)});btn.disabled=false;if(error)return toast(errMsg(error),true);inventorySummaryCache=[];toast('บันทึกการตั้งค่าแล้ว');renderMyStock('settings',ownerParam,roleParam);});
   });
 }
 
@@ -1244,14 +1269,14 @@ async function renderStock(initialFilter = 'select') {
   inventorySummaryCache = summaryRes.data || [];
   const groups = buildMaterialGroups(inventorySummaryCache, []);
   const materialOptions = groups.map(g => ({code:g.material_code,name:g.material_name,label_name:g.material_name,unit:g.unit,responsible_email:g.responsible_email,responsible_name:g.responsible_name}));
-  const stockOwners=[...new Map(groups.filter(g=>g.responsible_email).map(g=>[g.responsible_email,g.responsible_name || g.responsible_email])).entries()].sort((a,b)=>String(a[1]).localeCompare(String(b[1]),'th'));
+  const stockOwners=ownerEntriesFromRows(groups);
   const stockOwnerOptions='<option value="">ทุกคน</option>'+stockOwners.map(([email,name])=>`<option value="${esc(email)}">${esc(name)}</option>`).join('');
   const activeLots = groups.reduce((s,g) => s + g.active_lots,0);
   const reorderCount = groups.filter(g => g.needs_reorder).length;
   const nearCount = groups.filter(g => isNearExpiryDate(g.nearest_expiry, expiryAlertMonths(g))).length;
   const outCount = groups.filter(g => materialGroupStatus(g).key === 'out').length;
   const selectedFilter = initialFilter && initialFilter !== 'select' ? initialFilter : '';
-  page.innerHTML = `<div class="page-head stock-page-head"><div><h2>สต๊อกคงเหลือ</h2><p class="muted small">เลือกสถานะ หรือพิมพ์ชื่อสินค้าบางส่วน ระบบจึงจะแสดงรายการ</p></div><button class="mini" data-route="usage">${icon('chart')} วิเคราะห์การใช้</button></div><div class="stock-summary-strip"><div><span>สินค้า</span><strong>${groups.length}</strong><small>รายการ</small></div><div><span>Lot ใช้งาน</span><strong>${activeLots}</strong><small>Lot</small></div><div><span>ต้องเบิก</span><strong>${reorderCount}</strong><small>รายการ</small></div><div><span>สินค้าหมด</span><strong>${outCount}</strong><small>รายการ</small></div><div><span>ใกล้หมดอายุ</span><strong>${nearCount}</strong><small>ตามเกณฑ์ 1/8 เดือน</small></div></div><section class="card stock-choice-card three"><label>เลือกผู้ดูแล<select id="stockOwnerFilter">${stockOwnerOptions}</select></label><label>เลือกสถานะ<select id="stockStatusSelect"><option value="">กรุณาเลือกสถานะ</option><option value="all">ทั้งหมด</option><option value="positive">คงเหลือปกติ</option><option value="reorder">ถึงรอบเบิก</option><option value="low">ต่ำกว่าขั้นต่ำ</option><option value="out">สินค้าหมด</option><option value="current-use">ใช้ชุดปัจจุบันอยู่</option><option value="notrack">ไม่เปิดแจ้งเตือน</option><option value="expiry">ใกล้หมดอายุ (ตามเกณฑ์สินค้า)</option><option value="expired">หมดอายุรอนำออก</option><option value="negative">ยอดติดลบ</option></select></label>${materialComboboxMarkup({id:'stockMaterialCode',label:'หรือค้นหาสินค้า',placeholder:'พิมพ์ชื่อสินค้าบางส่วน',materials:materialOptions})}</section><div id="materialStockList" class="material-stock-list"></div>`;
+  page.innerHTML = `<div class="page-head stock-page-head"><div><h2>สต๊อกคงเหลือ</h2><p class="muted small">เลือกสถานะ หรือพิมพ์ชื่อสินค้าบางส่วน ระบบจึงจะแสดงรายการ</p></div><button class="mini" data-route="usage">${icon('chart')} วิเคราะห์การใช้</button></div><div class="stock-summary-strip"><div><span>สินค้า</span><strong>${groups.length}</strong><small>รายการ</small></div><div><span>Lot ใช้งาน</span><strong>${activeLots}</strong><small>Lot</small></div><div><span>ต้องเบิก</span><strong>${reorderCount}</strong><small>รายการ</small></div><div><span>สินค้าหมด</span><strong>${outCount}</strong><small>รายการ</small></div><div><span>ใกล้หมดอายุ</span><strong>${nearCount}</strong><small>ตามเกณฑ์ 1/8 เดือน</small></div></div><section class="card stock-choice-card four"><label>เลือกผู้ดูแล<select id="stockOwnerFilter">${stockOwnerOptions}</select></label><label>ดูในบทบาท<select id="stockOwnerRole"><option value="both">หลักและผู้ช่วย</option><option value="primary">ผู้ดูแลหลัก</option><option value="assistant">ผู้ช่วยดูแล</option></select></label><label>เลือกสถานะ<select id="stockStatusSelect"><option value="">กรุณาเลือกสถานะ</option><option value="all">ทั้งหมด</option><option value="positive">คงเหลือปกติ</option><option value="reorder">ถึงรอบเบิก</option><option value="low">ต่ำกว่าขั้นต่ำ</option><option value="out">สินค้าหมด</option><option value="current-use">ใช้ชุดปัจจุบันอยู่</option><option value="notrack">ไม่เปิดแจ้งเตือน</option><option value="expiry">ใกล้หมดอายุ (ตามเกณฑ์สินค้า)</option><option value="expired">หมดอายุรอนำออก</option><option value="negative">ยอดติดลบ</option></select></label>${materialComboboxMarkup({id:'stockMaterialCode',label:'หรือค้นหาสินค้า',placeholder:'พิมพ์ชื่อสินค้าบางส่วน',materials:materialOptions})}</section><div id="materialStockList" class="material-stock-list"></div>`;
   const statusSelect=$('#stockStatusSelect');
   statusSelect.value=selectedFilter;
   const draw = () => {
@@ -1263,13 +1288,14 @@ async function renderStock(initialFilter = 'select') {
     }
     let arr=groups;
     const owner=$('#stockOwnerFilter').value;
-    if(owner) arr=arr.filter(g=>g.responsible_email===owner);
+    if(owner) arr=arr.filter(g=>ownerMatches(g,owner,$('#stockOwnerRole').value));
     if (code) arr=arr.filter(g=>g.material_code===code);
     if (filter && filter!=='all') arr=arr.filter(g=>filter==='expiry' ? isNearExpiryDate(g.nearest_expiry, expiryAlertMonths(g)) : materialGroupStatus(g).key===filter);
     $('#materialStockList').innerHTML=arr.map(materialStockCard).join('') || `<div class="card empty">${icon('search')}<div>ไม่พบรายการตามตัวเลือก</div></div>`;
   };
   const materialCombo=setupMaterialCombobox('stockMaterialCode',materialOptions,{ownerSelectId:'stockOwnerFilter',onChange:(code)=>{if(code)statusSelect.value='';draw();}});
   $('#stockOwnerFilter').addEventListener('change',draw);
+  $('#stockOwnerRole').addEventListener('change',draw);
   statusSelect.addEventListener('change',()=>{if(statusSelect.value)materialCombo.clear(false);draw();});
   draw();
 }
@@ -2372,7 +2398,7 @@ async function renderWeekly() {
   const delegatedToMe = items.filter(x => !x.checked_at && ['ACCEPTED','ADMIN_ASSIGNED'].includes(String(x.delegation_status || '').toUpperCase()) && weeklyDelegatedEmail(x) === String(profile.email || '').toLowerCase()).length;
   const incomingRequests = items.filter(x => !x.checked_at && weeklyDelegationWaiting(x) && weeklyDelegatedEmail(x) === String(profile.email || '').toLowerCase()).length;
   const ownerSet = new Map();
-  items.forEach(i => { if (i.responsible_email && !ownerSet.has(i.responsible_email)) ownerSet.set(i.responsible_email, i.responsible_name || i.responsible_email); });
+  items.forEach(i => { if (i.responsible_email && !ownerSet.has(i.responsible_email)) ownerSet.set(i.responsible_email, i.responsible_name || i.responsible_email); if (i.assistant_responsible_email && !ownerSet.has(i.assistant_responsible_email)) ownerSet.set(i.assistant_responsible_email, i.assistant_responsible_name || i.assistant_responsible_email); });
   const ownerEntries=[...ownerSet.entries()].sort((a,b)=>String(a[1]).localeCompare(String(b[1]), 'th'));
   if (isAdminMode() && weeklyAdminActingForEmail && !ownerSet.has(weeklyAdminActingForEmail)) weeklyAdminActingForEmail='';
   const ownerSelect = ['<option value="mine">ของฉัน</option>', '<option value="all">ทุกคน</option>'].concat(ownerEntries.map(([email, name]) => `<option value="${esc(email)}">${esc(name)}</option>`)).join('');
@@ -2390,7 +2416,7 @@ async function renderWeekly() {
     let arr = items;
     const owner = ownerFilter.value;
     if (owner === 'mine') arr = arr.filter(x => weeklyOwnerEmail(x) === String(profile.email || '').toLowerCase() || String(x.checked_by_email || '').toLowerCase() === String(profile.email || '').toLowerCase());
-    else if (owner !== 'all') arr = arr.filter(x => weeklyOwnerEmail(x) === String(owner).toLowerCase());
+    else if (owner !== 'all') arr = arr.filter(x => ownerMatches(x, owner, 'both'));
     if (f === 'mine') arr = arr.filter(x => weeklyOwnerEmail(x) === String(profile.email || '').toLowerCase());
     if (f === 'received') arr = arr.filter(x => weeklyDelegatedEmail(x) === String(profile.email || '').toLowerCase() && ['PENDING','ACCEPTED','ADMIN_ASSIGNED','COMPLETED'].includes(String(x.delegation_status || '').toUpperCase()));
     if (f === 'pending') arr = arr.filter(x => !x.checked_at);
@@ -2683,7 +2709,7 @@ async function exportReport(kind) {
   const stamp = new Date().toISOString().slice(0,10);
   if (kind === 'stock') {
     const rows = window._reportStock || [];
-    saveCsv(`CNMI_Inventory_Stock_${stamp}.csv`, [['รหัสวัสดุ','ชื่อวัสดุ','Lot','วันหมดอายุ','คงเหลือ','หน่วย','ผู้ดูแล','สถานะ','รหัสเดิมที่สแกนได้'], ...rows.map(x => [x.material_code,x.material_name,x.lot_no,x.expiry_date || '',x.balance,x.unit,x.responsible_name || '',isExpired(x)?'หมดอายุรอนำออก':'ใช้งาน',pgArray(x.legacy_lot_keys).join(' | ')])]);
+    saveCsv(`CNMI_Inventory_Stock_${stamp}.csv`, [['รหัสวัสดุ','ชื่อวัสดุ','Lot','วันหมดอายุ','คงเหลือ','หน่วย','ผู้ดูแล คนที่ 1','ผู้ดูแล คนที่ 2','สถานะ','รหัสเดิมที่สแกนได้'], ...rows.map(x => [x.material_code,x.material_name,x.lot_no,x.expiry_date || '',x.balance,x.unit,x.responsible_name || '',x.assistant_responsible_name || '',isExpired(x)?'หมดอายุรอนำออก':'ใช้งาน',pgArray(x.legacy_lot_keys).join(' | ')])]);
     toast('ส่งออกสต๊อกตาม Lot แล้ว');
     return;
   }
@@ -2707,6 +2733,7 @@ async function exportReport(kind) {
         mode === 'MONTHLY' ? Number(g.reorder_day || 1) : '',
         expiryAlertMonths(g),
         g.responsible_name || '',
+        g.assistant_responsible_name || '',
         status,
         Number(g.active_lots || 0),
         g.nearest_expiry || ''
@@ -2714,7 +2741,7 @@ async function exportReport(kind) {
     });
     saveCsv(`CNMI_Inventory_Minimum_Stock_${stamp}.csv`, [[
       'รหัสวัสดุ','ชื่อวัสดุ','คงเหลือรวม','Minimum Stock','จำนวนที่ขาดจากขั้นต่ำ','หน่วย',
-      'รูปแบบแจ้งเตือน','วันที่เตือนรายเดือน','เตือนใกล้หมดอายุล่วงหน้า (เดือน)','ผู้ดูแล','สถานะ','จำนวน Lot ที่ใช้งาน','วันหมดอายุใกล้สุด'
+      'รูปแบบแจ้งเตือน','วันที่เตือนรายเดือน','เตือนใกล้หมดอายุล่วงหน้า (เดือน)','ผู้ดูแล คนที่ 1','ผู้ดูแล คนที่ 2','สถานะ','จำนวน Lot ที่ใช้งาน','วันหมดอายุใกล้สุด'
     ], ...rows]);
     toast(`ส่งออก Minimum Stock แล้ว ${rows.length.toLocaleString('th-TH')} รายการ`);
     return;
@@ -2805,7 +2832,7 @@ async function renderAdmin() {
   materialsCache = [];
   window._adminMaterials = m || [];
   window._adminStaff = s || [];
-  page.innerHTML = `<div class="page-head"><div><h2>ตั้งค่าผู้ดูแลระบบ</h2><p class="muted small">เปลี่ยนคนดูแลวัสดุได้ตลอด และกำหนดสิทธิ์ผู้ใช้</p></div><span class="badge info">โหมด Admin</span></div><section class="admin-note"><strong>การทำงาน 2 โหมด</strong><p>บัญชี Admin สามารถสลับเป็น “เจ้าหน้าที่” เพื่อทำงานเหมือนทุกคน หรือ “ผู้ดูแลระบบ” เมื่อต้องตั้งค่าและดูงานรวม</p></section><div class="section-title"><h3>ผู้ใช้งาน</h3></div><div class="table-wrap"><table class="data-table"><thead><tr><th>ชื่อ</th><th>อีเมล</th><th>สิทธิ์บัญชี</th></tr></thead><tbody>${(s || []).map(x => `<tr><td>${esc(x.display_name)}</td><td>${esc(x.email)}</td><td><select data-role-email="${esc(x.email)}"><option value="staff" ${x.role === 'staff' ? 'selected' : ''}>เจ้าหน้าที่</option><option value="admin" ${x.role === 'admin' ? 'selected' : ''}>Admin (สลับได้ 2 โหมด)</option></select></td></tr>`).join('')}</tbody></table></div><div class="section-title admin-owner-head"><div><h3>กำหนดผู้ดูแลหลักและผู้ช่วยดูแล</h3><p class="muted small">ทั้งสองคนเห็นรายการและช่วยตรวจวันศุกร์ได้</p></div><div class="search-box">${icon('search')}<input id="adminMaterialSearch" placeholder="ค้นหารหัส ชื่อ หรือผู้ดูแล"></div></div><div class="table-wrap"><table class="data-table"><thead><tr><th>รหัส</th><th>ชื่อวัสดุ</th><th>ขั้นต่ำ</th><th>เตือน EXP</th><th>ผู้ดูแลหลัก</th><th>ผู้ช่วยดูแล</th><th>จัดการ</th></tr></thead><tbody id="adminMaterialBody"></tbody></table></div>`;
+  page.innerHTML = `<div class="page-head"><div><h2>ตั้งค่าผู้ดูแลระบบ</h2><p class="muted small">เปลี่ยนคนดูแลวัสดุได้ตลอด และกำหนดสิทธิ์ผู้ใช้</p></div><span class="badge info">โหมด Admin</span></div><section class="admin-note"><strong>การทำงาน 2 โหมด</strong><p>บัญชี Admin สามารถสลับเป็น “เจ้าหน้าที่” เพื่อทำงานเหมือนทุกคน หรือ “ผู้ดูแลระบบ” เมื่อต้องตั้งค่าและดูงานรวม</p></section><section class="card admin-workload-card"><div class="section-title compact"><div><h3>ภาระงานผู้ดูแล</h3><p class="muted small">นับจากวัสดุที่เป็นผู้ดูแลหลักและผู้ช่วยดูแล</p></div></div><div class="admin-workload-grid">${(s || []).map(person=>{const primary=(m||[]).filter(x=>normalizedEmail(x.responsible_email)===normalizedEmail(person.email)).length;const assistant=(m||[]).filter(x=>normalizedEmail(x.assistant_responsible_email)===normalizedEmail(person.email)).length;return `<button type="button" class="admin-workload-person" data-route="my-stock"><strong>${esc(person.display_name)}</strong><span>หลัก ${primary}</span><span>ผู้ช่วย ${assistant}</span><em>รวม ${primary+assistant}</em></button>`;}).join('')}</div></section><div class="section-title"><h3>ผู้ใช้งาน</h3></div><div class="table-wrap"><table class="data-table"><thead><tr><th>ชื่อ</th><th>อีเมล</th><th>สิทธิ์บัญชี</th></tr></thead><tbody>${(s || []).map(x => `<tr><td>${esc(x.display_name)}</td><td>${esc(x.email)}</td><td><select data-role-email="${esc(x.email)}"><option value="staff" ${x.role === 'staff' ? 'selected' : ''}>เจ้าหน้าที่</option><option value="admin" ${x.role === 'admin' ? 'selected' : ''}>Admin (สลับได้ 2 โหมด)</option></select></td></tr>`).join('')}</tbody></table></div><div class="section-title admin-owner-head"><div><h3>กำหนดผู้ดูแลหลักและผู้ช่วยดูแล</h3><p class="muted small">ทั้งสองคนเห็นรายการและช่วยตรวจวันศุกร์ได้</p></div><div class="search-box">${icon('search')}<input id="adminMaterialSearch" placeholder="ค้นหารหัส ชื่อ หรือผู้ดูแล"></div></div><div class="table-wrap"><table class="data-table"><thead><tr><th>รหัส</th><th>ชื่อวัสดุ</th><th>ขั้นต่ำ</th><th>เตือน EXP</th><th>ผู้ดูแลหลัก</th><th>ผู้ช่วยดูแล</th><th>จัดการ</th></tr></thead><tbody id="adminMaterialBody"></tbody></table></div>`;
   const drawMaterials = () => {
     const q = $('#adminMaterialSearch').value.toLowerCase();
     const arr = (m || []).filter(x => !q || `${x.code} ${x.name} ${x.responsible_email} ${x.assistant_responsible_email || ''}`.toLowerCase().includes(q));
