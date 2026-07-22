@@ -9,9 +9,9 @@
 :root{--paper-w:25mm;--paper-h:20mm}
 html,body{margin:0;padding:0;width:var(--paper-w);background:#eef2f3;font-family:Tahoma,"Leelawadee UI","Noto Sans Thai",Arial,sans-serif;color:#000;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 #printPages{width:var(--paper-w);margin:0;padding:0;line-height:0}
-.label-canvas{display:block;width:var(--paper-w);height:var(--paper-h);margin:0;padding:0;background:#fff;overflow:hidden;break-inside:avoid;page-break-inside:avoid;break-after:page;page-break-after:always;image-rendering:pixelated}
+.label-canvas{display:block;width:var(--paper-w);height:var(--paper-h);margin:0;padding:0;background:#fff;overflow:hidden;break-inside:avoid;page-break-inside:avoid;break-after:page;page-break-after:always}
 .label-canvas:last-child{break-after:auto;page-break-after:auto}
-.screen-status{position:fixed;left:29mm;top:5mm;width:390px;padding:14px 16px;border-radius:12px;background:#fff;color:#087b6f;box-shadow:0 8px 28px rgba(0,0,0,.16);font-size:13px;font-weight:700;line-height:1.45}
+.screen-status{position:fixed;left:29mm;top:5mm;width:370px;padding:14px 16px;border-radius:12px;background:#fff;color:#087b6f;box-shadow:0 8px 28px rgba(0,0,0,.16);font-size:13px;font-weight:700;line-height:1.45}
 .screen-status small{display:block;margin-top:4px;color:#667a76;font-weight:500}
 @page{size:25mm 20mm;margin:0}
 @media print{
@@ -24,8 +24,8 @@ html,body{margin:0;padding:0;width:var(--paper-w);background:#eef2f3;font-family
 </head>
 <body>
 <div id="printPages"></div>
-<div class="screen-status" id="screenStatus">กำลังสร้างสติ๊กเกอร์ QR ขนาดใหญ่…</div>
-<script src="assets/qr-lite.js?v=1.4.17"></script>
+<div class="screen-status" id="screenStatus">กำลังสร้างสติ๊กเกอร์แบบภาพคงที่…</div>
+<script src="assets/qr-lite.js?v=1.4.16"></script>
 <script>
 'use strict';
 const p=new URLSearchParams(location.search);
@@ -38,18 +38,10 @@ const name=safe(p.get('name'));
 const exp=safe(p.get('exp'),'ไม่ระบุ');
 const profile=p.get('profile')==='zebra'?'zebra':'tsc';
 const copies=Math.max(1,Math.min(100,Math.round(Number(p.get('copies'))||1)));
-const profileName=profile==='zebra'?'Zebra GC420t':'TSC 310';
+const profileName=profile==='zebra'?'Zebra 420t':'TSC 310';
 const statusEl=document.getElementById('screenStatus');
 const pages=document.getElementById('printPages');
-
-/*
-  วาดภาพตามจำนวนจุดจริงของหัวพิมพ์ เพื่อลดการย่อภาพจาก Browser
-  ซึ่งเป็นสาเหตุให้เส้นตรงและช่อง QR กลายเป็นจุด/เส้นประบนกระดาษ
-*/
-const DEVICE=profile==='zebra'
-  ? {dpi:203,w:200,h:160}
-  : {dpi:300,w:295,h:236};
-const PX_W=DEVICE.w, PX_H=DEVICE.h;
+const PX_W=1000, PX_H=800;
 
 function makeCanvas(){
   const canvas=document.createElement('canvas');
@@ -60,10 +52,10 @@ function makeCanvas(){
   return canvas;
 }
 
-function setFont(ctx,weight,size){ctx.font=`${weight} ${Math.max(1,Math.round(size))}px Tahoma, "Leelawadee UI", Arial, sans-serif`;}
+function setFont(ctx,weight,size){ctx.font=`${weight} ${Math.round(size)}px Tahoma, "Leelawadee UI", Arial, sans-serif`;}
 function fitSingleLine(ctx,text,maxWidth,start,min,weight=900){
   let size=start;
-  while(size>min){setFont(ctx,weight,size);if(ctx.measureText(text).width<=maxWidth)return size;size-=.5;}
+  while(size>min){setFont(ctx,weight,size);if(ctx.measureText(text).width<=maxWidth)return size;size-=2;}
   return min;
 }
 function splitToken(ctx,token,maxWidth){
@@ -88,119 +80,93 @@ function wrapText(ctx,text,maxWidth){
 }
 function fitName(ctx,text,maxWidth,maxHeight,start,min,maxLines){
   let size=start,lines=[];
-  const absoluteMin=Math.max(profile==='zebra'?8.5:12,min-3);
+  const absoluteMin=Math.max(30,min-14);
   while(size>=absoluteMin){
     setFont(ctx,900,size);
     lines=wrapText(ctx,text,maxWidth);
     const allowedLines=size>=min?maxLines:maxLines+1;
-    const lineHeight=size*1.04;
+    const lineHeight=size*1.02;
     const widest=Math.max(0,...lines.map(x=>ctx.measureText(x).width));
-    if(lines.length&&lines.length<=allowedLines&&widest<=maxWidth+.5&&lines.length*lineHeight<=maxHeight+.5)return {size,lines,lineHeight};
-    size-=.5;
+    if(lines.length&&lines.length<=allowedLines&&widest<=maxWidth+1&&lines.length*lineHeight<=maxHeight+1)return {size,lines,lineHeight};
+    size-=2;
   }
   setFont(ctx,900,absoluteMin);
-  lines=wrapText(ctx,text,maxWidth).slice(0,maxLines+1);
-  return {size:absoluteMin,lines,lineHeight:absoluteMin*1.04};
+  lines=wrapText(ctx,text,maxWidth);
+  return {size:absoluteMin,lines,lineHeight:absoluteMin*1.02};
 }
 function drawText(ctx,text,x,y,weight,size,align='left'){
   setFont(ctx,weight,size);ctx.textAlign=align;ctx.textBaseline='alphabetic';ctx.fillStyle='#000';ctx.fillText(text,x,y);
 }
-
+function loadSvgImage(svg){
+  return new Promise((resolve,reject)=>{
+    const blob=new Blob([svg],{type:'image/svg+xml;charset=utf-8'});
+    const url=URL.createObjectURL(blob);
+    const img=new Image();
+    img.onload=()=>{URL.revokeObjectURL(url);resolve(img);};
+    img.onerror=e=>{URL.revokeObjectURL(url);reject(e);};
+    img.src=url;
+  });
+}
+async function qrImage(){
+  const svg=window.CNMIQRCode.svg(qrText,{level:'L',margin:1});
+  return await loadSvgImage(svg);
+}
 function profileLayout(){
   if(profile==='zebra'){
-    return {
-      x:4,y:4,w:192,h:152,sepRatio:.44,
-      nameStart:17,nameMin:11.5,codeSize:8.5,metaSize:11.5,keyStart:8,keyMin:6.5,
-      separator:2,quietModules:4,maxNameLines:4
-    };
+    return {x:62,y:46,w:876,h:708,sepRatio:.635,qrSize:282,nameStart:78,nameMin:48,codeSize:37,metaSize:48,keyStart:28,keyMin:20,lineWidth:4};
   }
-  return {
-    x:5,y:5,w:285,h:226,sepRatio:.46,
-    nameStart:25,nameMin:16,codeSize:11.5,metaSize:16,keyStart:11,keyMin:8.5,
-    separator:2,quietModules:4,maxNameLines:4
-  };
+  return {x:34,y:26,w:932,h:748,sepRatio:.635,qrSize:302,nameStart:86,nameMin:52,codeSize:41,metaSize:52,keyStart:30,keyMin:21,lineWidth:4};
 }
-
-/*
-  วาด QR จาก matrix โดยตรง ทุก module เป็นจำนวน pixel เต็ม
-  ไม่มี SVG/Canvas downsampling และเว้น quiet zone 4 modules ตามมาตรฐาน
-*/
-function drawQrMatrix(ctx,matrix,boxX,boxY,boxW,boxH,quietModules){
-  const count=matrix.length;
-  const totalModules=count+quietModules*2;
-  const modulePx=Math.max(2,Math.floor(Math.min(boxW,boxH)/totalModules));
-  const qrPx=totalModules*modulePx;
-  const x=Math.round(boxX+(boxW-qrPx)/2);
-  const y=Math.round(boxY+(boxH-qrPx)/2);
-  ctx.save();
-  ctx.imageSmoothingEnabled=false;
-  ctx.fillStyle='#fff';
-  ctx.fillRect(x,y,qrPx,qrPx);
-  ctx.fillStyle='#000';
-  for(let r=0;r<count;r++){
-    for(let c=0;c<count;c++){
-      if(matrix[r][c])ctx.fillRect(x+(c+quietModules)*modulePx,y+(r+quietModules)*modulePx,modulePx,modulePx);
-    }
-  }
-  ctx.restore();
-  return {x,y,size:qrPx,modulePx};
-}
-
-function drawLabel(canvas,matrix){
+async function drawLabel(canvas,qrImg){
   const ctx=canvas.getContext('2d',{alpha:false});
-  ctx.fillStyle='#fff';ctx.fillRect(0,0,PX_W,PX_H);
+  ctx.save();ctx.fillStyle='#fff';ctx.fillRect(0,0,PX_W,PX_H);ctx.restore();
   const L=profileLayout();
   const sepX=Math.round(L.x+L.w*L.sepRatio);
-  const leftX=L.x+2;
-  const leftW=sepX-leftX-4;
-  const rightX=sepX+4;
-  const rightW=L.x+L.w-rightX-1;
-  const codeH=L.codeSize*1.2,metaH=L.metaSize*1.12;
-  const fixedHeight=codeH+metaH*2+(profile==='zebra'?7:10);
-  const nameMaxH=Math.max(profile==='zebra'?48:72,L.h-fixedHeight);
-  const fitted=fitName(ctx,name,leftW,nameMaxH,L.nameStart,L.nameMin,L.maxNameLines);
-  const totalH=fitted.lines.length*fitted.lineHeight+codeH+metaH*2+(profile==='zebra'?5:8);
+  const leftX=L.x+12;
+  const leftW=sepX-leftX-24;
+  const rightX=sepX+18;
+  const rightW=L.x+L.w-rightX-6;
+  const codeH=L.codeSize*1.15, metaH=L.metaSize*1.10;
+  const fixedHeight=codeH+metaH*2+30;
+  const nameMaxH=Math.max(140,L.h-fixedHeight);
+  const fitted=fitName(ctx,name,leftW,nameMaxH,L.nameStart,L.nameMin,3);
+  const totalH=fitted.lines.length*fitted.lineHeight+codeH+metaH*2+22;
   let y=L.y+Math.max(0,(L.h-totalH)/2)+fitted.size;
   fitted.lines.forEach(line=>{drawText(ctx,line,leftX,y,900,fitted.size);y+=fitted.lineHeight;});
-  y+=profile==='zebra'?1:2;
+  y+=5;
   drawText(ctx,`รหัส ${code}`,leftX,y,800,L.codeSize);y+=codeH;
   drawText(ctx,`Lot ${lot}`,leftX,y,900,L.metaSize);y+=metaH;
   drawText(ctx,`EXP ${exp}`,leftX,y,900,L.metaSize);
-
-  /* เส้นแบ่งเป็นแท่งทึบเต็มจำนวนจุด ไม่ใช้เส้นบางที่ถูกพิมพ์เป็นจุดประ */
-  ctx.fillStyle='#000';
-  ctx.fillRect(sepX,L.y,L.separator,L.h);
-
-  const keyAreaH=profile==='zebra'?13:19;
-  const qrBoxH=L.h-keyAreaH-2;
-  const qr=drawQrMatrix(ctx,matrix,rightX,L.y,rightW,qrBoxH,L.quietModules);
-  const keySize=fitSingleLine(ctx,key,rightW,L.keyStart,L.keyMin,900);
-  const keyY=Math.min(L.y+L.h-1,qr.y+qr.size+keySize+1);
-  drawText(ctx,key,rightX+rightW/2,keyY,900,keySize,'center');
+  ctx.save();ctx.strokeStyle='#222';ctx.lineWidth=L.lineWidth;ctx.beginPath();ctx.moveTo(sepX,L.y);ctx.lineTo(sepX,L.y+L.h);ctx.stroke();ctx.restore();
+  const keyAreaH=52;
+  const qrX=Math.round(rightX+(rightW-L.qrSize)/2);
+  const qrY=Math.round(L.y+(L.h-L.qrSize-keyAreaH-8)/2);
+  ctx.save();ctx.imageSmoothingEnabled=false;ctx.drawImage(qrImg,qrX,qrY,L.qrSize,L.qrSize);ctx.restore();
+  const keySize=fitSingleLine(ctx,key,rightW-6,L.keyStart,L.keyMin,900);
+  drawText(ctx,key,rightX+rightW/2,qrY+L.qrSize+keySize+4,900,keySize,'center');
 }
-
 async function prepare(){
   if(document.fonts&&document.fonts.ready){try{await document.fonts.ready;}catch(_){}}
-  const matrix=window.CNMIQRCode.matrix(qrText,'L');
+  const qrImg=await qrImage();
   const canvases=Array.from({length:copies},makeCanvas);
   canvases.forEach(c=>pages.appendChild(c));
-  canvases.forEach(canvas=>drawLabel(canvas,matrix));
+  for(const canvas of canvases)await drawLabel(canvas,qrImg);
   await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
 }
 async function startPrint(){
   try{
     await prepare();
-    statusEl.innerHTML=`กำลังเปิดหน้าพิมพ์ ${profileName}…<small>${copies} ดวง · QR ขนาดใหญ่ · ช่อง QR เป็นจุดเต็มตามความละเอียด ${DEVICE.dpi} dpi</small>`;
+    statusEl.innerHTML=`กำลังเปิดหน้าพิมพ์ ${profileName}…<small>${copies} ดวง · ขนาดกระดาษ 25 × 20 mm · Scale 100% / Actual size</small>`;
     await new Promise(resolve=>setTimeout(resolve,180));
     window.focus();window.print();
   }catch(e){statusEl.innerHTML='สร้างสติ๊กเกอร์ไม่สำเร็จ กรุณาปิดหน้านี้แล้วลองใหม่';console.error(e);}
 }
 window.addEventListener('afterprint',()=>setTimeout(()=>window.close(),180));
 window.addEventListener('load',()=>{
-  statusEl.innerHTML=`โปรไฟล์ ${profileName}<small>QR ใหญ่ขึ้น เว้นขอบขาว 4 ช่อง และวาดตรงตามจำนวนจุดของหัวพิมพ์</small>`;
+  statusEl.innerHTML=`โปรไฟล์ ${profileName}<small>ใช้ภาพคงที่ ป้องกันข้อความแยกข้ามดวงและฟอนต์ถูกขยาย</small>`;
   if(p.get('auto')==='1')startPrint();else prepare();
 },{once:true});
-setTimeout(()=>{if(p.get('auto')==='1'&&!document.hidden)statusEl.innerHTML=`หากหน้าพิมพ์ยังไม่เปิด กรุณากด Ctrl + P<small>เลือก ${profileName} และ Scale 100% / Actual size</small>`;},6000);
+setTimeout(()=>{if(p.get('auto')==='1'&&!document.hidden)statusEl.innerHTML=`หากหน้าพิมพ์ยังไม่เปิด กรุณากด Ctrl + P<small>เลือก ${profileName} และ Scale 100%</small>`;},6000);
 </script>
 </body>
 </html>
