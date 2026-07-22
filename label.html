@@ -29,7 +29,7 @@ html,body{margin:0;padding:0;width:var(--paper-w);background:#eef2f3;font-family
 <body>
 <div id="printPages"></div>
 <div class="screen-status" id="screenStatus">กำลังสร้างสติ๊กเกอร์แบบคมชัด…</div>
-<script src="assets/qr-lite.js?v=1.4.26"></script>
+<script src="assets/qr-lite.js?v=1.4.27"></script>
 <script>
 'use strict';
 const p=new URLSearchParams(location.search);
@@ -40,16 +40,13 @@ const key=safe(p.get('key'),`${code}-${lot}`);
 const qrText=safe(p.get('qr'),key);
 const name=safe(p.get('name'));
 const exp=safe(p.get('exp'),'ไม่ระบุ');
-const profile=p.get('profile')==='zebra'?'zebra':'tsc';
 const copies=Math.max(1,Math.min(100,Math.round(Number(p.get('copies'))||1)));
-const profileName=profile==='zebra'?'Zebra GC420t':'TSC 310';
+const profileName='สติ๊กเกอร์มาตรฐาน';
 const statusEl=document.getElementById('screenStatus');
 const pages=document.getElementById('printPages');
 
-/* ขนาดจุดจริงของหัวพิมพ์: Zebra 203 dpi / TSC 300 dpi */
-const DEVICE=profile==='zebra'
-  ? {dpi:203,w:200,h:160,labelHeight:'19.62mm'}
-  : {dpi:300,w:295,h:236,labelHeight:'19.78mm'};
+/* ใช้พื้นที่วาดมาตรฐานชุดเดียวทุกเครื่องพิมพ์ โดย Chrome/Driver ปรับตามกระดาษจริง */
+const DEVICE={dpi:300,w:295,h:236,labelHeight:'19.78mm'};
 const PX_W=DEVICE.w, PX_H=DEVICE.h;
 document.documentElement.style.setProperty('--label-h',DEVICE.labelHeight);
 
@@ -106,7 +103,7 @@ function wrapText(text,maxWidth){
 }
 function fitName(text,maxWidth,maxHeight,start,min,maxLines){
   let size=start,lines=[];
-  const absoluteMin=Math.max(profile==='zebra'?9.5:13,min-2);
+  const absoluteMin=Math.max(13,min-2);
   while(size>=absoluteMin){
     setMeasureFont(700,size);
     lines=wrapText(text,maxWidth);
@@ -134,14 +131,6 @@ function svgText(parent,text,x,y,{weight=700,size=12,anchor='start',clipId=''}={
 }
 
 function profileLayout(){
-  if(profile==='zebra'){
-    return {
-      x:5,y:5,w:190,h:150,sepRatio:.43,
-      nameStart:17,nameMin:11.5,codeStart:11,codeMin:8.5,
-      metaStart:11.5,metaMin:8.5,
-      separator:1,quietModules:3,maxNameLines:4
-    };
-  }
   return {
     x:6,y:6,w:283,h:224,sepRatio:.43,
     nameStart:25,nameMin:17,codeStart:16,codeMin:12,
@@ -188,23 +177,23 @@ function drawLabel(item,matrix){
   /* ซ้าย: ชื่อวัสดุ และรหัส BB */
   const codeSize=fitSingleLine(code,leftW,L.codeStart,L.codeMin,700);
   const codeBlockH=codeSize*1.35;
-  const nameMaxH=Math.max(profile==='zebra'?82:125,L.h-codeBlockH-6);
+  const nameMaxH=Math.max(125,L.h-codeBlockH-6);
   const fitted=fitName(name,leftW,nameMaxH,L.nameStart,L.nameMin,L.maxNameLines);
   const nameH=fitted.lines.length*fitted.lineHeight;
-  const totalLeftH=nameH+codeBlockH+(profile==='zebra'?5:8);
+  const totalLeftH=nameH+codeBlockH+8;
   let y=L.y+Math.max(0,(L.h-totalLeftH)/2)+fitted.size;
   fitted.lines.forEach(line=>{
     svgText(svg,line,leftX,y,{weight:700,size:fitted.size,clipId:leftClipId});
     y+=fitted.lineHeight;
   });
-  y+=profile==='zebra'?3:5;
+  y+=5;
   svgText(svg,code,leftX,y+codeSize*.9,{weight:700,size:codeSize,clipId:leftClipId});
 
   svgRect(svg,sepX,L.y,L.separator,L.h,'#000');
 
   /* ขวา: QR ด้านบน และ Lot / EXP ตัวใหญ่ด้านล่าง */
-  const metaGap=profile==='zebra'?2:3;
-  const metaLineH=profile==='zebra'?14.5:21;
+  const metaGap=3;
+  const metaLineH=21;
   const metaAreaH=metaLineH*2+metaGap+2;
   const qrBoxH=L.h-metaAreaH;
   drawQrVector(svg,matrix,rightX,L.y,rightW,qrBoxH,L.quietModules);
@@ -230,17 +219,17 @@ async function prepare(){
 async function startPrint(){
   try{
     await prepare();
-    statusEl.innerHTML=`กำลังเปิดหน้าพิมพ์ ${profileName}…<small>${copies} ดวง · QR module ใหญ่ขึ้น · ตัวหนังสือแบบเวกเตอร์ · ไม่เว้นสติ๊กเกอร์เปล่า</small>`;
+    statusEl.innerHTML=`กำลังเปิดหน้าพิมพ์…<small>${copies} ดวง · QR module ใหญ่ขึ้น · ตัวหนังสือแบบเวกเตอร์ · ไม่เว้นสติ๊กเกอร์เปล่า</small>`;
     await new Promise(resolve=>setTimeout(resolve,180));
     window.focus();window.print();
   }catch(e){statusEl.innerHTML='สร้างสติ๊กเกอร์ไม่สำเร็จ กรุณาปิดหน้านี้แล้วลองใหม่';console.error(e);}
 }
 window.addEventListener('afterprint',()=>setTimeout(()=>window.close(),180));
 window.addEventListener('load',()=>{
-  statusEl.innerHTML=`โปรไฟล์ ${profileName}<small>v1.4.26: สแกนภาพเต็ม ย้ายรหัสใต้ชื่อ และขยาย Lot / EXP ใต้ QR</small>`;
+  statusEl.innerHTML=`สติ๊กเกอร์มาตรฐาน<small>v1.4.27: ใช้รูปแบบเดียวทุกเครื่องพิมพ์ เลือกเครื่องและตั้งกระดาษใน Chrome</small>`;
   if(p.get('auto')==='1')startPrint();else prepare();
 },{once:true});
-setTimeout(()=>{if(p.get('auto')==='1'&&!document.hidden)statusEl.innerHTML=`หากหน้าพิมพ์ยังไม่เปิด กรุณากด Ctrl + P<small>เลือก ${profileName} และ Scale 100% / Actual size</small>`;},6000);
+setTimeout(()=>{if(p.get('auto')==='1'&&!document.hidden)statusEl.innerHTML=`หากหน้าพิมพ์ยังไม่เปิด กรุณากด Ctrl + P<small>เลือกเครื่องพิมพ์ ตั้งกระดาษ 25 × 20 mm และใช้ Scale 100% / Actual size</small>`;},6000);
 </script>
 </body>
 </html>
