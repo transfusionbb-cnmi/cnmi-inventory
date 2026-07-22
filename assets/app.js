@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.28';
+const APP_VERSION = '1.4.29';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const DEFAULT_EXPIRY_ALERT_MONTHS = 1;
 const MAX_EXPIRY_ALERT_MONTHS = 8;
@@ -287,7 +287,7 @@ function ensureQrDecoder() {
       return;
     }
     const script = document.createElement('script');
-    script.src = 'third_party/jsQR-1.4.0.js?v=1.4.28';
+    script.src = 'third_party/jsQR-1.4.0.js?v=1.4.29';
     script.async = false;
     script.dataset.jsqrLoader = '1';
     script.onload = () => resolve(typeof window.jsQR === 'function');
@@ -1082,7 +1082,7 @@ async function renderHome() {
 
 function lotCard(l) {
   const aliases = pgArray(l.legacy_lot_keys);
-  return `<div class="card lot-card ${isExpired(l) ? 'expired-card' : ''}"><div class="lot-main"><div class="lot-code">${icon('qr')} ${esc(lotKey(l))}</div><div class="lot-title">${esc(l.material_name)}</div><div class="lot-meta">Lot ${esc(l.lot_no)} · EXP ${d(l.expiry_date)}</div><div class="lot-meta">ผู้ดูแล: ${esc(l.responsible_name || '-')}</div>${aliases.length ? `<div class="legacy-note">สติ๊กเกอร์รหัสเดิมยังใช้ได้: ${aliases.map(esc).join(', ')}</div>` : ''}<div style="margin-top:8px">${statusBadge(l)}</div><div class="actions">${!isExpired(l) ? `<button class="mini" data-print="${esc(l.lot_id)}">${icon('print')} พิมพ์ QR</button>${Number(l.balance) > 0 ? `<button class="mini ghost" data-issue-lot="${esc(l.lot_id)}">${icon('minus')} นำออก</button>` : ''}` : `<button class="mini danger" data-route="weekly">${icon('check')} ยืนยันนำออกในตรวจวันศุกร์</button>`}</div></div><div class="qty-wrap"><div class="qty">${qty(l.balance)}</div><div class="muted small">${esc(l.unit)}</div></div></div>`;
+  return `<div class="card lot-card ${isExpired(l) ? 'expired-card' : ''}"><div class="lot-main"><div class="lot-code">${icon('qr')} ${esc(lotKey(l))}</div><div class="lot-title">${esc(l.material_name)}</div><div class="lot-meta">Lot ${esc(l.lot_no)} · EXP ${d(l.expiry_date)}</div><div class="lot-meta">ผู้ดูแลหลัก: ${esc(l.responsible_name || '-')} · ผู้ช่วย: ${esc(l.assistant_responsible_name || '-')}</div>${aliases.length ? `<div class="legacy-note">สติ๊กเกอร์รหัสเดิมยังใช้ได้: ${aliases.map(esc).join(', ')}</div>` : ''}<div style="margin-top:8px">${statusBadge(l)}</div><div class="actions">${!isExpired(l) ? `<button class="mini" data-print="${esc(l.lot_id)}">${icon('print')} พิมพ์ QR</button>${Number(l.balance) > 0 ? `<button class="mini ghost" data-issue-lot="${esc(l.lot_id)}">${icon('minus')} นำออก</button>` : ''}` : `<button class="mini danger" data-route="weekly">${icon('check')} ยืนยันนำออกในตรวจวันศุกร์</button>`}</div></div><div class="qty-wrap"><div class="qty">${qty(l.balance)}</div><div class="muted small">${esc(l.unit)}</div></div></div>`;
 }
 
 function lotTableRows(lots) {
@@ -1203,7 +1203,7 @@ async function openOwnerDetail(ownerKey) {
 
 async function renderMyStock(tab = 'overview') {
   myStockTab = ['overview','reorder','settings'].includes(tab) ? tab : 'overview';
-  const {data,error} = await sb.from('v_inventory_summary').select('*').eq('responsible_email', profile.email).order('material_name');
+  const {data,error} = await sb.from('v_inventory_summary').select('*').or(`responsible_email.eq.${profile.email},assistant_responsible_email.eq.${profile.email}`).order('material_name');
   if (error) throw error;
   const groups = buildMaterialGroups(data || [], []);
   const reorder = groups.filter(g => g.needs_reorder);
@@ -1615,7 +1615,7 @@ function openScannedLotResult(l, summary, item) {
     else if (isExpired(l)) checkActions = `<button class="danger" type="button" data-expired-remove="${esc(item.item_id)}">ยืนยันนำออก</button>`;
     else checkActions = `<button class="primary" type="button" data-scan-confirm-check="${esc(item.item_id)}">ยืนยันตรวจแล้ว</button><button class="secondary" type="button" data-check="${esc(item.item_id)}">ปรับยอด</button>`;
   } else checkActions = `<button class="secondary" type="button" data-route="weekly">เปิดหน้าตรวจวันศุกร์</button>`;
-  openModal(`<div class="scanned-result-head"><div><span class="eyebrow">ผลการสแกน</span><h3>${esc(l.material_name)}</h3><p>รหัส ${esc(l.material_code)}</p></div><em class="badge ${st.badge}">${st.label}</em></div><div class="scanned-lot-code"><span>Lot</span><strong>${esc(l.lot_no)}</strong><small>EXP ${d(l.expiry_date)}</small></div><div class="scanned-kpis"><div><span>คงเหลือ Lot นี้</span><strong>${qty(l.balance)}</strong><small>${esc(l.unit)}</small></div><div><span>คงเหลือรวม</span><strong>${qty(summary?.total_balance ?? l.balance)}</strong><small>${esc(l.unit)}</small></div><div><span>จำนวนขั้นต่ำ</span><strong>${qty(summary?.min_qty ?? l.min_qty)}</strong><small>${esc(l.unit)}</small></div></div><div class="scanned-owner"><span>${icon('user')}</span><div><small>ผู้ดูแล</small><strong>${esc(l.responsible_name || 'ยังไม่กำหนด')}</strong></div></div><div class="scanned-actions">${checkActions}<button class="mini ghost" type="button" data-material-detail="${esc(l.material_code)}">ดู Lot อื่นของวัสดุนี้</button><button class="mini ghost" type="button" data-scan-again>${icon('camera')} สแกน Lot ถัดไป</button></div>`);
+  openModal(`<div class="scanned-result-head"><div><span class="eyebrow">ผลการสแกน</span><h3>${esc(l.material_name)}</h3><p>รหัส ${esc(l.material_code)}</p></div><em class="badge ${st.badge}">${st.label}</em></div><div class="scanned-lot-code"><span>Lot</span><strong>${esc(l.lot_no)}</strong><small>EXP ${d(l.expiry_date)}</small></div><div class="scanned-kpis"><div><span>คงเหลือ Lot นี้</span><strong>${qty(l.balance)}</strong><small>${esc(l.unit)}</small></div><div><span>คงเหลือรวม</span><strong>${qty(summary?.total_balance ?? l.balance)}</strong><small>${esc(l.unit)}</small></div><div><span>จำนวนขั้นต่ำ</span><strong>${qty(summary?.min_qty ?? l.min_qty)}</strong><small>${esc(l.unit)}</small></div></div><div class="scanned-owner"><span>${icon('user')}</span><div><small>ผู้ดูแลหลัก / ผู้ช่วยดูแล</small><strong>${esc(l.responsible_name || 'ยังไม่กำหนด')} · ${esc(l.assistant_responsible_name || 'ยังไม่กำหนด')}</strong></div></div><div class="scanned-actions">${checkActions}<button class="mini ghost" type="button" data-material-detail="${esc(l.material_code)}">ดู Lot อื่นของวัสดุนี้</button><button class="mini ghost" type="button" data-scan-again>${icon('camera')} สแกน Lot ถัดไป</button></div>`);
 }
 
 async function confirmScannedCheck(itemId) {
@@ -2233,6 +2233,8 @@ function canHandleItem(x) {
     return true;
   }
   if (owner && owner === me) return true;
+  const assistant = String(x?.assistant_responsible_email || '').trim().toLowerCase();
+  if (assistant && assistant === me) return true;
   return ['ACCEPTED','ADMIN_ASSIGNED'].includes(String(x?.delegation_status || '').toUpperCase())
     && weeklyDelegatedEmail(x) === me;
 }
@@ -2803,11 +2805,11 @@ async function renderAdmin() {
   materialsCache = [];
   window._adminMaterials = m || [];
   window._adminStaff = s || [];
-  page.innerHTML = `<div class="page-head"><div><h2>ตั้งค่าผู้ดูแลระบบ</h2><p class="muted small">เปลี่ยนคนดูแลวัสดุได้ตลอด และกำหนดสิทธิ์ผู้ใช้</p></div><span class="badge info">โหมด Admin</span></div><section class="admin-note"><strong>การทำงาน 2 โหมด</strong><p>บัญชี Admin สามารถสลับเป็น “เจ้าหน้าที่” เพื่อทำงานเหมือนทุกคน หรือ “ผู้ดูแลระบบ” เมื่อต้องตั้งค่าและดูงานรวม</p></section><div class="section-title"><h3>ผู้ใช้งาน</h3></div><div class="table-wrap"><table class="data-table"><thead><tr><th>ชื่อ</th><th>อีเมล</th><th>สิทธิ์บัญชี</th></tr></thead><tbody>${(s || []).map(x => `<tr><td>${esc(x.display_name)}</td><td>${esc(x.email)}</td><td><select data-role-email="${esc(x.email)}"><option value="staff" ${x.role === 'staff' ? 'selected' : ''}>เจ้าหน้าที่</option><option value="admin" ${x.role === 'admin' ? 'selected' : ''}>Admin (สลับได้ 2 โหมด)</option></select></td></tr>`).join('')}</tbody></table></div><div class="section-title admin-owner-head"><div><h3>กำหนดผู้ดูแลวัสดุหลัก</h3><p class="muted small">เปลี่ยนแล้วมีผลกับตัวกรองตรวจวันศุกร์ทันที</p></div><div class="search-box">${icon('search')}<input id="adminMaterialSearch" placeholder="ค้นหารหัส ชื่อ หรือผู้ดูแล"></div></div><div class="table-wrap"><table class="data-table"><thead><tr><th>รหัส</th><th>ชื่อวัสดุ</th><th>ขั้นต่ำ</th><th>เตือน EXP</th><th>ผู้ดูแล</th><th>จัดการ</th></tr></thead><tbody id="adminMaterialBody"></tbody></table></div>`;
+  page.innerHTML = `<div class="page-head"><div><h2>ตั้งค่าผู้ดูแลระบบ</h2><p class="muted small">เปลี่ยนคนดูแลวัสดุได้ตลอด และกำหนดสิทธิ์ผู้ใช้</p></div><span class="badge info">โหมด Admin</span></div><section class="admin-note"><strong>การทำงาน 2 โหมด</strong><p>บัญชี Admin สามารถสลับเป็น “เจ้าหน้าที่” เพื่อทำงานเหมือนทุกคน หรือ “ผู้ดูแลระบบ” เมื่อต้องตั้งค่าและดูงานรวม</p></section><div class="section-title"><h3>ผู้ใช้งาน</h3></div><div class="table-wrap"><table class="data-table"><thead><tr><th>ชื่อ</th><th>อีเมล</th><th>สิทธิ์บัญชี</th></tr></thead><tbody>${(s || []).map(x => `<tr><td>${esc(x.display_name)}</td><td>${esc(x.email)}</td><td><select data-role-email="${esc(x.email)}"><option value="staff" ${x.role === 'staff' ? 'selected' : ''}>เจ้าหน้าที่</option><option value="admin" ${x.role === 'admin' ? 'selected' : ''}>Admin (สลับได้ 2 โหมด)</option></select></td></tr>`).join('')}</tbody></table></div><div class="section-title admin-owner-head"><div><h3>กำหนดผู้ดูแลหลักและผู้ช่วยดูแล</h3><p class="muted small">ทั้งสองคนเห็นรายการและช่วยตรวจวันศุกร์ได้</p></div><div class="search-box">${icon('search')}<input id="adminMaterialSearch" placeholder="ค้นหารหัส ชื่อ หรือผู้ดูแล"></div></div><div class="table-wrap"><table class="data-table"><thead><tr><th>รหัส</th><th>ชื่อวัสดุ</th><th>ขั้นต่ำ</th><th>เตือน EXP</th><th>ผู้ดูแลหลัก</th><th>ผู้ช่วยดูแล</th><th>จัดการ</th></tr></thead><tbody id="adminMaterialBody"></tbody></table></div>`;
   const drawMaterials = () => {
     const q = $('#adminMaterialSearch').value.toLowerCase();
-    const arr = (m || []).filter(x => !q || `${x.code} ${x.name} ${x.responsible_email}`.toLowerCase().includes(q));
-    $('#adminMaterialBody').innerHTML = arr.map(x => `<tr><td>${esc(x.code)}</td><td><strong>${esc(x.name)}</strong><div class="muted tiny">ชื่อบนสติ๊กเกอร์: ${esc(x.label_name || x.name)}</div></td><td>${qty(x.min_qty)} ${esc(x.unit)}</td><td>${expiryAlertMonths(x)} เดือน</td><td><select data-owner-code="${esc(x.code)}">${ownerOptions(s, x.responsible_email || '')}</select></td><td><button class="mini" data-edit-material="${esc(x.code)}">แก้ไข</button></td></tr>`).join('');
+    const arr = (m || []).filter(x => !q || `${x.code} ${x.name} ${x.responsible_email} ${x.assistant_responsible_email || ''}`.toLowerCase().includes(q));
+    $('#adminMaterialBody').innerHTML = arr.map(x => `<tr><td>${esc(x.code)}</td><td><strong>${esc(x.name)}</strong><div class="muted tiny">ชื่อบนสติ๊กเกอร์: ${esc(x.label_name || x.name)}</div></td><td>${qty(x.min_qty)} ${esc(x.unit)}</td><td>${expiryAlertMonths(x)} เดือน</td><td><select data-owner-code="${esc(x.code)}">${ownerOptions(s, x.responsible_email || '')}</select></td><td><select data-assistant-owner-code="${esc(x.code)}">${ownerOptions(s, x.assistant_responsible_email || '')}</select></td><td><button class="mini" data-edit-material="${esc(x.code)}">แก้ไข</button></td></tr>`).join('');
     bindAdminOwnerEvents();
   };
   $('#adminMaterialSearch').addEventListener('input', drawMaterials);
@@ -2828,7 +2830,19 @@ function bindAdminOwnerEvents() {
     materialsCache = [];
     const row = (window._adminMaterials || []).find(x => x.code === sel.dataset.ownerCode);
     if (row) row.responsible_email = sel.value || null;
-    toast('เปลี่ยนผู้ดูแลแล้ว มีผลกับตรวจวันศุกร์ทันที');
+    toast('เปลี่ยนผู้ดูแลหลักแล้ว มีผลกับตรวจวันศุกร์ทันที');
+  }));
+  $$('[data-assistant-owner-code]').forEach(sel => sel.addEventListener('change', async () => {
+    const row = (window._adminMaterials || []).find(x => x.code === sel.dataset.assistantOwnerCode);
+    if (row?.responsible_email && sel.value === row.responsible_email) {
+      sel.value = row.assistant_responsible_email || '';
+      return toast('ผู้ดูแลหลักกับผู้ช่วยดูแลต้องเป็นคนละคน', true);
+    }
+    const {error} = await sb.from('materials').update({assistant_responsible_email: sel.value || null}).eq('code', sel.dataset.assistantOwnerCode);
+    if (error) return toast(errMsg(error), true);
+    stockCache = []; scanLotsCache=[]; scanLotsLoadedAt=0; materialsCache = [];
+    if (row) row.assistant_responsible_email = sel.value || null;
+    toast('เปลี่ยนผู้ช่วยดูแลแล้ว');
   }));
 }
 
@@ -2836,14 +2850,15 @@ function openMaterialEditor(code) {
   const x = (window._adminMaterials || []).find(m => m.code === code);
   const staff = window._adminStaff || [];
   if (!x) return;
-  openModal(`<h3>${esc(x.code)} · ${esc(x.name)}</h3><form id="matForm" class="form-grid"><label>ชื่อบนสติ๊กเกอร์<input id="matLabel" maxlength="80" value="${esc(x.label_name || x.name)}"></label><label>จำนวนขั้นต่ำ<input id="matMin" type="number" min="0" step="0.01" value="${Number(x.min_qty || 0)}"></label><label>แจ้งใกล้หมดอายุล่วงหน้า<select id="matExpiryAlert"><option value="1" ${expiryAlertMonths(x)===1?'selected':''}>1 เดือน — รายการทั่วไป</option><option value="8" ${expiryAlertMonths(x)===8?'selected':''}>8 เดือน — ต้องเคลมหรือจัดการล่วงหน้า</option></select></label><label>ผู้รับผิดชอบ<select id="matOwner">${ownerOptions(staff, x.responsible_email || '')}</select></label><button class="primary" type="submit">บันทึก</button></form>`);
+  openModal(`<h3>${esc(x.code)} · ${esc(x.name)}</h3><form id="matForm" class="form-grid"><label>ชื่อบนสติ๊กเกอร์<input id="matLabel" maxlength="80" value="${esc(x.label_name || x.name)}"></label><label>จำนวนขั้นต่ำ<input id="matMin" type="number" min="0" step="0.01" value="${Number(x.min_qty || 0)}"></label><label>แจ้งใกล้หมดอายุล่วงหน้า<select id="matExpiryAlert"><option value="1" ${expiryAlertMonths(x)===1?'selected':''}>1 เดือน — รายการทั่วไป</option><option value="8" ${expiryAlertMonths(x)===8?'selected':''}>8 เดือน — ต้องเคลมหรือจัดการล่วงหน้า</option></select></label><label>ผู้ดูแลหลัก<select id="matOwner">${ownerOptions(staff, x.responsible_email || '')}</select></label><label>ผู้ช่วยดูแล<select id="matAssistantOwner">${ownerOptions(staff, x.assistant_responsible_email || '')}</select></label><button class="primary" type="submit">บันทึก</button></form>`);
   $('#matForm').addEventListener('submit', async e => {
     e.preventDefault();
     const {error} = await sb.from('materials').update({
       label_name:$('#matLabel').value.trim(),
       min_qty:Number($('#matMin').value),
       expiry_alert_months:Number($('#matExpiryAlert').value || DEFAULT_EXPIRY_ALERT_MONTHS),
-      responsible_email:$('#matOwner').value || null
+      responsible_email:$('#matOwner').value || null,
+      assistant_responsible_email:$('#matAssistantOwner').value || null
     }).eq('code', code);
     if (error) return toast(errMsg(error), true);
     closeModal();
