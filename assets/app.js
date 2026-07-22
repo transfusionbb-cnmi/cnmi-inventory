@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.20';
+const APP_VERSION = '1.4.21';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const DEFAULT_EXPIRY_ALERT_MONTHS = 1;
 const MAX_EXPIRY_ALERT_MONTHS = 8;
@@ -291,7 +291,7 @@ function ensureQrDecoder() {
       return;
     }
     const script = document.createElement('script');
-    script.src = 'third_party/jsQR-1.4.0.js?v=1.4.20';
+    script.src = 'third_party/jsQR-1.4.0.js?v=1.4.21';
     script.async = false;
     script.dataset.jsqrLoader = '1';
     script.onload = () => resolve(typeof window.jsQR === 'function');
