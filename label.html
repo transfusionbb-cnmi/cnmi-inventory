@@ -8,8 +8,11 @@
 @page{size:25mm 20mm;margin:0}
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;background:#eef2f3;font-family:Tahoma,"Leelawadee UI","Noto Sans Thai",Arial,sans-serif;color:#000;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.preview{width:25mm;height:20mm;background:#fff}
-.label{width:25mm;height:20mm;padding:.75mm .95mm;display:grid;grid-template-columns:minmax(0,13.9mm) minmax(0,8.65mm);gap:.55mm;overflow:hidden;background:#fff;border:0}
+.print-pages{width:25mm}
+.preview{position:relative;width:25mm;height:20mm;background:#fff;overflow:hidden;break-after:page;page-break-after:always}
+.preview:last-child{break-after:auto;page-break-after:auto}
+.label{width:25mm;height:20mm;padding:.75mm .95mm;display:grid;grid-template-columns:minmax(0,13.9mm) minmax(0,8.65mm);gap:.55mm;overflow:hidden;background:#fff;border:0;transform-origin:0 0}
+body[data-profile="zebra"] .label{transform:scale(.68)}
 .text{min-width:0;display:flex;flex-direction:column;justify-content:center;align-items:stretch;gap:.22mm;overflow:hidden;padding:.08mm .25mm .05mm .05mm}
 .name{min-width:0;flex:0 0 auto;font-size:6.75pt;font-weight:900;line-height:1.02;letter-spacing:-.015em;display:block;overflow:visible;overflow-wrap:anywhere;word-break:normal}
 .name.medium{font-size:5.75pt;line-height:1.03}.name.long{font-size:4.95pt;line-height:1.03}.name.xlong{font-size:4.3pt;line-height:1.02}
@@ -18,17 +21,18 @@ html,body{margin:0;padding:0;background:#eef2f3;font-family:Tahoma,"Leelawadee U
 .meta{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:baseline;gap:.32mm;font-size:4pt;line-height:1.1;white-space:nowrap}
 .meta span{font-weight:700;color:#444}.meta b{font-weight:900;overflow:hidden;white-space:nowrap}
 .qr-wrap{min-width:0;display:grid;grid-template-rows:auto auto;align-content:center;justify-items:center;gap:.34mm;padding-left:.55mm;border-left:.09mm solid #b7b7b7}
-#qr{width:8.15mm;height:8.15mm;display:grid;place-items:center;align-self:end}
-#qr svg{width:100%;height:100%;display:block}
+.qr{width:8.15mm;height:8.15mm;display:grid;place-items:center;align-self:end}
+.qr svg{width:100%;height:100%;display:block}
 .key{font-size:3pt;font-weight:800;line-height:1.04;text-align:center;width:8.1mm;max-height:3.35mm;overflow:hidden;overflow-wrap:anywhere;word-break:break-word;color:#111}
-.screen-status{position:fixed;left:29mm;top:5mm;width:270px;padding:14px 16px;border-radius:12px;background:#fff;color:#087b6f;box-shadow:0 8px 28px rgba(0,0,0,.16);font-size:13px;font-weight:700;line-height:1.45}
-@media print{html,body{width:25mm!important;height:20mm!important;min-height:0!important;margin:0!important;padding:0!important;overflow:hidden!important;background:#fff!important}.preview,.label{width:25mm!important;height:20mm!important;margin:0!important}.screen-status{display:none!important}}
+.screen-status{position:fixed;left:29mm;top:5mm;width:320px;padding:14px 16px;border-radius:12px;background:#fff;color:#087b6f;box-shadow:0 8px 28px rgba(0,0,0,.16);font-size:13px;font-weight:700;line-height:1.45}
+.screen-status small{display:block;margin-top:4px;color:#667a76;font-weight:500}
+@media print{html,body{width:25mm!important;min-height:0!important;margin:0!important;padding:0!important;overflow:visible!important;background:#fff!important}.print-pages,.preview{width:25mm!important}.preview{height:20mm!important;margin:0!important}.screen-status{display:none!important}}
 </style>
 </head>
 <body>
-<div class="preview"><div class="label"><div class="text"><div class="name" id="name"></div><div class="code" id="code"></div><div class="meta-stack"><div class="meta"><span>Lot</span><b id="lot"></b></div><div class="meta"><span>EXP</span><b id="exp"></b></div></div></div><div class="qr-wrap"><div id="qr"></div><div class="key" id="key"></div></div></div></div>
-<div class="screen-status" id="screenStatus">กำลังเปิดหน้าพิมพ์อัตโนมัติ…</div>
-<script src="assets/qr-lite.js?v=1.4.4"></script>
+<div class="print-pages" id="printPages"></div>
+<div class="screen-status" id="screenStatus">กำลังเตรียมหน้าพิมพ์…</div>
+<script src="assets/qr-lite.js?v=1.4.9"></script>
 <script>
 'use strict';
 const p=new URLSearchParams(location.search);
@@ -37,48 +41,39 @@ const code=safe(p.get('code'));
 const lot=safe(p.get('lot'));
 const key=safe(p.get('key'),`${code}-${lot}`);
 const qrText=safe(p.get('qr'),key);
-const statusEl=document.getElementById('screenStatus');
-const nameEl=document.getElementById('name');
-const textEl=document.querySelector('.text');
-const codeEl=document.getElementById('code');
 const name=safe(p.get('name'));
-nameEl.textContent=name;
-codeEl.textContent=`รหัส ${code}`;
-document.getElementById('lot').textContent=lot;
-document.getElementById('exp').textContent=safe(p.get('exp'),'ไม่ระบุ');
-document.getElementById('key').textContent=key;
-if(name.length>52)nameEl.classList.add('xlong');else if(name.length>36)nameEl.classList.add('long');else if(name.length>22)nameEl.classList.add('medium');
-try{document.getElementById('qr').innerHTML=window.CNMIQRCode.svg(qrText,{level:'L',margin:1});}catch(e){document.getElementById('qr').textContent='QR';console.error(e);}
-function fitName(){
-  let size=parseFloat(getComputedStyle(nameEl).fontSize);
-  const min=4;
-  let guard=0;
-  const tooTall=()=>{
-    const style=getComputedStyle(nameEl);
-    const lineHeight=parseFloat(style.lineHeight)||size;
-    const lines=Math.ceil(nameEl.getBoundingClientRect().height/lineHeight-.01);
-    return textEl.scrollHeight>textEl.clientHeight+.5||nameEl.scrollWidth>nameEl.clientWidth+.5||lines>4;
-  };
-  while(tooTall()&&size>min&&guard<36){
-    size-=.2;nameEl.style.fontSize=`${size}px`;guard++;
-  }
+const exp=safe(p.get('exp'),'ไม่ระบุ');
+const profile=p.get('profile')==='zebra'?'zebra':'tsc';
+const copies=Math.max(1,Math.min(100,Math.round(Number(p.get('copies'))||1)));
+document.body.dataset.profile=profile;
+const statusEl=document.getElementById('screenStatus');
+const pages=document.getElementById('printPages');
+const profileName=profile==='zebra'?'Zebra 420t':'TSC 310';
+function labelMarkup(index){return `<div class="preview"><div class="label"><div class="text"><div class="name"></div><div class="code"></div><div class="meta-stack"><div class="meta"><span>Lot</span><b class="lot"></b></div><div class="meta"><span>EXP</span><b class="exp"></b></div></div></div><div class="qr-wrap"><div class="qr"></div><div class="key"></div></div></div></div>`;}
+pages.innerHTML=Array.from({length:copies},(_,i)=>labelMarkup(i)).join('');
+[...pages.querySelectorAll('.preview')].forEach(page=>{
+  const nameEl=page.querySelector('.name');
+  nameEl.textContent=name;
+  page.querySelector('.code').textContent=`รหัส ${code}`;
+  page.querySelector('.lot').textContent=lot;
+  page.querySelector('.exp').textContent=exp;
+  page.querySelector('.key').textContent=key;
+  if(name.length>52)nameEl.classList.add('xlong');else if(name.length>36)nameEl.classList.add('long');else if(name.length>22)nameEl.classList.add('medium');
+  try{page.querySelector('.qr').innerHTML=window.CNMIQRCode.svg(qrText,{level:'L',margin:1});}catch(e){page.querySelector('.qr').textContent='QR';console.error(e);}
+});
+function fitName(page){
+  const nameEl=page.querySelector('.name'),textEl=page.querySelector('.text');
+  let size=parseFloat(getComputedStyle(nameEl).fontSize),guard=0;const min=4;
+  const tooTall=()=>{const style=getComputedStyle(nameEl);const lineHeight=parseFloat(style.lineHeight)||size;const lines=Math.ceil(nameEl.getBoundingClientRect().height/lineHeight-.01);return textEl.scrollHeight>textEl.clientHeight+.5||nameEl.scrollWidth>nameEl.clientWidth+.5||lines>4;};
+  while(tooTall()&&size>min&&guard<36){size-=.2;nameEl.style.fontSize=`${size}px`;guard++;}
 }
-function fitKey(){
-  const el=document.getElementById('key');let size=parseFloat(getComputedStyle(el).fontSize);let guard=0;
-  while((el.scrollHeight>el.clientHeight+1||el.scrollWidth>el.clientWidth+1)&&size>3&&guard<18){size-=.2;el.style.fontSize=`${size}px`;guard++;}
-}
+function fitKey(page){const el=page.querySelector('.key');let size=parseFloat(getComputedStyle(el).fontSize),guard=0;while((el.scrollHeight>el.clientHeight+1||el.scrollWidth>el.clientWidth+1)&&size>3&&guard<18){size-=.2;el.style.fontSize=`${size}px`;guard++;}}
 function nextFrame(){return new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));}
-async function prepare(){if(document.fonts&&document.fonts.ready){try{await document.fonts.ready;}catch(_){}}await nextFrame();fitName();fitKey();await nextFrame();}
-async function startPrint(){
-  try{
-    if(document.readyState!=='complete')await new Promise(resolve=>window.addEventListener('load',resolve,{once:true}));
-    await prepare();await new Promise(resolve=>setTimeout(resolve,90));
-    statusEl.textContent='กำลังเปิดหน้าพิมพ์…';window.focus();window.print();
-  }catch(e){statusEl.textContent='เปิดหน้าพิมพ์ไม่สำเร็จ กรุณากด Ctrl + P';console.error(e);}
-}
+async function prepare(){if(document.fonts&&document.fonts.ready){try{await document.fonts.ready;}catch(_){}}await nextFrame();[...pages.querySelectorAll('.preview')].forEach(page=>{fitName(page);fitKey(page);});await nextFrame();}
+async function startPrint(){try{if(document.readyState!=='complete')await new Promise(resolve=>window.addEventListener('load',resolve,{once:true}));await prepare();await new Promise(resolve=>setTimeout(resolve,100));statusEl.innerHTML=`กำลังเปิดหน้าพิมพ์ ${profileName}…<small>${copies} ดวง · ตรวจชื่อเครื่องพิมพ์จริงให้ตรงกับ ${profileName}</small>`;window.focus();window.print();}catch(e){statusEl.textContent='เปิดหน้าพิมพ์ไม่สำเร็จ กรุณากด Ctrl + P';console.error(e);}}
 window.addEventListener('afterprint',()=>setTimeout(()=>window.close(),180));
-window.addEventListener('load',async()=>{await prepare();if(p.get('auto')==='1')startPrint();else statusEl.textContent='ตัวอย่างสติ๊กเกอร์ใหม่ 25 × 20 mm';},{once:true});
-setTimeout(()=>{if(p.get('auto')==='1'&&!document.hidden)statusEl.textContent='หากหน้าพิมพ์ยังไม่เปิด กรุณากด Ctrl + P';},5000);
+window.addEventListener('load',async()=>{await prepare();statusEl.innerHTML=`โปรไฟล์ ${profileName}<small>${copies} ดวง${profile==='zebra'?' · ชดเชยขนาด 68% สำหรับ Zebra 420t':''}</small>`;if(p.get('auto')==='1')startPrint();},{once:true});
+setTimeout(()=>{if(p.get('auto')==='1'&&!document.hidden)statusEl.innerHTML=`หากหน้าพิมพ์ยังไม่เปิด กรุณากด Ctrl + P<small>เลือกเครื่อง ${profileName}</small>`;},5000);
 </script>
 </body>
 </html>

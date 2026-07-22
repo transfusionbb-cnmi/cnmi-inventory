@@ -1,7 +1,7 @@
 {
   "name": "CNMI Inventory",
   "short_name": "Inventory",
-  "description": "ระบบบริหารจัดการสต๊อกวัสดุและเวชภัณฑ์ รับเข้า นำออก พิมพ์ QR ตรวจวันศุกร์ และรายงาน CNMI",
+  "description": "ระบบบริหารจัดการสต๊อก รับเข้า นำออก พิมพ์ QR ด้วย TSC 310 หรือ Zebra 420t ตรวจวันศุกร์ และรายงาน CNMI",
   "id": "https://inventory.cnmiblood.com/",
   "start_url": "./index.html",
   "scope": "./",
@@ -106,6 +106,17 @@
       ]
     },
     {
+      "name": "พิมพ์สติ๊กเกอร์",
+      "short_name": "พิมพ์ QR",
+      "url": "./index.html#labels",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
       "name": "ตรวจสต๊อกวันศุกร์",
       "short_name": "ตรวจศุกร์",
       "url": "./index.html#weekly",
@@ -128,5 +139,5 @@
       ]
     }
   ],
-  "version": "1.4.8"
+  "version": "1.4.9"
 }

@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.8';
+const APP_VERSION = '1.4.9';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const C = window.APP_CONFIG || {};
 const configured = C.SUPABASE_URL && !C.SUPABASE_URL.includes('YOUR-PROJECT') && C.SUPABASE_ANON_KEY && !C.SUPABASE_ANON_KEY.includes('YOUR-ANON');
@@ -27,6 +27,12 @@ let pendingIssueCode = new URLSearchParams(location.search).get('issue') || new 
 let deferredInstallPrompt = null;
 const MOVE_HISTORY_PAGE_SIZE = 7;
 const REPORT_PAGE_SIZE = 10;
+const LABEL_QUEUE_PAGE_SIZE = 10;
+const LABEL_PRINTERS = Object.freeze({
+  tsc:{key:'tsc',name:'TSC 310',fullName:'TSC 310 · 300 dpi',profileCode:'TSC_310',className:'tsc',note:'รูปแบบมาตรฐาน 25 × 20 mm'},
+  zebra:{key:'zebra',name:'Zebra 420t',fullName:'Zebra 420t · 203 dpi',profileCode:'ZEBRA_420T',className:'zebra',note:'ชดเชยขนาดสำหรับไดรเวอร์ Zebra 420t'}
+});
+const LABEL_PRINTER_STORAGE_KEY = 'cnmi-inventory-label-printer';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -283,7 +289,7 @@ function ensureQrDecoder() {
       return;
     }
     const script = document.createElement('script');
-    script.src = 'third_party/jsQR-1.4.0.js?v=1.4.8';
+    script.src = 'third_party/jsQR-1.4.0.js?v=1.4.9';
     script.async = false;
     script.dataset.jsqrLoader = '1';
     script.onload = () => resolve(typeof window.jsQR === 'function');
@@ -401,7 +407,7 @@ function showIosInstallGuide() {
 
 function openMobileMenu() {
   const adminItem = isAdminMode() ? `<button type="button" data-route="admin">${icon('settings')}<span><strong>ตั้งค่าระบบ</strong><small>ผู้ใช้ ผู้ดูแล และข้อมูลสินค้า</small></span></button>` : '';
-  openModal(`<div class="mobile-menu-sheet"><div class="mobile-menu-head"><span class="owner-avatar">${esc((profile?.display_name || '?').trim().charAt(0))}</span><div><h3>เมนูทั้งหมด</h3><p>${esc(profile?.display_name || '')}</p></div></div><div class="mobile-menu-grid"><button type="button" data-route="stock">${icon('box')}<span><strong>ค้นหาสต๊อกทั้งหมด</strong><small>ค้นหาสินค้าและ Lot</small></span></button><button type="button" data-route="my-stock">${icon('user')}<span><strong>สต๊อกที่ฉันดูแล</strong><small>ดูของที่มี ต้องเบิก และตั้งค่าการเตือน</small></span></button><button type="button" data-route="usage">${icon('chart')}<span><strong>วิเคราะห์การใช้</strong><small>การใช้และแนวโน้มหมดอายุ</small></span></button><button type="button" data-route="weekly">${icon('check')}<span><strong>ตรวจวันศุกร์</strong><small>ตรวจนับและปรับยอดจริง</small></span></button><button type="button" data-route="scan-stock">${icon('camera')}<span><strong>สแกนตรวจ Lot</strong><small>ดูยอดคงเหลือและตรวจด้วยกล้อง</small></span></button><button type="button" data-route="weekly-status">${icon('user')}<span><strong>สถานะผู้ตรวจ</strong><small>ดูย้อนหลังตามช่วงวันที่</small></span></button><button type="button" data-route="activity">${icon('history')}<span><strong>ประวัติ</strong><small>รายการที่ทำในระบบ</small></span></button><button type="button" data-route="reports">${icon('download')}<span><strong>รายงานและส่งออก</strong><small>CSV และข้อมูลย้อนหลัง</small></span></button>${adminItem}<button type="button" data-route="help">${icon('help')}<span><strong>คู่มือใช้งาน</strong><small>ขั้นตอนทำงาน</small></span></button><button type="button" data-open-install>${icon('smartphone')}<span><strong>ติดตั้งแอป</strong><small>Android และ iPhone/iPad</small></span></button></div></div>`);
+  openModal(`<div class="mobile-menu-sheet"><div class="mobile-menu-head"><span class="owner-avatar">${esc((profile?.display_name || '?').trim().charAt(0))}</span><div><h3>เมนูทั้งหมด</h3><p>${esc(profile?.display_name || '')}</p></div></div><div class="mobile-menu-grid"><button type="button" data-route="stock">${icon('box')}<span><strong>ค้นหาสต๊อกทั้งหมด</strong><small>ค้นหาสินค้าและ Lot</small></span></button><button type="button" data-route="my-stock">${icon('user')}<span><strong>สต๊อกที่ฉันดูแล</strong><small>ดูของที่มี ต้องเบิก และตั้งค่าการเตือน</small></span></button><button type="button" data-route="usage">${icon('chart')}<span><strong>วิเคราะห์การใช้</strong><small>การใช้และแนวโน้มหมดอายุ</small></span></button><button type="button" data-route="labels">${icon('print')}<span><strong>พิมพ์สติ๊กเกอร์</strong><small>คิวรับเข้าจากโทรศัพท์ · TSC / Zebra</small></span></button><button type="button" data-route="weekly">${icon('check')}<span><strong>ตรวจวันศุกร์</strong><small>ตรวจนับและปรับยอดจริง</small></span></button><button type="button" data-route="scan-stock">${icon('camera')}<span><strong>สแกนตรวจ Lot</strong><small>ดูยอดคงเหลือและตรวจด้วยกล้อง</small></span></button><button type="button" data-route="weekly-status">${icon('user')}<span><strong>สถานะผู้ตรวจ</strong><small>ดูย้อนหลังตามช่วงวันที่</small></span></button><button type="button" data-route="activity">${icon('history')}<span><strong>ประวัติ</strong><small>รายการที่ทำในระบบ</small></span></button><button type="button" data-route="reports">${icon('download')}<span><strong>รายงานและส่งออก</strong><small>CSV และข้อมูลย้อนหลัง</small></span></button>${adminItem}<button type="button" data-route="help">${icon('help')}<span><strong>คู่มือใช้งาน</strong><small>ขั้นตอนทำงาน</small></span></button><button type="button" data-open-install>${icon('smartphone')}<span><strong>ติดตั้งแอป</strong><small>Android และ iPhone/iPad</small></span></button></div></div>`);
 }
 
 function loading() {
@@ -584,7 +590,7 @@ async function enterApp() {
     appView.classList.remove('hidden');
     updateRoleUI();
     const hashRoute = location.hash.replace(/^#/, '');
-    const allowed = ['home','stock','my-stock','usage','urgent','move','weekly','scan-stock','weekly-status','activity','reports','help','admin'];
+    const allowed = ['home','stock','my-stock','usage','urgent','move','labels','weekly','scan-stock','weekly-status','activity','reports','help','admin'];
     const initialRoute = allowed.includes(hashRoute) ? hashRoute : 'home';
     await navigate(initialRoute);
     if (pendingIssueCode) setTimeout(openPendingIssue, 250);
@@ -669,10 +675,29 @@ function globalClick(e) {
     navigate(r.dataset.route, {tab:r.dataset.moveTab, filter:r.dataset.stockFilter});
     return;
   }
+  const quickPrint = e.target.closest('[data-quick-print]');
+  if (quickPrint) {
+    e.preventDefault();
+    const lotId = quickPrint.dataset.quickPrint;
+    const input = document.querySelector(`[data-label-copies="${CSS.escape(lotId)}"]`);
+    const copies = normalizedLabelCopies(input?.value || 1);
+    const printer = quickPrint.dataset.printerProfile || preferredLabelPrinter();
+    savePreferredLabelPrinter(printer);
+    launchLabelPrint(lotId, printer, copies);
+    return;
+  }
+  const setPrinter = e.target.closest('[data-set-label-printer]');
+  if (setPrinter) {
+    e.preventDefault();
+    savePreferredLabelPrinter(setPrinter.dataset.setLabelPrinter);
+    $$('[data-set-label-printer]').forEach(x => x.classList.toggle('active', x === setPrinter));
+    toast(`ตั้งเครื่องนี้เป็น ${labelPrinter(setPrinter.dataset.setLabelPrinter).name} แล้ว`);
+    return;
+  }
   const p = e.target.closest('[data-print]');
   if (p) {
     e.preventDefault();
-    printLabel(p.dataset.print);
+    printLabel(p.dataset.print, Number(p.dataset.printCopies || 1));
     return;
   }
   const issue = e.target.closest('[data-issue-lot]');
@@ -756,6 +781,7 @@ async function navigate(r, options = {}) {
     else if (r === 'usage') await renderUsage(usageMaterialCode);
     else if (r === 'urgent') await renderUrgent();
     else if (r === 'move') await renderMove(moveTab);
+    else if (r === 'labels') await renderLabels();
     else if (r === 'weekly') await renderWeekly();
     else if (r === 'scan-stock') await renderScanStock();
     else if (r === 'weekly-status') await renderWeeklyStatus();
@@ -1293,10 +1319,52 @@ async function renderUrgent() {
   page.innerHTML = `<div class="page-head"><div><h2>ติดตามเร่งด่วน</h2></div><span class="badge danger">${expired.length + reorder.length} รายการ</span></div><section class="urgent-banner"><div>${icon('alert')}<strong>ของหมดอายุต้องยืนยันหลังนำออกจากพื้นที่</strong></div><button class="primary" data-route="weekly">ไปตรวจวันศุกร์</button></section><div class="section-title"><h3>หมดอายุ · รอนำออก (${expired.length})</h3></div><div class="list">${expired.map(lotCard).join('') || '<div class="card empty">ไม่มี Lot หมดอายุค้าง</div>'}</div><div class="section-title"><h3>ถึงรอบเบิก (${reorder.length})</h3></div><div class="table-wrap"><table class="data-table compact-desktop-table"><thead><tr><th>สินค้า</th><th>คงเหลือ</th><th>รูปแบบเตือน</th><th>ผู้ดูแล</th><th>สถานะ</th></tr></thead><tbody>${reorder.map(x => `<tr><td><strong>${esc(x.material_name)}</strong></td><td>${qty(x.total_balance)} ${esc(x.unit)}</td><td>${x.alert_mode==='MONTHLY' ? `รายเดือน · วันที่ ${x.reorder_day}` : `ขั้นต่ำ ${qty(x.min_qty)}`}</td><td>${esc(x.responsible_name || '-')}</td><td><span class="badge warn">${x.alert_mode==='MONTHLY'?'ถึงรอบเบิก':Number(x.total_balance)<=0?'หมด':'ต่ำกว่าขั้นต่ำ'}</span></td></tr>`).join('') || '<tr><td colspan="5" class="empty">ไม่มีรายการต้องเบิก</td></tr>'}</tbody></table></div>`;
 }
 
-async function printLabel(lotId) {
-  const popup = window.open('about:blank', 'cnmi_inventory_label', 'width=420,height=300');
+
+function labelPrinter(key = '') {
+  return LABEL_PRINTERS[key] || LABEL_PRINTERS.tsc;
+}
+
+function preferredLabelPrinter() {
+  const saved = localStorage.getItem(LABEL_PRINTER_STORAGE_KEY) || '';
+  return LABEL_PRINTERS[saved] ? saved : 'tsc';
+}
+
+function savePreferredLabelPrinter(key) {
+  if (!LABEL_PRINTERS[key]) return;
+  localStorage.setItem(LABEL_PRINTER_STORAGE_KEY, key);
+}
+
+function normalizedLabelCopies(value, fallback = 1) {
+  const parsed = Math.round(Number(value));
+  return Math.max(1, Math.min(100, Number.isFinite(parsed) ? parsed : fallback));
+}
+
+function printerProfileButtons(lotId, copies = 1, compact = false) {
+  return Object.values(LABEL_PRINTERS).map(p => `<button type="button" class="printer-choice ${p.className} ${compact ? 'compact' : ''}" data-quick-print="${esc(lotId)}" data-printer-profile="${p.key}">${icon('print')}<span><strong>${esc(p.name)}</strong>${compact ? '' : `<small>${esc(p.note)}</small>`}</span></button>`).join('');
+}
+
+function openPrinterChooser(lotId, defaultCopies = 1) {
+  const preferred = preferredLabelPrinter();
+  const cached = stockCache.find(x => x.lot_id === lotId);
+  const title = cached?.material_name || cached?.label_name || 'QR Sticker';
+  const lotText = cached ? `Lot ${cached.lot_no}` : '';
+  openModal(`<section class="printer-picker"><div class="printer-picker-head"><span>${icon('print')}</span><div><p class="eyebrow">Label printer</p><h3>เลือกเครื่องพิมพ์</h3><p>${esc(title)}${lotText ? ` · ${esc(lotText)}` : ''}</p></div></div><label class="label-copy-field">จำนวนสติ๊กเกอร์<input id="labelCopyCount" type="number" min="1" max="100" step="1" inputmode="numeric" value="${normalizedLabelCopies(defaultCopies)}"></label><div class="printer-picker-grid">${Object.values(LABEL_PRINTERS).map(p => `<button type="button" class="printer-choice ${p.className} ${preferred === p.key ? 'preferred' : ''}" data-modal-printer="${p.key}">${icon('print')}<span><strong>${esc(p.name)}</strong><small>${esc(p.note)}${preferred === p.key ? ' · เครื่องที่เลือกไว้' : ''}</small></span></button>`).join('')}</div><p class="printer-picker-note">ระบบจะจัดขนาดฉลากให้ตรงกับรุ่นที่เลือก ส่วนหน้าพิมพ์ของ Chrome ให้ตรวจว่าชื่อเครื่องพิมพ์จริงตรงกับปุ่มที่กด</p></section>`);
+  $$('[data-modal-printer]', $('#modal')).forEach(button => button.addEventListener('click', () => {
+    const printer = button.dataset.modalPrinter;
+    const copies = normalizedLabelCopies($('#labelCopyCount')?.value, defaultCopies);
+    savePreferredLabelPrinter(printer);
+    closeModal();
+    launchLabelPrint(lotId, printer, copies);
+  }));
+}
+
+async function launchLabelPrint(lotId, printerKey = preferredLabelPrinter(), copies = 1) {
+  const profileKey = LABEL_PRINTERS[printerKey] ? printerKey : 'tsc';
+  const printer = labelPrinter(profileKey);
+  const copyCount = normalizedLabelCopies(copies);
+  const popup = window.open('about:blank', 'cnmi_inventory_label', 'width=520,height=430');
   if (!popup) return toast('เบราว์เซอร์บล็อกหน้าพิมพ์ กรุณาอนุญาต Pop-up ของเว็บไซต์นี้', true);
-  popup.document.write('<!doctype html><meta charset="utf-8"><title>กำลังเปิดหน้าพิมพ์</title><body style="font-family:system-ui;padding:24px">กำลังเปิดหน้าพิมพ์ QR Sticker…</body>');
+  popup.document.write(`<!doctype html><meta charset="utf-8"><title>กำลังเปิดหน้าพิมพ์</title><body style="font-family:system-ui;padding:24px"><b>กำลังเตรียม ${printer.name}</b><br>จำนวน ${copyCount} ดวง…</body>`);
   popup.document.close();
   try {
     let l = stockCache.find(x => x.lot_id === lotId);
@@ -1313,16 +1381,99 @@ async function printLabel(lotId) {
       exp:l.expiry_date ? d(l.expiry_date) : 'ไม่ระบุ',
       key:lotKey(l),
       qr:lotKey(l),
+      profile:profileKey,
+      copies:String(copyCount),
       auto:'1'
     });
     const labelUrl = new URL('label.html', location.href);
     labelUrl.search = params.toString();
     popup.location.replace(labelUrl.toString());
-    (async () => { try { await sb.rpc('fn_log_label_print', {p_lot_id:lotId}); } catch (_) {} })();
+    (async () => {
+      try {
+        const result = await sb.rpc('fn_log_label_print_v2', {p_lot_id:lotId,p_printer_profile:printer.profileCode,p_copy_count:copyCount});
+        if (result.error) throw result.error;
+      } catch (_) {
+        try { await sb.rpc('fn_log_label_print', {p_lot_id:lotId}); } catch (_) {}
+      }
+    })();
   } catch (e) {
     popup.close();
     toast(errMsg(e), true);
   }
+}
+
+async function printLabel(lotId, defaultCopies = 1) {
+  openPrinterChooser(lotId, defaultCopies);
+}
+
+function printLogProfile(summary = {}) {
+  const raw = String(summary?.printer_profile || '').toUpperCase();
+  if (raw === 'ZEBRA_420T') return LABEL_PRINTERS.zebra;
+  if (raw === 'TSC_310') return LABEL_PRINTERS.tsc;
+  return null;
+}
+
+function labelQueueRows(receiveRows = [], printRows = []) {
+  const lastPrint = new Map();
+  const printCount = new Map();
+  printRows.forEach(row => {
+    const id = String(row.entity_id || '');
+    printCount.set(id, (printCount.get(id) || 0) + 1);
+    if (!lastPrint.has(id)) lastPrint.set(id, row);
+  });
+  const latestByLot = new Map();
+  receiveRows.forEach(row => {
+    if (row.lot_id && !latestByLot.has(row.lot_id)) latestByLot.set(row.lot_id, row);
+  });
+  return [...latestByLot.values()].map(row => ({...row,_lastPrint:lastPrint.get(String(row.lot_id)) || null,_printCount:printCount.get(String(row.lot_id)) || 0}));
+}
+
+function labelQueueCard(row) {
+  const printed = Boolean(row._lastPrint);
+  const profile = printLogProfile(row._lastPrint?.summary || {});
+  const defaultCopies = normalizedLabelCopies(Math.abs(Number(row.quantity_delta || 1)));
+  const search = normalizeMaterialSearch([row.material_name,row.label_name,row.lot_key,row.lot_no,row.canonical_code,row.created_by_name].join(' '));
+  const status = printed
+    ? `<span class="badge ok">พิมพ์แล้ว ${qty(row._printCount)} ครั้ง</span><small>ล่าสุด ${profile ? esc(profile.name) : 'ไม่ระบุเครื่อง'} · ${dt(row._lastPrint.created_at)}</small>`
+    : `<span class="badge warn">ยังไม่พิมพ์</span><small>พร้อมพิมพ์จากเครื่องที่ต่อ Printer</small>`;
+  return `<article class="label-queue-card" data-label-queue-card data-printed="${printed ? '1' : '0'}" data-search="${esc(search)}"><div class="label-queue-main"><div class="label-queue-title"><div><strong>${esc(row.material_name || row.label_name || row.canonical_code || '-')}</strong><p><span class="code-pill">${esc(row.lot_key || `${row.canonical_code}-${row.lot_no}`)}</span> · รับเข้า ${dt(row.created_at)}</p></div><div class="label-print-status">${status}</div></div><div class="label-queue-meta"><span>จำนวนรับเข้า <b>${qty(Math.abs(Number(row.quantity_delta || 0)))} ${esc(row.unit || '')}</b></span><span>ผู้บันทึก <b>${esc(row.created_by_name || row.created_by_email || '-')}</b></span></div></div><div class="label-queue-actions"><label>จำนวนดวง<input type="number" min="1" max="100" step="1" inputmode="numeric" value="${defaultCopies}" data-label-copies="${esc(row.lot_id)}"></label><div class="label-printer-actions"><button type="button" class="printer-choice compact tsc" data-quick-print="${esc(row.lot_id)}" data-printer-profile="tsc">${icon('print')}<span><strong>TSC 310</strong></span></button><button type="button" class="printer-choice compact zebra" data-quick-print="${esc(row.lot_id)}" data-printer-profile="zebra">${icon('print')}<span><strong>Zebra 420t</strong></span></button></div></div></article>`;
+}
+
+async function renderLabels() {
+  const preferred = preferredLabelPrinter();
+  page.innerHTML = `<div class="page-head label-page-head"><div><p class="eyebrow">Label printing</p><h2>พิมพ์สติ๊กเกอร์</h2><p class="muted small">รายการรับเข้าจากโทรศัพท์และคอมพิวเตอร์จะแสดงที่นี่ เพื่อไปพิมพ์กับ TSC 310 หรือ Zebra 420t ภายหลัง</p></div><button class="mini ghost" type="button" id="refreshLabelQueue">${icon('refresh')} รีเฟรช</button></div><section class="card device-printer-card"><div><p class="eyebrow">เครื่องพิมพ์ประจำเครื่องนี้</p><h3>เลือกแบบฉลากเริ่มต้น</h3><p>การตั้งค่านี้จำเฉพาะคอมพิวเตอร์หรือโทรศัพท์เครื่องนี้</p></div><div class="device-printer-options">${Object.values(LABEL_PRINTERS).map(p => `<button type="button" class="device-printer-option ${p.className} ${preferred === p.key ? 'active' : ''}" data-set-label-printer="${p.key}">${icon('print')}<span><strong>${esc(p.name)}</strong><small>${esc(p.note)}</small></span></button>`).join('')}</div></section><section class="card label-queue-filter"><div class="search-box">${icon('search')}<input id="labelQueueSearch" type="search" placeholder="ค้นหาชื่อวัสดุ รหัส หรือ Lot"></div><div class="label-filter-tabs"><button type="button" class="active" data-label-filter="unprinted">ยังไม่พิมพ์</button><button type="button" data-label-filter="all">ทั้งหมด</button></div></section><div id="labelQueueList"><div class="card usage-loading">กำลังโหลดรายการรับเข้าล่าสุด…</div></div>`;
+  const [receiveRes, printRes] = await Promise.all([
+    sb.from('v_transaction_history').select('*').eq('tx_type','RECEIVE').order('created_at',{ascending:false}).order('id',{ascending:false}).limit(150),
+    sb.from('v_audit_activity').select('entity_id,created_at,summary,actor_name,actor_email').eq('action','LABEL_PRINT').order('created_at',{ascending:false}).limit(500)
+  ]);
+  if (receiveRes.error) throw receiveRes.error;
+  if (printRes.error) throw printRes.error;
+  const rows = labelQueueRows(receiveRes.data || [], printRes.data || []);
+  const container = $('#labelQueueList');
+  container.innerHTML = rows.length ? rows.map(labelQueueCard).join('') : '<div class="card empty">ยังไม่มีรายการรับเข้า</div>';
+  let filter = 'unprinted';
+  const apply = () => {
+    const q = normalizeMaterialSearch($('#labelQueueSearch')?.value || '');
+    let visible = 0;
+    $$('[data-label-queue-card]', container).forEach(card => {
+      const showFilter = filter === 'all' || card.dataset.printed !== '1';
+      const showSearch = !q || String(card.dataset.search || '').includes(q);
+      const show = showFilter && showSearch;
+      card.classList.toggle('hidden', !show);
+      if (show) visible += 1;
+    });
+    let empty = $('#labelQueueEmpty');
+    if (!empty) { empty=document.createElement('div'); empty.id='labelQueueEmpty'; empty.className='card empty hidden'; empty.textContent='ไม่พบรายการตามตัวกรอง'; container.appendChild(empty); }
+    empty.classList.toggle('hidden', visible > 0);
+  };
+  $('#labelQueueSearch')?.addEventListener('input', apply);
+  $$('[data-label-filter]').forEach(button => button.addEventListener('click', () => {
+    filter = button.dataset.labelFilter;
+    $$('[data-label-filter]').forEach(x => x.classList.toggle('active', x === button));
+    apply();
+  }));
+  $('#refreshLabelQueue')?.addEventListener('click', () => navigate('labels'));
+  apply();
 }
 
 async function loadMaterials() {
@@ -1630,7 +1781,7 @@ async function receive(e) {
   inventorySummaryCache=[];
   toast('รับเข้าสต๊อกแล้ว');
   const row = Array.isArray(data) ? data[0] : data;
-  openModal(`<h3>รับเข้าเรียบร้อย</h3><p class="muted">ยอดใหม่ ${qty(row?.quantity_after)}</p><div class="actions"><button class="primary" data-print="${esc(row?.lot_id || '')}">${icon('print')} พิมพ์ QR Sticker</button><button class="secondary modal-close">ปิด</button></div>`);
+  openModal(`<h3>รับเข้าเรียบร้อย</h3><p class="muted">ยอดใหม่ ${qty(row?.quantity_after)}</p><div class="receive-print-later-note">${icon('print')}<span><strong>พิมพ์ตอนนี้หรือพิมพ์ภายหลังก็ได้</strong><small>รายการนี้อยู่ในเมนู “พิมพ์สติ๊กเกอร์” แล้ว สามารถเปิดจากคอมพิวเตอร์ที่ต่อ TSC 310 หรือ Zebra 420t</small></span></div><div class="actions receive-success-actions"><button class="primary" data-print="${esc(row?.lot_id || '')}" data-print-copies="${normalizedLabelCopies(Number($('#rQty')?.value || 1))}">${icon('print')} เลือกเครื่องพิมพ์</button><button class="secondary" data-route="labels">ไปคิวพิมพ์</button><button class="ghost modal-close">ปิด</button></div>`);
 }
 
 function findLotByCode(raw, lots = stockCache) {
@@ -2552,7 +2703,7 @@ function openMaterialEditor(code) {
 }
 
 function renderHelp() {
-  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>สร้างบัญชีครั้งแรก</h3><ol class="help-steps"><li>ใช้เฉพาะอีเมลมหิดล @mahidol.ac.th ที่ Admin อนุญาตไว้</li><li>ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว</li><li>กด “สร้างบัญชีครั้งแรก” แล้วกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</li></ol></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>พิมพ์ชื่อวัสดุบางส่วนแล้วเลือกจากรายการ</li><li>ตรวจชื่อผู้นำเข้าปัจจุบัน ใส่ Lot วันหมดอายุ และจำนวน แล้วบันทึก</li></ol></div><div class="card help-card"><h3>นำออก</h3><ol class="help-steps"><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าและวิธีนำออก แล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>ระบบบันทึกแยกเป็น “สแกน QR” หรือ “พิมพ์รหัสเอง” ในประวัติและรายงาน</li></ol></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแล</h3><p>มี 3 เมนูย่อย: ภาพรวม, ต้องเบิก และตั้งค่าการเตือน เลือกเตือนตามจำนวนขั้นต่ำ เตือนรอบเบิกรายเดือน หรือไม่แจ้งเตือนได้ การเตือนรายเดือนจะเริ่มตรวจรอบตั้งแต่เดือนถัดไปหลังบันทึก</p></div><div class="card help-card"><h3>ตรวจวันศุกร์</h3><p>กรอกจำนวนที่นับได้จริง หากไม่ตรงกับระบบ ให้เลือกเหตุผล สามารถฝากเพื่อนตรวจแทนเฉพาะรอบได้ ผู้รับต้องกดยืนยันก่อน ส่วน Admin เลือกชื่อเจ้าหน้าที่เพื่อทำแทนหรือมอบหมายให้คนอื่นได้ทันที ระบบเก็บผู้ดูแลหลัก ผู้ได้รับมอบหมาย และผู้ตรวจจริงแยกกัน</p></div><div class="card help-card"><h3>สแกนตรวจ Lot</h3><p>เปิดกล้องหรือพิมพ์รหัส QR เพื่อดูยอด Lot ยอดรวม ผู้ดูแล ขั้นต่ำ และยืนยันตรวจหรือปรับยอดได้ทันที</p></div><div class="card help-card"><h3>สถานะผู้ตรวจ</h3><p>เปิดเมนู “สถานะผู้ตรวจ” แล้วกำหนดช่วงวันที่ เพื่อดูว่าแต่ละวันศุกร์ใครตรวจครบหรือยังไม่ครบ</p></div><div class="card help-card"><h3>สติ๊กเกอร์เดิม</h3><p>สติ๊กเกอร์รหัสเดิมยังสแกนได้ ไม่ต้องเปลี่ยนใหม่ทั้งหมด</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบไม่ตัดยอดเอง เปิดตรวจวันศุกร์และกด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์ถัดไป</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมดูได้ในหน้าประวัติและรายงาน</p></div><div class="card help-card"><h3>เครื่องพิมพ์สติ๊กเกอร์</h3><p>ฉลากกว้าง 25 mm สูง 20 mm ชื่อวัสดุจะย่อฟอนต์อัตโนมัติโดยไม่ตัด Lot/EXP ตั้ง Scale 100%, Margin None และปิด Header/Footer หากต้องการหลายดวงให้ใส่จำนวนในช่อง “จำนวนชุด” ของหน้าพิมพ์</p></div></div>`;
+  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>สร้างบัญชีครั้งแรก</h3><ol class="help-steps"><li>ใช้เฉพาะอีเมลมหิดล @mahidol.ac.th ที่ Admin อนุญาตไว้</li><li>ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว</li><li>กด “สร้างบัญชีครั้งแรก” แล้วกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</li></ol></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>พิมพ์ชื่อวัสดุบางส่วนแล้วเลือกจากรายการ</li><li>ตรวจชื่อผู้นำเข้าปัจจุบัน ใส่ Lot วันหมดอายุ และจำนวน แล้วบันทึก</li></ol></div><div class="card help-card"><h3>นำออก</h3><ol class="help-steps"><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าและวิธีนำออก แล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>ระบบบันทึกแยกเป็น “สแกน QR” หรือ “พิมพ์รหัสเอง” ในประวัติและรายงาน</li></ol></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแล</h3><p>มี 3 เมนูย่อย: ภาพรวม, ต้องเบิก และตั้งค่าการเตือน เลือกเตือนตามจำนวนขั้นต่ำ เตือนรอบเบิกรายเดือน หรือไม่แจ้งเตือนได้ การเตือนรายเดือนจะเริ่มตรวจรอบตั้งแต่เดือนถัดไปหลังบันทึก</p></div><div class="card help-card"><h3>ตรวจวันศุกร์</h3><p>กรอกจำนวนที่นับได้จริง หากไม่ตรงกับระบบ ให้เลือกเหตุผล สามารถฝากเพื่อนตรวจแทนเฉพาะรอบได้ ผู้รับต้องกดยืนยันก่อน ส่วน Admin เลือกชื่อเจ้าหน้าที่เพื่อทำแทนหรือมอบหมายให้คนอื่นได้ทันที ระบบเก็บผู้ดูแลหลัก ผู้ได้รับมอบหมาย และผู้ตรวจจริงแยกกัน</p></div><div class="card help-card"><h3>สแกนตรวจ Lot</h3><p>เปิดกล้องหรือพิมพ์รหัส QR เพื่อดูยอด Lot ยอดรวม ผู้ดูแล ขั้นต่ำ และยืนยันตรวจหรือปรับยอดได้ทันที</p></div><div class="card help-card"><h3>สถานะผู้ตรวจ</h3><p>เปิดเมนู “สถานะผู้ตรวจ” แล้วกำหนดช่วงวันที่ เพื่อดูว่าแต่ละวันศุกร์ใครตรวจครบหรือยังไม่ครบ</p></div><div class="card help-card"><h3>สติ๊กเกอร์เดิม</h3><p>สติ๊กเกอร์รหัสเดิมยังสแกนได้ ไม่ต้องเปลี่ยนใหม่ทั้งหมด</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบไม่ตัดยอดเอง เปิดตรวจวันศุกร์และกด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์ถัดไป</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมดูได้ในหน้าประวัติและรายงาน</p></div><div class="card help-card"><h3>พิมพ์สติ๊กเกอร์ภายหลัง</h3><p>หลังรับเข้าผ่านโทรศัพท์ ให้เปิดเมนู “พิมพ์สติ๊กเกอร์” บนคอมพิวเตอร์ที่ต่อเครื่องพิมพ์ รายการรับเข้าจะอยู่ในคิวอัตโนมัติ เลือกจำนวนดวงแล้วกด TSC 310 หรือ Zebra 420t</p></div><div class="card help-card"><h3>เครื่องพิมพ์สติ๊กเกอร์</h3><p>ฉลากจริง 25 × 20 mm ระบบมีโปรไฟล์แยก TSC 310 และ Zebra 420t และจำเครื่องเริ่มต้นเฉพาะอุปกรณ์ ในหน้าพิมพ์ Chrome ให้เลือกชื่อเครื่องจริงให้ตรงกับปุ่มที่กด ปิด Header/Footer และใช้ Margin None</p></div></div>`;
   refreshInstallUI();
 }
 
