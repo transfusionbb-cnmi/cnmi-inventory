@@ -12,18 +12,26 @@ html,body{margin:0;padding:0;background:#eef2f3;font-family:Tahoma,"Leelawadee U
 .preview{position:relative;width:var(--paper-w);height:var(--safe-h);margin:0;padding:0;background:#fff;overflow:hidden;break-inside:avoid;page-break-inside:avoid}
 .preview:not(:last-child){break-after:page;page-break-after:always}
 .label{position:absolute;left:0;top:0;width:var(--paper-w);height:var(--safe-h);padding:var(--pad-y) var(--pad-x);display:grid;grid-template-columns:minmax(0,var(--text-col)) minmax(0,var(--qr-col));gap:var(--col-gap);overflow:hidden;background:#fff;border:0}
-body[data-profile="zebra"]{--paper-w:25.4mm;--paper-h:20mm;--safe-h:19.45mm;--pad-y:1.05mm;--pad-x:1.30mm;--text-col:14.55mm;--qr-col:5.60mm;--col-gap:.42mm;--text-gap:.08mm;--name-size:3.45pt;--name-medium:3.15pt;--name-long:2.85pt;--name-xlong:2.55pt;--code-size:1.85pt;--meta-size:2.35pt;--qr-size:4.05mm;--key-size:1.55pt;--key-width:4.65mm;--key-height:1.90mm;--qr-pad-left:.28mm}
-.text{min-width:0;display:flex;flex-direction:column;justify-content:center;align-items:stretch;gap:var(--text-gap);overflow:hidden;padding:.03mm .15mm .03mm .02mm}
+/* Zebra: keep physical page size, but scale text with transform instead of sub-minimum font sizes.
+   Chrome/Windows can clamp very small CSS fonts, which caused the text to remain huge while the QR became tiny. */
+body[data-profile="zebra"]{--paper-w:25.4mm;--paper-h:20mm;--safe-h:19.55mm;--pad-y:.72mm;--pad-x:.85mm;--text-col:14.80mm;--qr-col:8.20mm;--col-gap:.35mm;--text-gap:.10mm;--name-size:11.50pt;--name-medium:10.50pt;--name-long:9.40pt;--name-xlong:8.50pt;--code-size:8.00pt;--meta-size:9.00pt;--qr-size:7.65mm;--key-size:6.20pt;--key-width:7.90mm;--key-height:2.35mm;--qr-pad-left:.28mm}
+.text{min-width:0;position:relative;overflow:hidden;padding:.03mm .15mm .03mm .02mm}
+.text-position{width:100%;height:100%;display:flex;align-items:center;overflow:visible}
+.text-inner{min-width:0;width:100%;display:flex;flex-direction:column;justify-content:center;align-items:stretch;gap:var(--text-gap)}
+body[data-profile="zebra"] .text-position{position:absolute;left:0;top:50%;width:208.333%;height:auto;transform:translateY(-50%)}
+body[data-profile="zebra"] .text-inner{transform:scale(.48);transform-origin:left center}
 .name{min-width:0;flex:0 0 auto;font-size:var(--name-size);font-weight:900;line-height:1.00;letter-spacing:-.018em;display:block;overflow:visible;overflow-wrap:anywhere;word-break:normal}
 .name.medium{font-size:var(--name-medium);line-height:1.01}.name.long{font-size:var(--name-long);line-height:1.01}.name.xlong{font-size:var(--name-xlong);line-height:1.01}
 .code{flex:0 0 auto;font-size:var(--code-size);font-weight:800;letter-spacing:.01em;line-height:1.08;white-space:nowrap;overflow:hidden;color:#333;margin:0}
 .meta-stack{flex:0 0 auto;display:grid;gap:.10mm;margin:0}
 .meta{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:baseline;gap:.24mm;font-size:var(--meta-size);line-height:1.08;white-space:nowrap}
 .meta span{font-weight:800;color:#333}.meta b{font-weight:900;overflow:hidden;white-space:nowrap}
-.qr-wrap{min-width:0;display:grid;grid-template-rows:auto auto;align-content:center;justify-items:center;gap:.22mm;padding-left:var(--qr-pad-left);border-left:.09mm solid #777}
+.qr-wrap{min-width:0;display:grid;grid-template-rows:auto auto;align-content:center;justify-items:center;gap:.20mm;padding-left:var(--qr-pad-left);border-left:.09mm solid #777}
 .qr{width:var(--qr-size);height:var(--qr-size);display:grid;place-items:center;align-self:end}
 .qr svg{width:100%;height:100%;display:block}
-.key{font-size:var(--key-size);font-weight:900;line-height:1.03;text-align:center;width:var(--key-width);max-height:var(--key-height);overflow:hidden;overflow-wrap:anywhere;word-break:break-word;color:#111}
+.key-frame{width:var(--key-width);height:var(--key-height);overflow:hidden;display:grid;place-items:start center}
+.key{font-size:var(--key-size);font-weight:900;line-height:1.03;text-align:center;width:100%;max-height:100%;overflow:hidden;overflow-wrap:anywhere;word-break:break-word;color:#111}
+body[data-profile="zebra"] .key{width:200%;transform:scale(.5);transform-origin:top center;white-space:nowrap;overflow:visible;word-break:normal}
 .screen-status{position:fixed;left:29mm;top:5mm;width:340px;padding:14px 16px;border-radius:12px;background:#fff;color:#087b6f;box-shadow:0 8px 28px rgba(0,0,0,.16);font-size:13px;font-weight:700;line-height:1.45}
 .screen-status small{display:block;margin-top:4px;color:#667a76;font-weight:500}
 @media print{
@@ -38,7 +46,7 @@ body[data-profile="zebra"]{--paper-w:25.4mm;--paper-h:20mm;--safe-h:19.45mm;--pa
 <body>
 <div class="print-pages" id="printPages"></div>
 <div class="screen-status" id="screenStatus">กำลังเตรียมหน้าพิมพ์…</div>
-<script src="assets/qr-lite.js?v=1.4.13"></script>
+<script src="assets/qr-lite.js?v=1.4.14"></script>
 <script>
 'use strict';
 const p=new URLSearchParams(location.search);
@@ -58,7 +66,7 @@ document.head.appendChild(pageStyle);
 const statusEl=document.getElementById('screenStatus');
 const pages=document.getElementById('printPages');
 const profileName=profile==='zebra'?'Zebra 420t':'TSC 310';
-function labelMarkup(index){return `<div class="preview"><div class="label"><div class="text"><div class="name"></div><div class="code"></div><div class="meta-stack"><div class="meta"><span>Lot</span><b class="lot"></b></div><div class="meta"><span>EXP</span><b class="exp"></b></div></div></div><div class="qr-wrap"><div class="qr"></div><div class="key"></div></div></div></div>`;}
+function labelMarkup(index){return `<div class="preview"><div class="label"><div class="text"><div class="text-position"><div class="text-inner"><div class="name"></div><div class="code"></div><div class="meta-stack"><div class="meta"><span>Lot</span><b class="lot"></b></div><div class="meta"><span>EXP</span><b class="exp"></b></div></div></div></div></div><div class="qr-wrap"><div class="qr"></div><div class="key-frame"><div class="key"></div></div></div></div></div>`;}
 pages.innerHTML=Array.from({length:copies},(_,i)=>labelMarkup(i)).join('');
 [...pages.querySelectorAll('.preview')].forEach(page=>{
   const nameEl=page.querySelector('.name');
@@ -71,12 +79,25 @@ pages.innerHTML=Array.from({length:copies},(_,i)=>labelMarkup(i)).join('');
   try{page.querySelector('.qr').innerHTML=window.CNMIQRCode.svg(qrText,{level:'L',margin:1});}catch(e){page.querySelector('.qr').textContent='QR';console.error(e);}
 });
 function fitName(page){
-  const nameEl=page.querySelector('.name'),textEl=page.querySelector('.text');
-  let size=parseFloat(getComputedStyle(nameEl).fontSize),guard=0;const min=profile==='zebra'?2.25:4.8;
-  const tooTall=()=>{const style=getComputedStyle(nameEl);const lineHeight=parseFloat(style.lineHeight)||size;const lines=Math.ceil(nameEl.getBoundingClientRect().height/lineHeight-.01);return textEl.scrollHeight>textEl.clientHeight+.5||nameEl.scrollWidth>nameEl.clientWidth+.5||lines>4;};
+  const nameEl=page.querySelector('.name'),textEl=page.querySelector('.text'),inner=page.querySelector('.text-inner');
+  let size=parseFloat(getComputedStyle(nameEl).fontSize),guard=0;
+  const scale=profile==='zebra'?.48:1;
+  const min=profile==='zebra'?7.2:4.8;
+  const tooTall=()=>{
+    const style=getComputedStyle(nameEl);
+    const lineHeight=parseFloat(style.lineHeight)||size;
+    const lines=Math.ceil(nameEl.scrollHeight/lineHeight-.01);
+    return inner.scrollHeight*scale>textEl.clientHeight+.5||nameEl.scrollWidth*scale>textEl.clientWidth+.5||lines>4;
+  };
   while(tooTall()&&size>min&&guard<36){size-=.2;nameEl.style.fontSize=`${size}px`;guard++;}
 }
-function fitKey(page){const el=page.querySelector('.key');let size=parseFloat(getComputedStyle(el).fontSize),guard=0;while((el.scrollHeight>el.clientHeight+1||el.scrollWidth>el.clientWidth+1)&&size>(profile==='zebra'?1.65:3.2)&&guard<18){size-=.2;el.style.fontSize=`${size}px`;guard++;}}
+function fitKey(page){
+  const el=page.querySelector('.key'),frame=page.querySelector('.key-frame');
+  let size=parseFloat(getComputedStyle(el).fontSize),guard=0;
+  const scale=profile==='zebra'?.5:1;
+  const min=profile==='zebra'?4.8:3.2;
+  while((el.scrollWidth*scale>frame.clientWidth+.5||el.scrollHeight*scale>frame.clientHeight+.5)&&size>min&&guard<24){size-=.2;el.style.fontSize=`${size}px`;guard++;}
+}
 function nextFrame(){return new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));}
 async function prepare(){if(document.fonts&&document.fonts.ready){try{await document.fonts.ready;}catch(_){}}await nextFrame();[...pages.querySelectorAll('.preview')].forEach(page=>{fitName(page);fitKey(page);});await nextFrame();}
 async function startPrint(){try{if(document.readyState!=='complete')await new Promise(resolve=>window.addEventListener('load',resolve,{once:true}));await prepare();await new Promise(resolve=>setTimeout(resolve,100));statusEl.innerHTML=`กำลังเปิดหน้าพิมพ์ ${profileName}…<small>${copies} ดวง · ตรวจชื่อเครื่องพิมพ์จริงให้ตรงกับ ${profileName}</small>`;window.focus();window.print();}catch(e){statusEl.textContent='เปิดหน้าพิมพ์ไม่สำเร็จ กรุณากด Ctrl + P';console.error(e);}}
