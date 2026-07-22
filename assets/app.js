@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.9';
+const APP_VERSION = '1.4.10';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const C = window.APP_CONFIG || {};
 const configured = C.SUPABASE_URL && !C.SUPABASE_URL.includes('YOUR-PROJECT') && C.SUPABASE_ANON_KEY && !C.SUPABASE_ANON_KEY.includes('YOUR-ANON');
@@ -29,8 +29,8 @@ const MOVE_HISTORY_PAGE_SIZE = 7;
 const REPORT_PAGE_SIZE = 10;
 const LABEL_QUEUE_PAGE_SIZE = 10;
 const LABEL_PRINTERS = Object.freeze({
-  tsc:{key:'tsc',name:'TSC 310',fullName:'TSC 310 · 300 dpi',profileCode:'TSC_310',className:'tsc',note:'รูปแบบมาตรฐาน 25 × 20 mm'},
-  zebra:{key:'zebra',name:'Zebra 420t',fullName:'Zebra 420t · 203 dpi',profileCode:'ZEBRA_420T',className:'zebra',note:'ชดเชยขนาดสำหรับไดรเวอร์ Zebra 420t'}
+  tsc:{key:'tsc',name:'TSC 310',fullName:'TSC 310',profileCode:'TSC_310',className:'tsc',note:'กระดาษ 25 × 20 mm · ไม่ย่อขนาด'},
+  zebra:{key:'zebra',name:'Zebra 420t',fullName:'Zebra GC420t',profileCode:'ZEBRA_420T',className:'zebra',note:'กระดาษ USER 25.4 × 20 mm · ไม่ย่อขนาด'}
 });
 const LABEL_PRINTER_STORAGE_KEY = 'cnmi-inventory-label-printer';
 
@@ -1348,7 +1348,7 @@ function openPrinterChooser(lotId, defaultCopies = 1) {
   const cached = stockCache.find(x => x.lot_id === lotId);
   const title = cached?.material_name || cached?.label_name || 'QR Sticker';
   const lotText = cached ? `Lot ${cached.lot_no}` : '';
-  openModal(`<section class="printer-picker"><div class="printer-picker-head"><span>${icon('print')}</span><div><p class="eyebrow">Label printer</p><h3>เลือกเครื่องพิมพ์</h3><p>${esc(title)}${lotText ? ` · ${esc(lotText)}` : ''}</p></div></div><label class="label-copy-field">จำนวนสติ๊กเกอร์<input id="labelCopyCount" type="number" min="1" max="100" step="1" inputmode="numeric" value="${normalizedLabelCopies(defaultCopies)}"></label><div class="printer-picker-grid">${Object.values(LABEL_PRINTERS).map(p => `<button type="button" class="printer-choice ${p.className} ${preferred === p.key ? 'preferred' : ''}" data-modal-printer="${p.key}">${icon('print')}<span><strong>${esc(p.name)}</strong><small>${esc(p.note)}${preferred === p.key ? ' · เครื่องที่เลือกไว้' : ''}</small></span></button>`).join('')}</div><p class="printer-picker-note">ระบบจะจัดขนาดฉลากให้ตรงกับรุ่นที่เลือก ส่วนหน้าพิมพ์ของ Chrome ให้ตรวจว่าชื่อเครื่องพิมพ์จริงตรงกับปุ่มที่กด</p></section>`);
+  openModal(`<section class="printer-picker"><div class="printer-picker-head"><span>${icon('print')}</span><div><p class="eyebrow">Label printer</p><h3>เลือกเครื่องพิมพ์</h3><p>${esc(title)}${lotText ? ` · ${esc(lotText)}` : ''}</p></div></div><label class="label-copy-field">จำนวนสติ๊กเกอร์<input id="labelCopyCount" type="number" min="1" max="100" step="1" inputmode="numeric" value="${normalizedLabelCopies(defaultCopies)}"></label><div class="printer-picker-grid">${Object.values(LABEL_PRINTERS).map(p => `<button type="button" class="printer-choice ${p.className} ${preferred === p.key ? 'preferred' : ''}" data-modal-printer="${p.key}">${icon('print')}<span><strong>${esc(p.name)}</strong><small>${esc(p.note)}${preferred === p.key ? ' · เครื่องที่เลือกไว้' : ''}</small></span></button>`).join('')}</div><p class="printer-picker-note">ระบบเลือกแบบกระดาษให้ตรงกับรุ่นที่กด และแก้การคั่นหน้าว่างแล้ว ในหน้าพิมพ์ของ Chrome ให้เลือกชื่อเครื่องจริงให้ตรงกัน</p></section>`);
   $$('[data-modal-printer]', $('#modal')).forEach(button => button.addEventListener('click', () => {
     const printer = button.dataset.modalPrinter;
     const copies = normalizedLabelCopies($('#labelCopyCount')?.value, defaultCopies);
@@ -1441,7 +1441,7 @@ function labelQueueCard(row) {
 
 async function renderLabels() {
   const preferred = preferredLabelPrinter();
-  page.innerHTML = `<div class="page-head label-page-head"><div><p class="eyebrow">Label printing</p><h2>พิมพ์สติ๊กเกอร์</h2><p class="muted small">รายการรับเข้าจากโทรศัพท์และคอมพิวเตอร์จะแสดงที่นี่ เพื่อไปพิมพ์กับ TSC 310 หรือ Zebra 420t ภายหลัง</p></div><button class="mini ghost" type="button" id="refreshLabelQueue">${icon('refresh')} รีเฟรช</button></div><section class="card device-printer-card"><div><p class="eyebrow">เครื่องพิมพ์ประจำเครื่องนี้</p><h3>เลือกแบบฉลากเริ่มต้น</h3><p>การตั้งค่านี้จำเฉพาะคอมพิวเตอร์หรือโทรศัพท์เครื่องนี้</p></div><div class="device-printer-options">${Object.values(LABEL_PRINTERS).map(p => `<button type="button" class="device-printer-option ${p.className} ${preferred === p.key ? 'active' : ''}" data-set-label-printer="${p.key}">${icon('print')}<span><strong>${esc(p.name)}</strong><small>${esc(p.note)}</small></span></button>`).join('')}</div></section><section class="card label-queue-filter"><div class="search-box">${icon('search')}<input id="labelQueueSearch" type="search" placeholder="ค้นหาชื่อวัสดุ รหัส หรือ Lot"></div><div class="label-filter-tabs"><button type="button" class="active" data-label-filter="unprinted">ยังไม่พิมพ์</button><button type="button" data-label-filter="all">ทั้งหมด</button></div></section><div id="labelQueueList"><div class="card usage-loading">กำลังโหลดรายการรับเข้าล่าสุด…</div></div>`;
+  page.innerHTML = `<div class="page-head label-page-head"><div><p class="eyebrow">Label printing</p><h2>พิมพ์สติ๊กเกอร์</h2><p class="muted small">รายการรับเข้าจากโทรศัพท์และคอมพิวเตอร์จะแสดงที่นี่ เลือก TSC 310 หรือ Zebra 420t แล้วพิมพ์ภายหลังได้</p></div><button class="mini ghost" type="button" id="refreshLabelQueue">${icon('refresh')} รีเฟรช</button></div><section class="card device-printer-card"><div><p class="eyebrow">เครื่องพิมพ์ประจำเครื่องนี้</p><h3>เลือกแบบฉลากเริ่มต้น</h3><p>การตั้งค่านี้จำเฉพาะคอมพิวเตอร์หรือโทรศัพท์เครื่องนี้</p></div><div class="device-printer-options">${Object.values(LABEL_PRINTERS).map(p => `<button type="button" class="device-printer-option ${p.className} ${preferred === p.key ? 'active' : ''}" data-set-label-printer="${p.key}">${icon('print')}<span><strong>${esc(p.name)}</strong><small>${esc(p.note)}</small></span></button>`).join('')}</div></section><section class="card label-queue-filter"><div class="search-box">${icon('search')}<input id="labelQueueSearch" type="search" placeholder="ค้นหาชื่อวัสดุ รหัส หรือ Lot"></div><div class="label-filter-tabs"><button type="button" class="active" data-label-filter="unprinted">ยังไม่พิมพ์</button><button type="button" data-label-filter="all">ทั้งหมด</button></div></section><div id="labelQueueList"><div class="card usage-loading">กำลังโหลดรายการรับเข้าล่าสุด…</div></div>`;
   const [receiveRes, printRes] = await Promise.all([
     sb.from('v_transaction_history').select('*').eq('tx_type','RECEIVE').order('created_at',{ascending:false}).order('id',{ascending:false}).limit(150),
     sb.from('v_audit_activity').select('entity_id,created_at,summary,actor_name,actor_email').eq('action','LABEL_PRINT').order('created_at',{ascending:false}).limit(500)

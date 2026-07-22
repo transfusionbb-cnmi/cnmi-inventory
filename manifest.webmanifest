@@ -1,7 +1,7 @@
 {
   "name": "CNMI Inventory",
   "short_name": "Inventory",
-  "description": "ระบบบริหารจัดการสต๊อก รับเข้า นำออก พิมพ์ QR ด้วย TSC 310 หรือ Zebra 420t ตรวจวันศุกร์ และรายงาน CNMI",
+  "description": "ระบบบริหารจัดการสต๊อกและพิมพ์ QR Sticker ขนาดจริง 25 × 20 mm สำหรับ TSC 310 และ Zebra GC420t",
   "id": "https://inventory.cnmiblood.com/",
   "start_url": "./index.html",
   "scope": "./",
@@ -139,5 +139,5 @@
       ]
     }
   ],
-  "version": "1.4.9"
+  "version": "1.4.10"
 }

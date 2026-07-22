@@ -5,34 +5,40 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>พิมพ์ QR Sticker</title>
 <style>
-@page{size:25mm 20mm;margin:0}
 *{box-sizing:border-box}
+:root{--paper-w:25mm;--paper-h:20mm;--safe-h:19.72mm}
 html,body{margin:0;padding:0;background:#eef2f3;font-family:Tahoma,"Leelawadee UI","Noto Sans Thai",Arial,sans-serif;color:#000;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.print-pages{width:25mm}
-.preview{position:relative;width:25mm;height:20mm;background:#fff;overflow:hidden;break-after:page;page-break-after:always}
-.preview:last-child{break-after:auto;page-break-after:auto}
-.label{width:25mm;height:20mm;padding:.75mm .95mm;display:grid;grid-template-columns:minmax(0,13.9mm) minmax(0,8.65mm);gap:.55mm;overflow:hidden;background:#fff;border:0;transform-origin:0 0}
-body[data-profile="zebra"] .label{transform:scale(.68)}
-.text{min-width:0;display:flex;flex-direction:column;justify-content:center;align-items:stretch;gap:.22mm;overflow:hidden;padding:.08mm .25mm .05mm .05mm}
-.name{min-width:0;flex:0 0 auto;font-size:6.75pt;font-weight:900;line-height:1.02;letter-spacing:-.015em;display:block;overflow:visible;overflow-wrap:anywhere;word-break:normal}
-.name.medium{font-size:5.75pt;line-height:1.03}.name.long{font-size:4.95pt;line-height:1.03}.name.xlong{font-size:4.3pt;line-height:1.02}
-.code{flex:0 0 auto;font-size:3.05pt;font-weight:700;letter-spacing:.01em;line-height:1.1;white-space:nowrap;overflow:hidden;color:#4a4a4a;margin:0}
-.meta-stack{flex:0 0 auto;display:grid;gap:.14mm;margin:0}
-.meta{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:baseline;gap:.32mm;font-size:4pt;line-height:1.1;white-space:nowrap}
-.meta span{font-weight:700;color:#444}.meta b{font-weight:900;overflow:hidden;white-space:nowrap}
-.qr-wrap{min-width:0;display:grid;grid-template-rows:auto auto;align-content:center;justify-items:center;gap:.34mm;padding-left:.55mm;border-left:.09mm solid #b7b7b7}
-.qr{width:8.15mm;height:8.15mm;display:grid;place-items:center;align-self:end}
+.print-pages{width:var(--paper-w);margin:0;padding:0}
+.preview{position:relative;width:var(--paper-w);height:var(--safe-h);margin:0;padding:0;background:#fff;overflow:hidden;break-inside:avoid;page-break-inside:avoid}
+.preview+.preview{break-before:page;page-break-before:always}
+.label{position:absolute;left:0;top:0;width:var(--paper-w);height:var(--safe-h);padding:.65mm .80mm;display:grid;grid-template-columns:minmax(0,14.35mm) minmax(0,8.50mm);gap:.55mm;overflow:hidden;background:#fff;border:0;transform:none!important}
+body[data-profile="zebra"]{--paper-w:25.4mm;--paper-h:20mm;--safe-h:19.70mm}
+body[data-profile="zebra"] .label{padding:.65mm .85mm;grid-template-columns:minmax(0,14.65mm) minmax(0,8.50mm)}
+.text{min-width:0;display:flex;flex-direction:column;justify-content:center;align-items:stretch;gap:.20mm;overflow:hidden;padding:.03mm .18mm .03mm .02mm}
+.name{min-width:0;flex:0 0 auto;font-size:7.15pt;font-weight:900;line-height:1.00;letter-spacing:-.018em;display:block;overflow:visible;overflow-wrap:anywhere;word-break:normal}
+.name.medium{font-size:6.15pt;line-height:1.01}.name.long{font-size:5.25pt;line-height:1.01}.name.xlong{font-size:4.55pt;line-height:1.01}
+.code{flex:0 0 auto;font-size:3.25pt;font-weight:800;letter-spacing:.01em;line-height:1.08;white-space:nowrap;overflow:hidden;color:#333;margin:0}
+.meta-stack{flex:0 0 auto;display:grid;gap:.12mm;margin:0}
+.meta{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:baseline;gap:.28mm;font-size:4.15pt;line-height:1.08;white-space:nowrap}
+.meta span{font-weight:800;color:#333}.meta b{font-weight:900;overflow:hidden;white-space:nowrap}
+.qr-wrap{min-width:0;display:grid;grid-template-rows:auto auto;align-content:center;justify-items:center;gap:.26mm;padding-left:.48mm;border-left:.09mm solid #777}
+.qr{width:8.20mm;height:8.20mm;display:grid;place-items:center;align-self:end}
 .qr svg{width:100%;height:100%;display:block}
-.key{font-size:3pt;font-weight:800;line-height:1.04;text-align:center;width:8.1mm;max-height:3.35mm;overflow:hidden;overflow-wrap:anywhere;word-break:break-word;color:#111}
-.screen-status{position:fixed;left:29mm;top:5mm;width:320px;padding:14px 16px;border-radius:12px;background:#fff;color:#087b6f;box-shadow:0 8px 28px rgba(0,0,0,.16);font-size:13px;font-weight:700;line-height:1.45}
+.key{font-size:3.05pt;font-weight:900;line-height:1.03;text-align:center;width:8.10mm;max-height:3.25mm;overflow:hidden;overflow-wrap:anywhere;word-break:break-word;color:#111}
+.screen-status{position:fixed;left:29mm;top:5mm;width:340px;padding:14px 16px;border-radius:12px;background:#fff;color:#087b6f;box-shadow:0 8px 28px rgba(0,0,0,.16);font-size:13px;font-weight:700;line-height:1.45}
 .screen-status small{display:block;margin-top:4px;color:#667a76;font-weight:500}
-@media print{html,body{width:25mm!important;min-height:0!important;margin:0!important;padding:0!important;overflow:visible!important;background:#fff!important}.print-pages,.preview{width:25mm!important}.preview{height:20mm!important;margin:0!important}.screen-status{display:none!important}}
+@media print{
+  html,body{width:var(--paper-w)!important;min-height:0!important;margin:0!important;padding:0!important;overflow:visible!important;background:#fff!important}
+  .print-pages,.preview{width:var(--paper-w)!important}
+  .preview{height:var(--safe-h)!important;margin:0!important}
+  .screen-status{display:none!important}
+}
 </style>
 </head>
 <body>
 <div class="print-pages" id="printPages"></div>
 <div class="screen-status" id="screenStatus">กำลังเตรียมหน้าพิมพ์…</div>
-<script src="assets/qr-lite.js?v=1.4.9"></script>
+<script src="assets/qr-lite.js?v=1.4.10"></script>
 <script>
 'use strict';
 const p=new URLSearchParams(location.search);
@@ -46,6 +52,9 @@ const exp=safe(p.get('exp'),'ไม่ระบุ');
 const profile=p.get('profile')==='zebra'?'zebra':'tsc';
 const copies=Math.max(1,Math.min(100,Math.round(Number(p.get('copies'))||1)));
 document.body.dataset.profile=profile;
+const pageStyle=document.createElement('style');
+pageStyle.textContent=profile==='zebra'?'@page{size:25.4mm 20mm;margin:0}':'@page{size:25mm 20mm;margin:0}';
+document.head.appendChild(pageStyle);
 const statusEl=document.getElementById('screenStatus');
 const pages=document.getElementById('printPages');
 const profileName=profile==='zebra'?'Zebra 420t':'TSC 310';
@@ -72,7 +81,7 @@ function nextFrame(){return new Promise(resolve=>requestAnimationFrame(()=>reque
 async function prepare(){if(document.fonts&&document.fonts.ready){try{await document.fonts.ready;}catch(_){}}await nextFrame();[...pages.querySelectorAll('.preview')].forEach(page=>{fitName(page);fitKey(page);});await nextFrame();}
 async function startPrint(){try{if(document.readyState!=='complete')await new Promise(resolve=>window.addEventListener('load',resolve,{once:true}));await prepare();await new Promise(resolve=>setTimeout(resolve,100));statusEl.innerHTML=`กำลังเปิดหน้าพิมพ์ ${profileName}…<small>${copies} ดวง · ตรวจชื่อเครื่องพิมพ์จริงให้ตรงกับ ${profileName}</small>`;window.focus();window.print();}catch(e){statusEl.textContent='เปิดหน้าพิมพ์ไม่สำเร็จ กรุณากด Ctrl + P';console.error(e);}}
 window.addEventListener('afterprint',()=>setTimeout(()=>window.close(),180));
-window.addEventListener('load',async()=>{await prepare();statusEl.innerHTML=`โปรไฟล์ ${profileName}<small>${copies} ดวง${profile==='zebra'?' · ชดเชยขนาด 68% สำหรับ Zebra 420t':''}</small>`;if(p.get('auto')==='1')startPrint();},{once:true});
+window.addEventListener('load',async()=>{await prepare();statusEl.innerHTML=`โปรไฟล์ ${profileName}<small>${copies} ดวง · ขนาดจริง 25 × 20 mm</small>`;if(p.get('auto')==='1')startPrint();},{once:true});
 setTimeout(()=>{if(p.get('auto')==='1'&&!document.hidden)statusEl.innerHTML=`หากหน้าพิมพ์ยังไม่เปิด กรุณากด Ctrl + P<small>เลือกเครื่อง ${profileName}</small>`;},5000);
 </script>
 </body>
