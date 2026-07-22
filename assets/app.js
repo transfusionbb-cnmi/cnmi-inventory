@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.25';
+const APP_VERSION = '1.4.26';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const DEFAULT_EXPIRY_ALERT_MONTHS = 1;
 const MAX_EXPIRY_ALERT_MONTHS = 8;
@@ -291,7 +291,7 @@ function ensureQrDecoder() {
       return;
     }
     const script = document.createElement('script');
-    script.src = 'third_party/jsQR-1.4.0.js?v=1.4.25';
+    script.src = 'third_party/jsQR-1.4.0.js?v=1.4.26';
     script.async = false;
     script.dataset.jsqrLoader = '1';
     script.onload = () => resolve(typeof window.jsQR === 'function');
@@ -1958,25 +1958,18 @@ function cropCanvasRegion(sourceCanvas, rect) {
   return out;
 }
 
-function decodeQrCanvas(canvas, ctx, focusRect = null) {
+function decodeQrCanvas(canvas, ctx) {
   if (typeof window.jsQR !== 'function' || !canvas.width || !canvas.height) return null;
-  const attempts = [];
-  if (focusRect) {
-    const base = normalizeScanRect(focusRect, canvas.width, canvas.height);
-    if (base) {
-      attempts.push([base.x,base.y,base.w,base.h]);
-      const wider = inflateScanRect(base, 1.18, canvas.width, canvas.height);
-      if (wider) attempts.push([wider.x,wider.y,wider.w,wider.h]);
-      const wider2 = inflateScanRect(base, 1.38, canvas.width, canvas.height);
-      if (wider2) attempts.push([wider2.x,wider2.y,wider2.w,wider2.h]);
-    }
-  }
-  attempts.push(
+  /*
+    อ่านภาพเต็มก่อน เพื่อให้สแกนได้ทั้งใกล้และไกล
+    จากนั้นค่อยลองพื้นที่กึ่งกลางหลายขนาดเป็น fallback
+  */
+  const attempts = [
     [0,0,canvas.width,canvas.height],
-    [Math.round(canvas.width*.08),Math.round(canvas.height*.08),Math.round(canvas.width*.84),Math.round(canvas.height*.84)],
-    [Math.round(canvas.width*.18),Math.round(canvas.height*.16),Math.round(canvas.width*.64),Math.round(canvas.height*.68)],
-    [Math.round(canvas.width*.25),Math.round(canvas.height*.22),Math.round(canvas.width*.50),Math.round(canvas.height*.56)]
-  );
+    [Math.round(canvas.width*.05),Math.round(canvas.height*.05),Math.round(canvas.width*.90),Math.round(canvas.height*.90)],
+    [Math.round(canvas.width*.14),Math.round(canvas.height*.12),Math.round(canvas.width*.72),Math.round(canvas.height*.76)],
+    [Math.round(canvas.width*.22),Math.round(canvas.height*.18),Math.round(canvas.width*.56),Math.round(canvas.height*.64)]
+  ];
   const seen = new Set();
   for (const [x,y,w,h] of attempts) {
     const rect = normalizeScanRect({x,y,w,h}, canvas.width, canvas.height);
@@ -1987,13 +1980,32 @@ function decodeQrCanvas(canvas, ctx, focusRect = null) {
     const image = ctx.getImageData(rect.x,rect.y,rect.w,rect.h);
     const normal = window.jsQR(image.data,image.width,image.height,{inversionAttempts:'attemptBoth'});
     if (normal?.data) return normal.data;
-    for (const [contrast,targetMean] of [[1.3,128],[1.45,134],[1.7,144],[2.05,154]]) {
+    for (const [contrast,targetMean] of [[1.2,126],[1.4,132],[1.65,142],[1.95,150]]) {
       const enhanced = enhanceQrImage(image,contrast,targetMean);
       const decoded = window.jsQR(enhanced.data,enhanced.width,enhanced.height,{inversionAttempts:'attemptBoth'});
       if (decoded?.data) return decoded.data;
     }
   }
   return null;
+}
+
+function barcodeCenterDistance(code, width, height) {
+  const box = code?.boundingBox;
+  let cx = width / 2, cy = height / 2;
+  if (box && Number.isFinite(box.x) && Number.isFinite(box.y)) {
+    cx = box.x + box.width / 2;
+    cy = box.y + box.height / 2;
+  } else if (Array.isArray(code?.cornerPoints) && code.cornerPoints.length) {
+    cx = code.cornerPoints.reduce((sum,p)=>sum+Number(p.x||0),0) / code.cornerPoints.length;
+    cy = code.cornerPoints.reduce((sum,p)=>sum+Number(p.y||0),0) / code.cornerPoints.length;
+  }
+  return Math.hypot(cx-width/2,cy-height/2);
+}
+
+function pickCenteredBarcode(codes, width, height) {
+  return [...(codes || [])]
+    .filter(code => code?.rawValue)
+    .sort((a,b)=>barcodeCenterDistance(a,width,height)-barcodeCenterDistance(b,width,height))[0]?.rawValue || '';
 }
 
 function drawVideoFrame(video, canvas, ctx) {
@@ -2073,14 +2085,14 @@ async function startCameraScanner(mode = 'issue') {
   const resolveCode = inspectMode ? resolveStockCheckCode : resolveIssueCode;
   const submitCode = (value, source = 'manual') => inspectMode ? resolveCode(value) : resolveCode(value, source);
   const title = inspectMode ? 'สแกนตรวจ Lot' : 'สแกน QR Sticker';
-  const description = inspectMode ? 'หันกล้องไปที่ QR เพียง 1 ดวงในกรอบ เพื่อดูยอดคงเหลือและบันทึกผลตรวจ' : 'ให้มี QR เพียง 1 ดวงในกรอบ อยู่กึ่งกลาง และถือโทรศัพท์ให้นิ่ง';
+  const description = inspectMode ? 'หันกล้องไปที่ QR ระบบอ่านได้ทั้งใกล้และไกล โดยเลือกดวงที่อยู่กึ่งกลางเป็นหลัก' : 'หันกล้องไปที่ QR ระบบอ่านได้ทั้งใกล้และไกล โดยเลือกดวงที่อยู่กึ่งกลางเป็นหลัก';
   if (!navigator.mediaDevices?.getUserMedia) {
     openModal(scannerFallbackMarkup(inspectMode,'อุปกรณ์นี้ไม่รองรับการเปิดกล้องสดผ่านเว็บ ใช้การถ่ายรูป QR หรือพิมพ์รหัสแทนได้'));
     bindScannerFallback({inspectMode,submitCode});
     return;
   }
 
-  openModal(`<div class="scanner-head"><div><h3>${title}</h3><p>${description}</p></div><button class="icon-button modal-close" type="button" aria-label="ปิด">×</button></div><div class="scan-video-wrap"><video id="scanVideo" autoplay playsinline muted></video><canvas id="scanCanvas" hidden></canvas><div class="scan-frame" id="scanFrame"><span>ให้มี QR 1 ดวงในกรอบ</span></div><div id="scanStatus" class="scan-status">กำลังเปิดกล้อง…</div></div><div class="scanner-actions"><label class="photo-scan-button secondary">${icon('camera')} ถ่ายรูป/เลือกรูป QR<input id="scanPhotoInput" type="file" accept="image/*" capture="environment" hidden></label><button type="button" class="secondary hidden" id="scannerTorchBtn">เปิดไฟฉาย</button></div><div id="photoScanStatus" class="field-hint"></div><p class="muted small scanner-tip">รองรับ iPhone/iPad และ Android · วาง QR เพียง 1 ดวงในกรอบ · หากเบลอให้ขยับเข้าออกเล็กน้อยจนภาพคม</p><form id="manualScanForm" class="scanner-manual form-grid"><label>หรือพิมพ์รหัส QR<input id="manualScanCode" placeholder="เช่น BB319-09062026" autocomplete="off"></label><button class="secondary" type="submit">${inspectMode?'ตรวจสอบ Lot':'ค้นหา Lot'}</button></form>`);
+  openModal(`<div class="scanner-head"><div><h3>${title}</h3><p>${description}</p></div><button class="icon-button modal-close" type="button" aria-label="ปิด">×</button></div><div class="scanner-guide">วาง QR ที่ต้องการไว้ใกล้กึ่งกลางภาพ</div><div class="scan-video-wrap"><video id="scanVideo" autoplay playsinline muted></video><canvas id="scanCanvas" hidden></canvas><div id="scanStatus" class="scan-status">กำลังเปิดกล้อง…</div></div><div class="scanner-actions"><label class="photo-scan-button secondary">${icon('camera')} ถ่ายรูป/เลือกรูป QR<input id="scanPhotoInput" type="file" accept="image/*" capture="environment" hidden></label><button type="button" class="secondary hidden" id="scannerTorchBtn">เปิดไฟฉาย</button></div><div id="photoScanStatus" class="field-hint"></div><p class="muted small scanner-tip">รองรับ iPhone/iPad และ Android · สแกนได้ทั้งใกล้และไกล · หากมีหลายดวง ระบบเลือกดวงที่อยู่กึ่งกลางเป็นหลัก</p><form id="manualScanForm" class="scanner-manual form-grid"><label>หรือพิมพ์รหัส QR<input id="manualScanCode" placeholder="เช่น BB319-09062026" autocomplete="off"></label><button class="secondary" type="submit">${inspectMode?'ตรวจสอบ Lot':'ค้นหา Lot'}</button></form>`);
   $('#modal').classList.add('scanner-open');
   bindScannerFallback({inspectMode,submitCode});
 
@@ -2123,11 +2135,6 @@ async function startCameraScanner(mode = 'issue') {
       if (Array.isArray(caps.exposureMode) && caps.exposureMode.includes('continuous')) advanced.exposureMode = 'continuous';
       if (caps.exposureCompensation && Number.isFinite(caps.exposureCompensation.max)) {
         advanced.exposureCompensation = Math.min(caps.exposureCompensation.max, Math.max(caps.exposureCompensation.min || 0, .5));
-      }
-      if (caps.zoom && Number.isFinite(caps.zoom.max)) {
-        const zoomMin = Number.isFinite(caps.zoom.min) ? caps.zoom.min : 1;
-        const zoomMax = caps.zoom.max;
-        if (zoomMax > zoomMin) advanced.zoom = Math.min(zoomMax, Math.max(zoomMin, Math.min(2, zoomMax)));
       }
       if (Object.keys(advanced).length) await track.applyConstraints({advanced:[advanced]});
       if (caps.torch) {
@@ -2177,29 +2184,25 @@ async function startCameraScanner(mode = 'issue') {
         busy = true;
         try {
           let value = '';
-          let frameRect = null;
-          if (drawVideoFrame(video,canvas,ctx)) frameRect = getScanFrameRect(video, $('#scanFrame'), canvas.width, canvas.height);
-          if (detector && frameRect) {
-            const crop = cropCanvasRegion(canvas, frameRect);
-            if (crop) {
-              const codes = await detector.detect(crop);
-              value = codes?.[0]?.rawValue || '';
-            }
+          const frameReady = drawVideoFrame(video,canvas,ctx);
+          if (detector && frameReady) {
+            const codes = await detector.detect(canvas);
+            value = pickCenteredBarcode(codes, canvas.width, canvas.height);
           }
           if (!value && detector) {
             const codes = await detector.detect(video);
-            value = codes?.[0]?.rawValue || '';
+            value = pickCenteredBarcode(codes, Number(video.videoWidth||1), Number(video.videoHeight||1));
           }
           if (!value && typeof window.jsQR === 'function' && canvas.width && canvas.height) {
-            value = decodeQrCanvas(canvas,ctx,frameRect) || '';
+            value = decodeQrCanvas(canvas,ctx) || '';
           }
           if (finish(value)) return;
           scans += 1;
-          if (scans === 18) status.textContent = 'ให้มี QR เพียง 1 ดวงในกรอบ แล้วถือให้นิ่ง';
+          if (scans === 18) status.textContent = 'วาง QR ที่ต้องการไว้ใกล้กึ่งกลางภาพ แล้วถือให้นิ่ง';
           if (scans === 24 && torchSupported && !torchOn) {
             if (await setTorch(true)) status.textContent = 'แสงค่อนข้างน้อย ระบบเปิดไฟฉายให้อัตโนมัติ';
           }
-          if (scans === 36 && !torchOn) status.textContent = 'หากยังไม่อ่าน ลองขยับเข้าออกเล็กน้อยจนภาพคม';
+          if (scans === 36 && !torchOn) status.textContent = 'หากยังไม่อ่าน ลองขยับเข้าออกได้ทั้งใกล้และไกลจนภาพคม';
           if (scans === 75) status.textContent = 'ยังอ่านไม่ได้ ลองถ่ายรูป QR ด้านล่าง';
         } catch (_) {
         } finally {

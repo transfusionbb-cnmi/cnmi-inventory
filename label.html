@@ -29,7 +29,7 @@ html,body{margin:0;padding:0;width:var(--paper-w);background:#eef2f3;font-family
 <body>
 <div id="printPages"></div>
 <div class="screen-status" id="screenStatus">กำลังสร้างสติ๊กเกอร์แบบคมชัด…</div>
-<script src="assets/qr-lite.js?v=1.4.25"></script>
+<script src="assets/qr-lite.js?v=1.4.26"></script>
 <script>
 'use strict';
 const p=new URLSearchParams(location.search);
@@ -136,14 +136,16 @@ function svgText(parent,text,x,y,{weight=700,size=12,anchor='start',clipId=''}={
 function profileLayout(){
   if(profile==='zebra'){
     return {
-      x:5,y:5,w:190,h:150,sepRatio:.405,
-      nameStart:17.5,nameMin:12,metaSize:11.5,codeStart:8,codeMin:6.5,
+      x:5,y:5,w:190,h:150,sepRatio:.43,
+      nameStart:17,nameMin:11.5,codeStart:11,codeMin:8.5,
+      metaStart:11.5,metaMin:8.5,
       separator:1,quietModules:3,maxNameLines:4
     };
   }
   return {
     x:6,y:6,w:283,h:224,sepRatio:.43,
-    nameStart:25,nameMin:17,metaSize:16,codeStart:11,codeMin:8.5,
+    nameStart:25,nameMin:17,codeStart:16,codeMin:12,
+    metaStart:17,metaMin:12.5,
     separator:1.5,quietModules:3,maxNameLines:4
   };
 }
@@ -183,28 +185,37 @@ function drawLabel(item,matrix){
   Object.entries({x:leftX,y:L.y,width:leftW,height:L.h}).forEach(([k,v])=>leftRect.setAttribute(k,String(v)));
   Object.entries({x:rightX,y:L.y,width:rightW,height:L.h}).forEach(([k,v])=>rightRect.setAttribute(k,String(v)));
 
-  const lotText=`Lot ${lot}`;
-  const expText=`EXP ${exp}`;
-  const lotSize=fitSingleLine(lotText,leftW,L.metaSize,profile==='zebra'?8.5:12,700);
-  const expSize=fitSingleLine(expText,leftW,L.metaSize,profile==='zebra'?8.5:12,700);
-  const metaH=Math.max(lotSize,expSize)*1.22;
-  const fixedHeight=metaH*2+(profile==='zebra'?8:12);
-  const nameMaxH=Math.max(profile==='zebra'?66:92,L.h-fixedHeight);
+  /* ซ้าย: ชื่อวัสดุ และรหัส BB */
+  const codeSize=fitSingleLine(code,leftW,L.codeStart,L.codeMin,700);
+  const codeBlockH=codeSize*1.35;
+  const nameMaxH=Math.max(profile==='zebra'?82:125,L.h-codeBlockH-6);
   const fitted=fitName(name,leftW,nameMaxH,L.nameStart,L.nameMin,L.maxNameLines);
-  const totalH=fitted.lines.length*fitted.lineHeight+metaH*2+(profile==='zebra'?5:8);
-  let y=L.y+Math.max(0,(L.h-totalH)/2)+fitted.size;
-  fitted.lines.forEach(line=>{svgText(svg,line,leftX,y,{weight:700,size:fitted.size,clipId:leftClipId});y+=fitted.lineHeight;});
-  y+=profile==='zebra'?2:3;
-  svgText(svg,lotText,leftX,y,{weight:700,size:lotSize,clipId:leftClipId});y+=metaH;
-  svgText(svg,expText,leftX,y,{weight:700,size:expSize,clipId:leftClipId});
+  const nameH=fitted.lines.length*fitted.lineHeight;
+  const totalLeftH=nameH+codeBlockH+(profile==='zebra'?5:8);
+  let y=L.y+Math.max(0,(L.h-totalLeftH)/2)+fitted.size;
+  fitted.lines.forEach(line=>{
+    svgText(svg,line,leftX,y,{weight:700,size:fitted.size,clipId:leftClipId});
+    y+=fitted.lineHeight;
+  });
+  y+=profile==='zebra'?3:5;
+  svgText(svg,code,leftX,y+codeSize*.9,{weight:700,size:codeSize,clipId:leftClipId});
 
   svgRect(svg,sepX,L.y,L.separator,L.h,'#000');
-  const codeAreaH=profile==='zebra'?13:19;
-  const qrBoxH=L.h-codeAreaH-2;
-  const qr=drawQrVector(svg,matrix,rightX,L.y,rightW,qrBoxH,L.quietModules);
-  const codeSize=fitSingleLine(code,rightW-2,L.codeStart,L.codeMin,700);
-  const codeY=Math.min(L.y+L.h-1,qr.y+qr.size+codeSize+1.5);
-  svgText(svg,code,rightX+rightW/2,codeY,{weight:700,size:codeSize,anchor:'middle',clipId:rightClipId});
+
+  /* ขวา: QR ด้านบน และ Lot / EXP ตัวใหญ่ด้านล่าง */
+  const metaGap=profile==='zebra'?2:3;
+  const metaLineH=profile==='zebra'?14.5:21;
+  const metaAreaH=metaLineH*2+metaGap+2;
+  const qrBoxH=L.h-metaAreaH;
+  drawQrVector(svg,matrix,rightX,L.y,rightW,qrBoxH,L.quietModules);
+
+  const lotText=`Lot ${lot}`;
+  const expText=`EXP ${exp}`;
+  const lotSize=fitSingleLine(lotText,rightW-2,L.metaStart,L.metaMin,700);
+  const expSize=fitSingleLine(expText,rightW-2,L.metaStart,L.metaMin,700);
+  const metaTop=L.y+qrBoxH+metaGap;
+  svgText(svg,lotText,rightX+rightW/2,metaTop+lotSize,{weight:700,size:lotSize,anchor:'middle',clipId:rightClipId});
+  svgText(svg,expText,rightX+rightW/2,metaTop+metaLineH+expSize,{weight:700,size:expSize,anchor:'middle',clipId:rightClipId});
 }
 
 async function prepare(){
@@ -226,7 +237,7 @@ async function startPrint(){
 }
 window.addEventListener('afterprint',()=>setTimeout(()=>window.close(),180));
 window.addEventListener('load',()=>{
-  statusEl.innerHTML=`โปรไฟล์ ${profileName}<small>v1.4.25: QR ใหญ่ขึ้น สแกนง่าย ตัวหนังสือคม และไม่มีกระดาษว่างคั่น</small>`;
+  statusEl.innerHTML=`โปรไฟล์ ${profileName}<small>v1.4.26: สแกนภาพเต็ม ย้ายรหัสใต้ชื่อ และขยาย Lot / EXP ใต้ QR</small>`;
   if(p.get('auto')==='1')startPrint();else prepare();
 },{once:true});
 setTimeout(()=>{if(p.get('auto')==='1'&&!document.hidden)statusEl.innerHTML=`หากหน้าพิมพ์ยังไม่เปิด กรุณากด Ctrl + P<small>เลือก ${profileName} และ Scale 100% / Actual size</small>`;},6000);
