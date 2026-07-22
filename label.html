@@ -6,25 +6,24 @@
 <title>พิมพ์ QR Sticker</title>
 <style>
 *{box-sizing:border-box}
-:root{--paper-w:25mm;--paper-h:20mm;--safe-h:19.72mm}
+:root{--paper-w:25mm;--paper-h:20mm;--safe-h:19.72mm;--pad-y:.62mm;--pad-x:.78mm;--text-col:14.55mm;--qr-col:8.35mm;--col-gap:.54mm;--text-gap:.18mm;--name-size:7.85pt;--name-medium:6.85pt;--name-long:5.85pt;--name-xlong:5.05pt;--code-size:3.55pt;--meta-size:4.45pt;--qr-size:8.20mm;--key-size:3.10pt;--key-width:8.05mm;--key-height:3.25mm;--qr-pad-left:.45mm}
 html,body{margin:0;padding:0;background:#eef2f3;font-family:Tahoma,"Leelawadee UI","Noto Sans Thai",Arial,sans-serif;color:#000;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .print-pages{width:var(--paper-w);margin:0;padding:0}
 .preview{position:relative;width:var(--paper-w);height:var(--safe-h);margin:0;padding:0;background:#fff;overflow:hidden;break-inside:avoid;page-break-inside:avoid}
 .preview+.preview{break-before:page;page-break-before:always}
-.label{position:absolute;left:0;top:0;width:var(--paper-w);height:var(--safe-h);padding:.65mm .80mm;display:grid;grid-template-columns:minmax(0,14.35mm) minmax(0,8.50mm);gap:.55mm;overflow:hidden;background:#fff;border:0;transform:none!important}
-body[data-profile="zebra"]{--paper-w:25.4mm;--paper-h:20mm;--safe-h:19.70mm}
-body[data-profile="zebra"] .label{padding:.65mm .85mm;grid-template-columns:minmax(0,14.65mm) minmax(0,8.50mm)}
-.text{min-width:0;display:flex;flex-direction:column;justify-content:center;align-items:stretch;gap:.20mm;overflow:hidden;padding:.03mm .18mm .03mm .02mm}
-.name{min-width:0;flex:0 0 auto;font-size:7.15pt;font-weight:900;line-height:1.00;letter-spacing:-.018em;display:block;overflow:visible;overflow-wrap:anywhere;word-break:normal}
-.name.medium{font-size:6.15pt;line-height:1.01}.name.long{font-size:5.25pt;line-height:1.01}.name.xlong{font-size:4.55pt;line-height:1.01}
-.code{flex:0 0 auto;font-size:3.25pt;font-weight:800;letter-spacing:.01em;line-height:1.08;white-space:nowrap;overflow:hidden;color:#333;margin:0}
-.meta-stack{flex:0 0 auto;display:grid;gap:.12mm;margin:0}
-.meta{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:baseline;gap:.28mm;font-size:4.15pt;line-height:1.08;white-space:nowrap}
+.label{position:absolute;left:0;top:0;width:var(--paper-w);height:var(--safe-h);padding:var(--pad-y) var(--pad-x);display:grid;grid-template-columns:minmax(0,var(--text-col)) minmax(0,var(--qr-col));gap:var(--col-gap);overflow:hidden;background:#fff;border:0}
+body[data-profile="zebra"]{--paper-w:25.4mm;--paper-h:20mm;--safe-h:19.68mm;--pad-y:.95mm;--pad-x:1.20mm;--text-col:14.15mm;--qr-col:6.95mm;--col-gap:.50mm;--text-gap:.12mm;--name-size:5.15pt;--name-medium:4.55pt;--name-long:4.00pt;--name-xlong:3.55pt;--code-size:2.65pt;--meta-size:3.30pt;--qr-size:6.00mm;--key-size:2.40pt;--key-width:6.25mm;--key-height:2.65mm;--qr-pad-left:.36mm}
+.text{min-width:0;display:flex;flex-direction:column;justify-content:center;align-items:stretch;gap:var(--text-gap);overflow:hidden;padding:.03mm .15mm .03mm .02mm}
+.name{min-width:0;flex:0 0 auto;font-size:var(--name-size);font-weight:900;line-height:1.00;letter-spacing:-.018em;display:block;overflow:visible;overflow-wrap:anywhere;word-break:normal}
+.name.medium{font-size:var(--name-medium);line-height:1.01}.name.long{font-size:var(--name-long);line-height:1.01}.name.xlong{font-size:var(--name-xlong);line-height:1.01}
+.code{flex:0 0 auto;font-size:var(--code-size);font-weight:800;letter-spacing:.01em;line-height:1.08;white-space:nowrap;overflow:hidden;color:#333;margin:0}
+.meta-stack{flex:0 0 auto;display:grid;gap:.10mm;margin:0}
+.meta{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:baseline;gap:.24mm;font-size:var(--meta-size);line-height:1.08;white-space:nowrap}
 .meta span{font-weight:800;color:#333}.meta b{font-weight:900;overflow:hidden;white-space:nowrap}
-.qr-wrap{min-width:0;display:grid;grid-template-rows:auto auto;align-content:center;justify-items:center;gap:.26mm;padding-left:.48mm;border-left:.09mm solid #777}
-.qr{width:8.20mm;height:8.20mm;display:grid;place-items:center;align-self:end}
+.qr-wrap{min-width:0;display:grid;grid-template-rows:auto auto;align-content:center;justify-items:center;gap:.22mm;padding-left:var(--qr-pad-left);border-left:.09mm solid #777}
+.qr{width:var(--qr-size);height:var(--qr-size);display:grid;place-items:center;align-self:end}
 .qr svg{width:100%;height:100%;display:block}
-.key{font-size:3.05pt;font-weight:900;line-height:1.03;text-align:center;width:8.10mm;max-height:3.25mm;overflow:hidden;overflow-wrap:anywhere;word-break:break-word;color:#111}
+.key{font-size:var(--key-size);font-weight:900;line-height:1.03;text-align:center;width:var(--key-width);max-height:var(--key-height);overflow:hidden;overflow-wrap:anywhere;word-break:break-word;color:#111}
 .screen-status{position:fixed;left:29mm;top:5mm;width:340px;padding:14px 16px;border-radius:12px;background:#fff;color:#087b6f;box-shadow:0 8px 28px rgba(0,0,0,.16);font-size:13px;font-weight:700;line-height:1.45}
 .screen-status small{display:block;margin-top:4px;color:#667a76;font-weight:500}
 @media print{
@@ -38,7 +37,7 @@ body[data-profile="zebra"] .label{padding:.65mm .85mm;grid-template-columns:minm
 <body>
 <div class="print-pages" id="printPages"></div>
 <div class="screen-status" id="screenStatus">กำลังเตรียมหน้าพิมพ์…</div>
-<script src="assets/qr-lite.js?v=1.4.10"></script>
+<script src="assets/qr-lite.js?v=1.4.11"></script>
 <script>
 'use strict';
 const p=new URLSearchParams(location.search);
@@ -72,11 +71,11 @@ pages.innerHTML=Array.from({length:copies},(_,i)=>labelMarkup(i)).join('');
 });
 function fitName(page){
   const nameEl=page.querySelector('.name'),textEl=page.querySelector('.text');
-  let size=parseFloat(getComputedStyle(nameEl).fontSize),guard=0;const min=4;
+  let size=parseFloat(getComputedStyle(nameEl).fontSize),guard=0;const min=profile==='zebra'?3.6:4.8;
   const tooTall=()=>{const style=getComputedStyle(nameEl);const lineHeight=parseFloat(style.lineHeight)||size;const lines=Math.ceil(nameEl.getBoundingClientRect().height/lineHeight-.01);return textEl.scrollHeight>textEl.clientHeight+.5||nameEl.scrollWidth>nameEl.clientWidth+.5||lines>4;};
   while(tooTall()&&size>min&&guard<36){size-=.2;nameEl.style.fontSize=`${size}px`;guard++;}
 }
-function fitKey(page){const el=page.querySelector('.key');let size=parseFloat(getComputedStyle(el).fontSize),guard=0;while((el.scrollHeight>el.clientHeight+1||el.scrollWidth>el.clientWidth+1)&&size>3&&guard<18){size-=.2;el.style.fontSize=`${size}px`;guard++;}}
+function fitKey(page){const el=page.querySelector('.key');let size=parseFloat(getComputedStyle(el).fontSize),guard=0;while((el.scrollHeight>el.clientHeight+1||el.scrollWidth>el.clientWidth+1)&&size>(profile==='zebra'?2.8:3.2)&&guard<18){size-=.2;el.style.fontSize=`${size}px`;guard++;}}
 function nextFrame(){return new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));}
 async function prepare(){if(document.fonts&&document.fonts.ready){try{await document.fonts.ready;}catch(_){}}await nextFrame();[...pages.querySelectorAll('.preview')].forEach(page=>{fitName(page);fitKey(page);});await nextFrame();}
 async function startPrint(){try{if(document.readyState!=='complete')await new Promise(resolve=>window.addEventListener('load',resolve,{once:true}));await prepare();await new Promise(resolve=>setTimeout(resolve,100));statusEl.innerHTML=`กำลังเปิดหน้าพิมพ์ ${profileName}…<small>${copies} ดวง · ตรวจชื่อเครื่องพิมพ์จริงให้ตรงกับ ${profileName}</small>`;window.focus();window.print();}catch(e){statusEl.textContent='เปิดหน้าพิมพ์ไม่สำเร็จ กรุณากด Ctrl + P';console.error(e);}}

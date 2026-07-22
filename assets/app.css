@@ -604,3 +604,18 @@ input,select,textarea,button{min-width:0}
 @media(max-width:600px){.device-printer-options{grid-template-columns:1fr}.label-queue-title{display:grid}.label-print-status{text-align:left;justify-items:start}.label-printer-actions{grid-template-columns:1fr 1fr}.printer-choice.compact{padding:12px 8px;font-size:.88rem}.receive-success-actions>*{width:100%}}
 
 /* v1.4.10 — exact 25×20 mm printer profiles; no DPI scaling */
+
+/* v1.4.11 — compact device-printer setting at page bottom */
+.device-printer-settings{margin-top:18px;padding:0;overflow:hidden}
+.device-printer-settings>summary{list-style:none;display:grid;grid-template-columns:42px minmax(0,1fr) 22px;gap:12px;align-items:center;padding:15px 17px;cursor:pointer;color:#173a35}
+.device-printer-settings>summary::-webkit-details-marker{display:none}
+.device-printer-settings>summary>span:first-child{width:42px;height:42px;border-radius:13px;display:grid;place-items:center;background:#e9f6f3;color:#087b6f}
+.device-printer-settings>summary>span:first-child .icon{width:21px;height:21px}
+.device-printer-settings>summary>span:nth-child(2){display:grid;gap:3px}
+.device-printer-settings>summary strong{font-size:.95rem}
+.device-printer-settings>summary small{color:#6c7e7a;font-weight:500;line-height:1.4}
+.device-printer-settings>summary>.icon{width:20px;height:20px;color:#6c7e7a;transition:transform .18s ease}
+.device-printer-settings[open]>summary>.icon{transform:rotate(90deg)}
+.device-printer-settings .device-printer-options{padding:0 17px 14px}
+.device-printer-help{margin:0 17px 17px;padding:11px 13px;border-radius:13px;background:#f3f7f6;color:#60736f;font-size:.82rem;line-height:1.5}
+@media(max-width:600px){.device-printer-settings>summary{grid-template-columns:38px minmax(0,1fr) 18px;padding:13px}.device-printer-settings>summary>span:first-child{width:38px;height:38px}.device-printer-settings .device-printer-options{padding:0 13px 12px}.device-printer-help{margin:0 13px 13px}}

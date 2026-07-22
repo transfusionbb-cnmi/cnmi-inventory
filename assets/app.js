@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.10';
+const APP_VERSION = '1.4.11';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const C = window.APP_CONFIG || {};
 const configured = C.SUPABASE_URL && !C.SUPABASE_URL.includes('YOUR-PROJECT') && C.SUPABASE_ANON_KEY && !C.SUPABASE_ANON_KEY.includes('YOUR-ANON');
@@ -29,8 +29,8 @@ const MOVE_HISTORY_PAGE_SIZE = 7;
 const REPORT_PAGE_SIZE = 10;
 const LABEL_QUEUE_PAGE_SIZE = 10;
 const LABEL_PRINTERS = Object.freeze({
-  tsc:{key:'tsc',name:'TSC 310',fullName:'TSC 310',profileCode:'TSC_310',className:'tsc',note:'กระดาษ 25 × 20 mm · ไม่ย่อขนาด'},
-  zebra:{key:'zebra',name:'Zebra 420t',fullName:'Zebra GC420t',profileCode:'ZEBRA_420T',className:'zebra',note:'กระดาษ USER 25.4 × 20 mm · ไม่ย่อขนาด'}
+  tsc:{key:'tsc',name:'TSC 310',fullName:'TSC 310',profileCode:'TSC_310',className:'tsc',note:'ฉลาก 25 × 20 mm · ปรับขนาดสำหรับ TSC'},
+  zebra:{key:'zebra',name:'Zebra 420t',fullName:'Zebra GC420t',profileCode:'ZEBRA_420T',className:'zebra',note:'ฉลาก USER 25.4 × 20 mm · ปรับขนาดสำหรับ Zebra'}
 });
 const LABEL_PRINTER_STORAGE_KEY = 'cnmi-inventory-label-printer';
 
@@ -1441,7 +1441,7 @@ function labelQueueCard(row) {
 
 async function renderLabels() {
   const preferred = preferredLabelPrinter();
-  page.innerHTML = `<div class="page-head label-page-head"><div><p class="eyebrow">Label printing</p><h2>พิมพ์สติ๊กเกอร์</h2><p class="muted small">รายการรับเข้าจากโทรศัพท์และคอมพิวเตอร์จะแสดงที่นี่ เลือก TSC 310 หรือ Zebra 420t แล้วพิมพ์ภายหลังได้</p></div><button class="mini ghost" type="button" id="refreshLabelQueue">${icon('refresh')} รีเฟรช</button></div><section class="card device-printer-card"><div><p class="eyebrow">เครื่องพิมพ์ประจำเครื่องนี้</p><h3>เลือกแบบฉลากเริ่มต้น</h3><p>การตั้งค่านี้จำเฉพาะคอมพิวเตอร์หรือโทรศัพท์เครื่องนี้</p></div><div class="device-printer-options">${Object.values(LABEL_PRINTERS).map(p => `<button type="button" class="device-printer-option ${p.className} ${preferred === p.key ? 'active' : ''}" data-set-label-printer="${p.key}">${icon('print')}<span><strong>${esc(p.name)}</strong><small>${esc(p.note)}</small></span></button>`).join('')}</div></section><section class="card label-queue-filter"><div class="search-box">${icon('search')}<input id="labelQueueSearch" type="search" placeholder="ค้นหาชื่อวัสดุ รหัส หรือ Lot"></div><div class="label-filter-tabs"><button type="button" class="active" data-label-filter="unprinted">ยังไม่พิมพ์</button><button type="button" data-label-filter="all">ทั้งหมด</button></div></section><div id="labelQueueList"><div class="card usage-loading">กำลังโหลดรายการรับเข้าล่าสุด…</div></div>`;
+  page.innerHTML = `<div class="page-head label-page-head"><div><p class="eyebrow">Label printing</p><h2>พิมพ์สติ๊กเกอร์</h2><p class="muted small">รายการรับเข้าจากโทรศัพท์และคอมพิวเตอร์จะแสดงที่นี่ เลือก TSC 310 หรือ Zebra 420t แล้วพิมพ์ภายหลังได้</p></div><button class="mini ghost" type="button" id="refreshLabelQueue">${icon('refresh')} รีเฟรช</button></div><section class="card label-queue-filter"><div class="search-box">${icon('search')}<input id="labelQueueSearch" type="search" placeholder="ค้นหาชื่อวัสดุ รหัส หรือ Lot"></div><div class="label-filter-tabs"><button type="button" class="active" data-label-filter="unprinted">ยังไม่พิมพ์</button><button type="button" data-label-filter="all">ทั้งหมด</button></div></section><div id="labelQueueList"><div class="card usage-loading">กำลังโหลดรายการรับเข้าล่าสุด…</div></div><details class="card device-printer-settings"><summary><span>${icon('settings')}</span><span><strong>ตั้งค่าเครื่องพิมพ์ของอุปกรณ์นี้</strong><small>ระบบจะจำการตั้งค่านี้เฉพาะคอมพิวเตอร์หรือโทรศัพท์เครื่องนี้</small></span>${icon('arrow')}</summary><div class="device-printer-options">${Object.values(LABEL_PRINTERS).map(p => `<button type="button" class="device-printer-option ${p.className} ${preferred === p.key ? 'active' : ''}" data-set-label-printer="${p.key}">${icon('print')}<span><strong>${esc(p.name)}</strong><small>${esc(p.note)}</small></span></button>`).join('')}</div><p class="device-printer-help">ค่านี้ใช้เป็นตัวเลือกเริ่มต้นเมื่อพิมพ์ด่วนหรือพิมพ์อัตโนมัติ แต่เมื่อกดปุ่ม TSC 310 หรือ Zebra 420t ที่รายการ ระบบจะใช้เครื่องตามปุ่มที่กด</p></details>`;
   const [receiveRes, printRes] = await Promise.all([
     sb.from('v_transaction_history').select('*').eq('tx_type','RECEIVE').order('created_at',{ascending:false}).order('id',{ascending:false}).limit(150),
     sb.from('v_audit_activity').select('entity_id,created_at,summary,actor_name,actor_email').eq('action','LABEL_PRINT').order('created_at',{ascending:false}).limit(500)
