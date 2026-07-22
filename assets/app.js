@@ -1,8 +1,10 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.14';
+const APP_VERSION = '1.4.16';
 const EXPIRY_REVIEW_START = '2026-07-01';
+const DEFAULT_EXPIRY_ALERT_MONTHS = 1;
+const MAX_EXPIRY_ALERT_MONTHS = 8;
 const C = window.APP_CONFIG || {};
 const configured = C.SUPABASE_URL && !C.SUPABASE_URL.includes('YOUR-PROJECT') && C.SUPABASE_ANON_KEY && !C.SUPABASE_ANON_KEY.includes('YOUR-ANON');
 let sb = null;
@@ -30,7 +32,7 @@ const REPORT_PAGE_SIZE = 10;
 const LABEL_QUEUE_PAGE_SIZE = 10;
 const LABEL_PRINTERS = Object.freeze({
   tsc:{key:'tsc',name:'TSC 310',fullName:'TSC 310',profileCode:'TSC_310',className:'tsc',note:'ฉลาก 25 × 20 mm · ปรับขนาดสำหรับ TSC'},
-  zebra:{key:'zebra',name:'Zebra 420t',fullName:'Zebra GC420t',profileCode:'ZEBRA_420T',className:'zebra',note:'ฉลาก USER 25.4 × 20 mm · ชดเชยการขยายจาก Driver'}
+  zebra:{key:'zebra',name:'Zebra 420t',fullName:'Zebra GC420t',profileCode:'ZEBRA_420T',className:'zebra',note:'ฉลาก 25 × 20 mm · แบบภาพคงที่ ไม่แยกข้ามดวง'}
 });
 const LABEL_PRINTER_STORAGE_KEY = 'cnmi-inventory-label-printer';
 
@@ -457,6 +459,50 @@ function todayIso() {
   return x.toISOString();
 }
 
+function dateOnlyIso(date) {
+  const x = new Date(date);
+  const y = x.getFullYear();
+  const m = String(x.getMonth() + 1).padStart(2, '0');
+  const day = String(x.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function addCalendarMonths(date, months) {
+  const source = new Date(date);
+  const day = source.getDate();
+  const result = new Date(source);
+  result.setDate(1);
+  result.setMonth(result.getMonth() + Number(months || 0));
+  const lastDay = new Date(result.getFullYear(), result.getMonth() + 1, 0).getDate();
+  result.setDate(Math.min(day, lastDay));
+  result.setHours(0, 0, 0, 0);
+  return result;
+}
+
+function expiryAlertMonths(x) {
+  return Number(x?.expiry_alert_months) === 8 ? 8 : DEFAULT_EXPIRY_ALERT_MONTHS;
+}
+
+function expiryAlertLabel(x) {
+  return `${expiryAlertMonths(x)} เดือน`;
+}
+
+function isNearExpiryDate(value, months = DEFAULT_EXPIRY_ALERT_MONTHS) {
+  if (!value) return false;
+  const expiry = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(expiry.getTime())) return false;
+  const today = todayStart();
+  return expiry >= today && expiry <= addCalendarMonths(today, months);
+}
+
+function isNearExpiryItem(x) {
+  if (!x || isExpired(x)) return false;
+  const months = expiryAlertMonths(x);
+  if (x.expiry_date) return isNearExpiryDate(x.expiry_date, months);
+  const days = Number(x.days_to_expiry);
+  return Number.isFinite(days) && days >= 0 && days <= months * 31;
+}
+
 function isExpired(x) {
   return Boolean(x?.is_expired || (x?.expiry_date && new Date(x.expiry_date + 'T00:00:00') < todayStart()));
 }
@@ -817,7 +863,7 @@ function statusBadge(x) {
   if (Number(x.balance) < 0) return '<span class="badge danger">ยอดติดลบ</span>';
   if (Number(x.balance) <= 0) return '<span class="badge danger">หมด</span>';
   if (Number(x.balance) < Number(x.min_qty)) return '<span class="badge warn">ต่ำกว่าขั้นต่ำ</span>';
-  if (x.days_to_expiry !== null && Number(x.days_to_expiry) <= 30) return '<span class="badge warn">ใกล้หมดอายุ</span>';
+  if (isNearExpiryItem(x)) return `<span class="badge warn">ใกล้หมดอายุ ≤ ${expiryAlertLabel(x)}</span>`;
   return '<span class="badge ok">คงเหลือ</span>';
 }
 
@@ -933,7 +979,7 @@ async function renderHome() {
     ensureCheck(),
     sb.from('v_audit_activity').select('*').limit(12),
     sb.from('v_transaction_history').select('id,tx_type,created_at').gte('created_at', todayIso()).limit(600),
-    sb.from('v_lot_balances').select('lot_id,days_to_expiry').eq('active', true).eq('is_expired', false).gt('balance', 0).gte('days_to_expiry', 0).lte('days_to_expiry', 30)
+    sb.from('v_lot_balances').select('lot_id,expiry_date,days_to_expiry,expiry_alert_months').eq('active', true).eq('is_expired', false).gt('balance', 0).not('expiry_date', 'is', null).gte('expiry_date', dateOnlyIso(todayStart())).lte('expiry_date', dateOnlyIso(addCalendarMonths(todayStart(), MAX_EXPIRY_ALERT_MONTHS)))
   ]);
   if (summaryRes.error) throw summaryRes.error;
   if (activityRes.error) throw activityRes.error;
@@ -949,7 +995,7 @@ async function renderHome() {
   const reorderMaterials = summaries.filter(x => Boolean(x.needs_reorder));
   const outMaterials = summaries.filter(x => Boolean(x.needs_reorder) && (x.alert_mode || 'MINIMUM') === 'MINIMUM' && Number(x.total_balance || 0) <= 0);
   const lowMaterials = summaries.filter(x => Boolean(x.needs_reorder) && (x.alert_mode || 'MINIMUM') === 'MINIMUM' && Number(x.total_balance || 0) > 0);
-  const nearExpiryCount = (nearRes.data || []).length;
+  const nearExpiryCount = (nearRes.data || []).filter(isNearExpiryItem).length;
   const receiveToday = todayTx.filter(x => x.tx_type === 'RECEIVE').length;
   const issueToday = todayTx.filter(x => x.tx_type === 'ISSUE').length;
   const watchRows = summaries.filter(x => Boolean(x.needs_reorder));
@@ -978,7 +1024,7 @@ async function renderHome() {
       <button class="card kpi kpi-button" data-route="move" data-move-tab="receive"><div class="kpi-top"><span class="kpi-icon">${icon('plus')}</span><small>นำเข้า (วันนี้)</small></div><strong>${receiveToday}</strong><small>รายการ</small></button>
       <button class="card kpi kpi-button" data-route="move" data-move-tab="issue"><div class="kpi-top"><span class="kpi-icon info">${icon('minus')}</span><small>นำออก (วันนี้)</small></div><strong>${issueToday}</strong><small>รายการ</small></button>
       <button class="card kpi kpi-button" data-route="urgent"><div class="kpi-top"><span class="kpi-icon danger">${icon('history')}</span><small>หมดอายุ · รอนำออก</small></div><strong>${expiredPendingCount}</strong><small>Lot</small></button>
-      <button class="card kpi kpi-button" data-route="stock" data-stock-filter="expiry"><div class="kpi-top"><span class="kpi-icon warn">${icon('calendar')}</span><small>ใกล้หมดอายุ (≤ 30 วัน)</small></div><strong>${nearExpiryCount}</strong><small>Lot</small></button>
+      <button class="card kpi kpi-button" data-route="stock" data-stock-filter="expiry"><div class="kpi-top"><span class="kpi-icon warn">${icon('calendar')}</span><small>ใกล้หมดอายุ (ตามเกณฑ์สินค้า)</small></div><strong>${nearExpiryCount}</strong><small>Lot</small></button>
     </div>
 
     <div class="overview-grid">
@@ -1041,7 +1087,7 @@ function buildMaterialGroups(summaries = [], lots = []) {
       material_code:l.material_code, material_name:l.material_name, label_name:l.label_name,
       unit:l.unit, min_qty:l.min_qty, responsible_email:l.responsible_email,
       responsible_name:l.responsible_name, total_balance:0, active_lots:0,
-      nearest_expiry:null, expired_pending_lots:0, expired_pending_balance:0, alert_mode:l.alert_mode || 'MINIMUM', reorder_day:l.reorder_day || 1, needs_reorder:false, lots:[]
+      nearest_expiry:null, expired_pending_lots:0, expired_pending_balance:0, alert_mode:l.alert_mode || 'MINIMUM', reorder_day:l.reorder_day || 1, expiry_alert_months:expiryAlertMonths(l), needs_reorder:false, lots:[]
     });
     map.get(l.material_code).lots.push(l);
   });
@@ -1057,7 +1103,7 @@ function buildMaterialGroups(summaries = [], lots = []) {
     }
     return {...g,
       total_balance:Number(g.total_balance || 0), min_qty:Number(g.min_qty || 0),
-      alert_mode:g.alert_mode || 'MINIMUM', reorder_day:Number(g.reorder_day || 1), needs_reorder:Boolean(g.needs_reorder),
+      alert_mode:g.alert_mode || 'MINIMUM', reorder_day:Number(g.reorder_day || 1), expiry_alert_months:expiryAlertMonths(g), needs_reorder:Boolean(g.needs_reorder),
       activeLots, expiredLots, negativeLots,
       active_lots:Number(g.active_lots || activeLots.length),
       expired_pending_lots:Number(g.expired_pending_lots || expiredLots.length),
@@ -1079,19 +1125,21 @@ function materialGroupStatus(g) {
     if (g.total_balance <= 0) return {key:'out',label:'สินค้าหมด',badge:'danger'};
     if (g.total_balance < g.min_qty) return {key:'low',label:'ต่ำกว่าขั้นต่ำ',badge:'warn'};
   }
-  if (g.days_to_nearest !== null && Number(g.days_to_nearest) <= 30) return {key:'expiry',label:'ใกล้หมดอายุ',badge:'warn'};
+  if (isNearExpiryDate(g.nearest_expiry, expiryAlertMonths(g))) return {key:'expiry',label:`ใกล้หมดอายุ ≤ ${expiryAlertLabel(g)}`,badge:'warn'};
   return {key:'positive',label:'คงเหลือปกติ',badge:'ok'};
 }
 
 function materialStockCard(g) {
   const st = materialGroupStatus(g);
+  const nearExpiry = isNearExpiryDate(g.nearest_expiry, expiryAlertMonths(g));
+  const expiryBadge = nearExpiry && st.key !== 'expiry' ? `<em class="badge warn">ใกล้หมดอายุ ≤ ${expiryAlertLabel(g)}</em>` : '';
   const ratio = g.min_qty > 0 ? Math.max(0, Math.min(100, g.total_balance / g.min_qty * 100)) : (g.total_balance > 0 ? 100 : 0);
   const ownerKey = g.responsible_email || 'unassigned';
   return `<article class="material-stock-card status-${st.key}">
     <div class="material-stock-main">
       <div class="material-ident"><button class="material-title-link" type="button" data-material-detail="${esc(g.material_code)}">${esc(g.material_name)}</button><button class="owner-inline-link" type="button" data-owner-detail="${esc(ownerKey)}">${icon('user')} ${esc(g.responsible_name || 'ยังไม่กำหนด')}</button></div>
       <div class="material-balance"><span>คงเหลือรวม</span><div><strong>${qty(g.total_balance)}</strong><small>${esc(g.unit)}</small></div><div class="level-track" title="เทียบกับขั้นต่ำ ${qty(g.min_qty)}"><i style="width:${ratio}%"></i></div><small>ขั้นต่ำ ${qty(g.min_qty)} ${esc(g.unit)}</small></div>
-      <div class="material-facts"><div><span>Lot ที่ใช้งาน</span><strong>${g.active_lots}</strong></div><div><span>หมดอายุใกล้สุด</span><strong>${g.nearest_expiry ? d(g.nearest_expiry) : '-'}</strong></div><div><span>สถานะ</span><em class="badge ${st.badge}">${st.label}</em></div></div>
+      <div class="material-facts"><div><span>Lot ที่ใช้งาน</span><strong>${g.active_lots}</strong></div><div><span>หมดอายุใกล้สุด</span><strong>${g.nearest_expiry ? d(g.nearest_expiry) : '-'}</strong></div><div><span>สถานะ</span><span class="material-status-badges"><em class="badge ${st.badge}">${st.label}</em>${expiryBadge}</span></div></div>
     </div>
     <div class="material-stock-actions"><button class="mini ghost" type="button" data-material-detail="${esc(g.material_code)}">ดู Lot ทั้งหมด</button><button class="mini" type="button" data-material-usage="${esc(g.material_code)}">${icon('chart')} วิเคราะห์การใช้</button></div>
   </article>`;
@@ -1152,9 +1200,9 @@ async function renderMyStock(tab = 'overview') {
   const monthly = groups.filter(g => g.alert_mode === 'MONTHLY').length;
   const tabBar = `<div class="my-stock-tabs"><button data-my-stock-tab="overview" class="${myStockTab==='overview'?'active':''}">ภาพรวม</button><button data-my-stock-tab="reorder" class="${myStockTab==='reorder'?'active':''}">ต้องเบิก <span>${reorder.length}</span></button><button data-my-stock-tab="settings" class="${myStockTab==='settings'?'active':''}">ตั้งค่าการเตือน</button></div>`;
   const summary = `<div class="my-stock-kpis"><div><span>ดูแลทั้งหมด</span><strong>${groups.length}</strong><small>รายการ</small></div><div><span>ต้องเบิก</span><strong>${reorder.length}</strong><small>รายการ</small></div><div><span>เตือนรายเดือน</span><strong>${monthly}</strong><small>รายการ</small></div></div>`;
-  const overviewCards = groups.map(g=>{const st=materialGroupStatus(g);return `<article class="my-stock-card"><div class="my-stock-title"><div><h3>${esc(g.material_name)}</h3><p>คงเหลือ ${qty(g.total_balance)} ${esc(g.unit)} · ${g.active_lots} Lot</p></div><em class="badge ${st.badge}">${st.label}</em></div><div class="my-stock-meta"><span>${g.alert_mode==='MONTHLY' ? `เตือนวันที่ ${g.reorder_day} ของเดือน` : g.alert_mode==='NONE' ? 'ไม่เปิดแจ้งเตือน' : `ขั้นต่ำ ${qty(g.min_qty)} ${esc(g.unit)}`}</span></div><div class="my-stock-actions"><button type="button" class="mini ghost" data-material-detail="${esc(g.material_code)}">ดู Lot</button><button type="button" class="mini" data-material-usage="${esc(g.material_code)}">${icon('chart')} วิเคราะห์</button></div></article>`;}).join('');
+  const overviewCards = groups.map(g=>{const st=materialGroupStatus(g);return `<article class="my-stock-card"><div class="my-stock-title"><div><h3>${esc(g.material_name)}</h3><p>คงเหลือ ${qty(g.total_balance)} ${esc(g.unit)} · ${g.active_lots} Lot</p></div><em class="badge ${st.badge}">${st.label}</em></div><div class="my-stock-meta"><span>${g.alert_mode==='MONTHLY' ? `เตือนวันที่ ${g.reorder_day} ของเดือน` : g.alert_mode==='NONE' ? 'ไม่เปิดแจ้งเตือน' : `ขั้นต่ำ ${qty(g.min_qty)} ${esc(g.unit)}`}</span><span>เตือนใกล้หมดอายุล่วงหน้า ${expiryAlertLabel(g)}</span></div><div class="my-stock-actions"><button type="button" class="mini ghost" data-material-detail="${esc(g.material_code)}">ดู Lot</button><button type="button" class="mini" data-material-usage="${esc(g.material_code)}">${icon('chart')} วิเคราะห์</button></div></article>`;}).join('');
   const reorderCards = reorder.map(g=>{const st=materialGroupStatus(g);return `<article class="my-stock-card needs-reorder"><div class="my-stock-title"><div><h3>${esc(g.material_name)}</h3><p>คงเหลือ ${qty(g.total_balance)} ${esc(g.unit)}</p></div><em class="badge ${st.badge}">${st.label}</em></div><div class="my-stock-actions"><button type="button" class="primary" data-route="move" data-move-tab="receive">รับเข้า</button><button type="button" class="mini" data-material-usage="${esc(g.material_code)}">ดูการใช้</button></div></article>`;}).join('');
-  const settingsCards = groups.map(g=>`<form class="my-stock-card my-stock-setting-card" data-my-settings-form data-material-code="${esc(g.material_code)}"><div class="my-stock-title"><div><h3>${esc(g.material_name)}</h3><p>คงเหลือ ${qty(g.total_balance)} ${esc(g.unit)}</p></div></div><div class="stock-setting-grid"><label>รูปแบบแจ้งเตือน<select name="alert_mode"><option value="MINIMUM" ${g.alert_mode==='MINIMUM'?'selected':''}>เตือนตามจำนวนขั้นต่ำ</option><option value="MONTHLY" ${g.alert_mode==='MONTHLY'?'selected':''}>เตือนรอบเบิกรายเดือน</option><option value="NONE" ${g.alert_mode==='NONE'?'selected':''}>ไม่แจ้งเตือน</option></select></label><label data-minimum-field>จำนวนขั้นต่ำ<input name="minimum" type="number" min="0" step="0.01" value="${Number(g.min_qty || 0)}" inputmode="decimal"></label><label data-reorder-field>วันที่เตือนของเดือน (1–28)<input name="reorder_day" type="number" min="1" max="28" step="1" value="${Number(g.reorder_day || 1)}" inputmode="numeric"></label></div><button class="primary" type="submit">บันทึกการตั้งค่า</button></form>`).join('');
+  const settingsCards = groups.map(g=>`<form class="my-stock-card my-stock-setting-card" data-my-settings-form data-material-code="${esc(g.material_code)}"><div class="my-stock-title"><div><h3>${esc(g.material_name)}</h3><p>คงเหลือ ${qty(g.total_balance)} ${esc(g.unit)}</p></div></div><div class="stock-setting-grid"><label>รูปแบบแจ้งเตือน<select name="alert_mode"><option value="MINIMUM" ${g.alert_mode==='MINIMUM'?'selected':''}>เตือนตามจำนวนขั้นต่ำ</option><option value="MONTHLY" ${g.alert_mode==='MONTHLY'?'selected':''}>เตือนรอบเบิกรายเดือน</option><option value="NONE" ${g.alert_mode==='NONE'?'selected':''}>ไม่แจ้งเตือน</option></select></label><label data-minimum-field>จำนวนขั้นต่ำ<input name="minimum" type="number" min="0" step="0.01" value="${Number(g.min_qty || 0)}" inputmode="decimal"></label><label data-reorder-field>วันที่เตือนของเดือน (1–28)<input name="reorder_day" type="number" min="1" max="28" step="1" value="${Number(g.reorder_day || 1)}" inputmode="numeric"></label><label>แจ้งใกล้หมดอายุล่วงหน้า<select name="expiry_alert_months"><option value="1" ${expiryAlertMonths(g)===1?'selected':''}>1 เดือน — รายการทั่วไป</option><option value="8" ${expiryAlertMonths(g)===8?'selected':''}>8 เดือน — ต้องเคลมหรือจัดการล่วงหน้า</option></select></label></div><p class="field-hint">เกณฑ์นี้ใช้เฉพาะการขึ้นสถานะ “ใกล้หมดอายุ” ของวัสดุรายการนี้</p><button class="primary" type="submit">บันทึกการตั้งค่า</button></form>`).join('');
   const body = myStockTab==='settings' ? settingsCards : myStockTab==='reorder' ? (reorderCards || '<div class="card empty">ยังไม่มีสินค้าที่ถึงรอบเบิก</div>') : overviewCards;
   page.innerHTML = `<div class="page-head"><div><h2>สต๊อกที่ฉันดูแล</h2></div></div>${tabBar}${summary}<div class="my-stock-list">${body || '<div class="card empty">ยังไม่มีสินค้าที่กำหนดให้คุณดูแล</div>'}</div>`;
   $$('[data-my-stock-tab]').forEach(b=>b.addEventListener('click',()=>renderMyStock(b.dataset.myStockTab)));
@@ -1170,8 +1218,9 @@ async function renderMyStock(tab = 'overview') {
       const fd=new FormData(form);
       const min=Number(fd.get('minimum') || 0);
       const day=Number(fd.get('reorder_day') || 1);
+      const expiryMonths=Number(fd.get('expiry_alert_months') || DEFAULT_EXPIRY_ALERT_MONTHS);
       const btn=e.submitter; btn.disabled=true;
-      const {error}=await sb.rpc('fn_update_my_stock_settings',{p_material_code:form.dataset.materialCode,p_min_qty:min,p_alert_mode:String(fd.get('alert_mode')),p_reorder_day:day,p_acting_mode:actingMode});
+      const {error}=await sb.rpc('fn_update_my_stock_settings_v2',{p_material_code:form.dataset.materialCode,p_min_qty:min,p_alert_mode:String(fd.get('alert_mode')),p_reorder_day:day,p_acting_mode:actingMode,p_expiry_alert_months:expiryMonths});
       btn.disabled=false;
       if(error)return toast(errMsg(error),true);
       inventorySummaryCache=[]; toast('บันทึกการตั้งค่าแล้ว'); renderMyStock('settings');
@@ -1189,10 +1238,10 @@ async function renderStock(initialFilter = 'select') {
   const stockOwnerOptions='<option value="">ทุกคน</option>'+stockOwners.map(([email,name])=>`<option value="${esc(email)}">${esc(name)}</option>`).join('');
   const activeLots = groups.reduce((s,g) => s + g.active_lots,0);
   const reorderCount = groups.filter(g => g.needs_reorder).length;
-  const nearCount = groups.filter(g => g.days_to_nearest !== null && Number(g.days_to_nearest) >= 0 && Number(g.days_to_nearest) <= 30).length;
+  const nearCount = groups.filter(g => isNearExpiryDate(g.nearest_expiry, expiryAlertMonths(g))).length;
   const outCount = groups.filter(g => materialGroupStatus(g).key === 'out').length;
   const selectedFilter = initialFilter && initialFilter !== 'select' ? initialFilter : '';
-  page.innerHTML = `<div class="page-head stock-page-head"><div><h2>สต๊อกคงเหลือ</h2><p class="muted small">เลือกสถานะ หรือพิมพ์ชื่อสินค้าบางส่วน ระบบจึงจะแสดงรายการ</p></div><button class="mini" data-route="usage">${icon('chart')} วิเคราะห์การใช้</button></div><div class="stock-summary-strip"><div><span>สินค้า</span><strong>${groups.length}</strong><small>รายการ</small></div><div><span>Lot ใช้งาน</span><strong>${activeLots}</strong><small>Lot</small></div><div><span>ต้องเบิก</span><strong>${reorderCount}</strong><small>รายการ</small></div><div><span>สินค้าหมด</span><strong>${outCount}</strong><small>รายการ</small></div><div><span>ใกล้หมดอายุ</span><strong>${nearCount}</strong><small>รายการ</small></div></div><section class="card stock-choice-card three"><label>เลือกผู้ดูแล<select id="stockOwnerFilter">${stockOwnerOptions}</select></label><label>เลือกสถานะ<select id="stockStatusSelect"><option value="">กรุณาเลือกสถานะ</option><option value="all">ทั้งหมด</option><option value="positive">คงเหลือปกติ</option><option value="reorder">ถึงรอบเบิก</option><option value="low">ต่ำกว่าขั้นต่ำ</option><option value="out">สินค้าหมด</option><option value="current-use">ใช้ชุดปัจจุบันอยู่</option><option value="notrack">ไม่เปิดแจ้งเตือน</option><option value="expiry">ใกล้หมดอายุ</option><option value="expired">หมดอายุรอนำออก</option><option value="negative">ยอดติดลบ</option></select></label>${materialComboboxMarkup({id:'stockMaterialCode',label:'หรือค้นหาสินค้า',placeholder:'พิมพ์ชื่อสินค้าบางส่วน',materials:materialOptions})}</section><div id="materialStockList" class="material-stock-list"></div>`;
+  page.innerHTML = `<div class="page-head stock-page-head"><div><h2>สต๊อกคงเหลือ</h2><p class="muted small">เลือกสถานะ หรือพิมพ์ชื่อสินค้าบางส่วน ระบบจึงจะแสดงรายการ</p></div><button class="mini" data-route="usage">${icon('chart')} วิเคราะห์การใช้</button></div><div class="stock-summary-strip"><div><span>สินค้า</span><strong>${groups.length}</strong><small>รายการ</small></div><div><span>Lot ใช้งาน</span><strong>${activeLots}</strong><small>Lot</small></div><div><span>ต้องเบิก</span><strong>${reorderCount}</strong><small>รายการ</small></div><div><span>สินค้าหมด</span><strong>${outCount}</strong><small>รายการ</small></div><div><span>ใกล้หมดอายุ</span><strong>${nearCount}</strong><small>ตามเกณฑ์ 1/8 เดือน</small></div></div><section class="card stock-choice-card three"><label>เลือกผู้ดูแล<select id="stockOwnerFilter">${stockOwnerOptions}</select></label><label>เลือกสถานะ<select id="stockStatusSelect"><option value="">กรุณาเลือกสถานะ</option><option value="all">ทั้งหมด</option><option value="positive">คงเหลือปกติ</option><option value="reorder">ถึงรอบเบิก</option><option value="low">ต่ำกว่าขั้นต่ำ</option><option value="out">สินค้าหมด</option><option value="current-use">ใช้ชุดปัจจุบันอยู่</option><option value="notrack">ไม่เปิดแจ้งเตือน</option><option value="expiry">ใกล้หมดอายุ (ตามเกณฑ์สินค้า)</option><option value="expired">หมดอายุรอนำออก</option><option value="negative">ยอดติดลบ</option></select></label>${materialComboboxMarkup({id:'stockMaterialCode',label:'หรือค้นหาสินค้า',placeholder:'พิมพ์ชื่อสินค้าบางส่วน',materials:materialOptions})}</section><div id="materialStockList" class="material-stock-list"></div>`;
   const statusSelect=$('#stockStatusSelect');
   statusSelect.value=selectedFilter;
   const draw = () => {
@@ -1206,7 +1255,7 @@ async function renderStock(initialFilter = 'select') {
     const owner=$('#stockOwnerFilter').value;
     if(owner) arr=arr.filter(g=>g.responsible_email===owner);
     if (code) arr=arr.filter(g=>g.material_code===code);
-    if (filter && filter!=='all') arr=arr.filter(g=>materialGroupStatus(g).key===filter);
+    if (filter && filter!=='all') arr=arr.filter(g=>filter==='expiry' ? isNearExpiryDate(g.nearest_expiry, expiryAlertMonths(g)) : materialGroupStatus(g).key===filter);
     $('#materialStockList').innerHTML=arr.map(materialStockCard).join('') || `<div class="card empty">${icon('search')}<div>ไม่พบรายการตามตัวเลือก</div></div>`;
   };
   const materialCombo=setupMaterialCombobox('stockMaterialCode',materialOptions,{ownerSelectId:'stockOwnerFilter',onChange:(code)=>{if(code)statusSelect.value='';draw();}});
@@ -1348,7 +1397,7 @@ function openPrinterChooser(lotId, defaultCopies = 1) {
   const cached = stockCache.find(x => x.lot_id === lotId);
   const title = cached?.material_name || cached?.label_name || 'QR Sticker';
   const lotText = cached ? `Lot ${cached.lot_no}` : '';
-  openModal(`<section class="printer-picker"><div class="printer-picker-head"><span>${icon('print')}</span><div><p class="eyebrow">Label printer</p><h3>เลือกเครื่องพิมพ์</h3><p>${esc(title)}${lotText ? ` · ${esc(lotText)}` : ''}</p></div></div><label class="label-copy-field">จำนวนสติ๊กเกอร์<input id="labelCopyCount" type="number" min="1" max="100" step="1" inputmode="numeric" value="${normalizedLabelCopies(defaultCopies)}"></label><div class="printer-picker-grid">${Object.values(LABEL_PRINTERS).map(p => `<button type="button" class="printer-choice ${p.className} ${preferred === p.key ? 'preferred' : ''}" data-modal-printer="${p.key}">${icon('print')}<span><strong>${esc(p.name)}</strong><small>${esc(p.note)}${preferred === p.key ? ' · เครื่องที่เลือกไว้' : ''}</small></span></button>`).join('')}</div><p class="printer-picker-note">ระบบเลือกแบบกระดาษให้ตรงกับรุ่นที่กด และแก้การคั่นหน้าว่างแล้ว ในหน้าพิมพ์ของ Chrome ให้เลือกชื่อเครื่องจริงให้ตรงกัน</p></section>`);
+  openModal(`<section class="printer-picker"><div class="printer-picker-head"><span>${icon('print')}</span><div><p class="eyebrow">Label printer</p><h3>เลือกเครื่องพิมพ์</h3><p>${esc(title)}${lotText ? ` · ${esc(lotText)}` : ''}</p></div></div><label class="label-copy-field">จำนวนสติ๊กเกอร์<input id="labelCopyCount" type="number" min="1" max="100" step="1" inputmode="numeric" value="${normalizedLabelCopies(defaultCopies)}"></label><div class="printer-picker-grid">${Object.values(LABEL_PRINTERS).map(p => `<button type="button" class="printer-choice ${p.className} ${preferred === p.key ? 'preferred' : ''}" data-modal-printer="${p.key}">${icon('print')}<span><strong>${esc(p.name)}</strong><small>${esc(p.note)}${preferred === p.key ? ' · เครื่องที่เลือกไว้' : ''}</small></span></button>`).join('')}</div><p class="printer-picker-note">สติ๊กเกอร์สร้างเป็นภาพคงที่ขนาด 25 × 20 mm เพื่อป้องกันฟอนต์ขยายและข้อความแยกข้ามดวง ในหน้าพิมพ์เลือกเครื่องจริงให้ตรงกับปุ่ม และใช้ Scale 100% หรือ Actual size</p></section>`);
   $$('[data-modal-printer]', $('#modal')).forEach(button => button.addEventListener('click', () => {
     const printer = button.dataset.modalPrinter;
     const copies = normalizedLabelCopies($('#labelCopyCount')?.value, defaultCopies);
@@ -2585,6 +2634,7 @@ async function exportReport(kind) {
         g.unit,
         modeLabel,
         mode === 'MONTHLY' ? Number(g.reorder_day || 1) : '',
+        expiryAlertMonths(g),
         g.responsible_name || '',
         status,
         Number(g.active_lots || 0),
@@ -2593,7 +2643,7 @@ async function exportReport(kind) {
     });
     saveCsv(`CNMI_Inventory_Minimum_Stock_${stamp}.csv`, [[
       'รหัสวัสดุ','ชื่อวัสดุ','คงเหลือรวม','Minimum Stock','จำนวนที่ขาดจากขั้นต่ำ','หน่วย',
-      'รูปแบบแจ้งเตือน','วันที่เตือนรายเดือน','ผู้ดูแล','สถานะ','จำนวน Lot ที่ใช้งาน','วันหมดอายุใกล้สุด'
+      'รูปแบบแจ้งเตือน','วันที่เตือนรายเดือน','เตือนใกล้หมดอายุล่วงหน้า (เดือน)','ผู้ดูแล','สถานะ','จำนวน Lot ที่ใช้งาน','วันหมดอายุใกล้สุด'
     ], ...rows]);
     toast(`ส่งออก Minimum Stock แล้ว ${rows.length.toLocaleString('th-TH')} รายการ`);
     return;
@@ -2684,11 +2734,11 @@ async function renderAdmin() {
   materialsCache = [];
   window._adminMaterials = m || [];
   window._adminStaff = s || [];
-  page.innerHTML = `<div class="page-head"><div><h2>ตั้งค่าผู้ดูแลระบบ</h2><p class="muted small">เปลี่ยนคนดูแลวัสดุได้ตลอด และกำหนดสิทธิ์ผู้ใช้</p></div><span class="badge info">โหมด Admin</span></div><section class="admin-note"><strong>การทำงาน 2 โหมด</strong><p>บัญชี Admin สามารถสลับเป็น “เจ้าหน้าที่” เพื่อทำงานเหมือนทุกคน หรือ “ผู้ดูแลระบบ” เมื่อต้องตั้งค่าและดูงานรวม</p></section><div class="section-title"><h3>ผู้ใช้งาน</h3></div><div class="table-wrap"><table class="data-table"><thead><tr><th>ชื่อ</th><th>อีเมล</th><th>สิทธิ์บัญชี</th></tr></thead><tbody>${(s || []).map(x => `<tr><td>${esc(x.display_name)}</td><td>${esc(x.email)}</td><td><select data-role-email="${esc(x.email)}"><option value="staff" ${x.role === 'staff' ? 'selected' : ''}>เจ้าหน้าที่</option><option value="admin" ${x.role === 'admin' ? 'selected' : ''}>Admin (สลับได้ 2 โหมด)</option></select></td></tr>`).join('')}</tbody></table></div><div class="section-title admin-owner-head"><div><h3>กำหนดผู้ดูแลวัสดุหลัก</h3><p class="muted small">เปลี่ยนแล้วมีผลกับตัวกรองตรวจวันศุกร์ทันที</p></div><div class="search-box">${icon('search')}<input id="adminMaterialSearch" placeholder="ค้นหารหัส ชื่อ หรือผู้ดูแล"></div></div><div class="table-wrap"><table class="data-table"><thead><tr><th>รหัส</th><th>ชื่อวัสดุ</th><th>ขั้นต่ำ</th><th>ผู้ดูแล</th><th>จัดการ</th></tr></thead><tbody id="adminMaterialBody"></tbody></table></div>`;
+  page.innerHTML = `<div class="page-head"><div><h2>ตั้งค่าผู้ดูแลระบบ</h2><p class="muted small">เปลี่ยนคนดูแลวัสดุได้ตลอด และกำหนดสิทธิ์ผู้ใช้</p></div><span class="badge info">โหมด Admin</span></div><section class="admin-note"><strong>การทำงาน 2 โหมด</strong><p>บัญชี Admin สามารถสลับเป็น “เจ้าหน้าที่” เพื่อทำงานเหมือนทุกคน หรือ “ผู้ดูแลระบบ” เมื่อต้องตั้งค่าและดูงานรวม</p></section><div class="section-title"><h3>ผู้ใช้งาน</h3></div><div class="table-wrap"><table class="data-table"><thead><tr><th>ชื่อ</th><th>อีเมล</th><th>สิทธิ์บัญชี</th></tr></thead><tbody>${(s || []).map(x => `<tr><td>${esc(x.display_name)}</td><td>${esc(x.email)}</td><td><select data-role-email="${esc(x.email)}"><option value="staff" ${x.role === 'staff' ? 'selected' : ''}>เจ้าหน้าที่</option><option value="admin" ${x.role === 'admin' ? 'selected' : ''}>Admin (สลับได้ 2 โหมด)</option></select></td></tr>`).join('')}</tbody></table></div><div class="section-title admin-owner-head"><div><h3>กำหนดผู้ดูแลวัสดุหลัก</h3><p class="muted small">เปลี่ยนแล้วมีผลกับตัวกรองตรวจวันศุกร์ทันที</p></div><div class="search-box">${icon('search')}<input id="adminMaterialSearch" placeholder="ค้นหารหัส ชื่อ หรือผู้ดูแล"></div></div><div class="table-wrap"><table class="data-table"><thead><tr><th>รหัส</th><th>ชื่อวัสดุ</th><th>ขั้นต่ำ</th><th>เตือน EXP</th><th>ผู้ดูแล</th><th>จัดการ</th></tr></thead><tbody id="adminMaterialBody"></tbody></table></div>`;
   const drawMaterials = () => {
     const q = $('#adminMaterialSearch').value.toLowerCase();
     const arr = (m || []).filter(x => !q || `${x.code} ${x.name} ${x.responsible_email}`.toLowerCase().includes(q));
-    $('#adminMaterialBody').innerHTML = arr.map(x => `<tr><td>${esc(x.code)}</td><td><strong>${esc(x.name)}</strong><div class="muted tiny">ชื่อบนสติ๊กเกอร์: ${esc(x.label_name || x.name)}</div></td><td>${qty(x.min_qty)} ${esc(x.unit)}</td><td><select data-owner-code="${esc(x.code)}">${ownerOptions(s, x.responsible_email || '')}</select></td><td><button class="mini" data-edit-material="${esc(x.code)}">แก้ไข</button></td></tr>`).join('');
+    $('#adminMaterialBody').innerHTML = arr.map(x => `<tr><td>${esc(x.code)}</td><td><strong>${esc(x.name)}</strong><div class="muted tiny">ชื่อบนสติ๊กเกอร์: ${esc(x.label_name || x.name)}</div></td><td>${qty(x.min_qty)} ${esc(x.unit)}</td><td>${expiryAlertMonths(x)} เดือน</td><td><select data-owner-code="${esc(x.code)}">${ownerOptions(s, x.responsible_email || '')}</select></td><td><button class="mini" data-edit-material="${esc(x.code)}">แก้ไข</button></td></tr>`).join('');
     bindAdminOwnerEvents();
   };
   $('#adminMaterialSearch').addEventListener('input', drawMaterials);
@@ -2717,12 +2767,13 @@ function openMaterialEditor(code) {
   const x = (window._adminMaterials || []).find(m => m.code === code);
   const staff = window._adminStaff || [];
   if (!x) return;
-  openModal(`<h3>${esc(x.code)} · ${esc(x.name)}</h3><form id="matForm" class="form-grid"><label>ชื่อบนสติ๊กเกอร์<input id="matLabel" maxlength="80" value="${esc(x.label_name || x.name)}"></label><label>จำนวนขั้นต่ำ<input id="matMin" type="number" min="0" step="0.01" value="${Number(x.min_qty || 0)}"></label><label>ผู้รับผิดชอบ<select id="matOwner">${ownerOptions(staff, x.responsible_email || '')}</select></label><button class="primary" type="submit">บันทึก</button></form>`);
+  openModal(`<h3>${esc(x.code)} · ${esc(x.name)}</h3><form id="matForm" class="form-grid"><label>ชื่อบนสติ๊กเกอร์<input id="matLabel" maxlength="80" value="${esc(x.label_name || x.name)}"></label><label>จำนวนขั้นต่ำ<input id="matMin" type="number" min="0" step="0.01" value="${Number(x.min_qty || 0)}"></label><label>แจ้งใกล้หมดอายุล่วงหน้า<select id="matExpiryAlert"><option value="1" ${expiryAlertMonths(x)===1?'selected':''}>1 เดือน — รายการทั่วไป</option><option value="8" ${expiryAlertMonths(x)===8?'selected':''}>8 เดือน — ต้องเคลมหรือจัดการล่วงหน้า</option></select></label><label>ผู้รับผิดชอบ<select id="matOwner">${ownerOptions(staff, x.responsible_email || '')}</select></label><button class="primary" type="submit">บันทึก</button></form>`);
   $('#matForm').addEventListener('submit', async e => {
     e.preventDefault();
     const {error} = await sb.from('materials').update({
       label_name:$('#matLabel').value.trim(),
       min_qty:Number($('#matMin').value),
+      expiry_alert_months:Number($('#matExpiryAlert').value || DEFAULT_EXPIRY_ALERT_MONTHS),
       responsible_email:$('#matOwner').value || null
     }).eq('code', code);
     if (error) return toast(errMsg(error), true);
@@ -2735,7 +2786,7 @@ function openMaterialEditor(code) {
 }
 
 function renderHelp() {
-  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>สร้างบัญชีครั้งแรก</h3><ol class="help-steps"><li>ใช้เฉพาะอีเมลมหิดล @mahidol.ac.th ที่ Admin อนุญาตไว้</li><li>ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว</li><li>กด “สร้างบัญชีครั้งแรก” แล้วกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</li></ol></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>พิมพ์ชื่อวัสดุบางส่วนแล้วเลือกจากรายการ</li><li>ตรวจชื่อผู้นำเข้าปัจจุบัน ใส่ Lot วันหมดอายุ และจำนวน แล้วบันทึก</li></ol></div><div class="card help-card"><h3>นำออก</h3><ol class="help-steps"><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าและวิธีนำออก แล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>ระบบบันทึกแยกเป็น “สแกน QR” หรือ “พิมพ์รหัสเอง” ในประวัติและรายงาน</li></ol></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแล</h3><p>มี 3 เมนูย่อย: ภาพรวม, ต้องเบิก และตั้งค่าการเตือน เลือกเตือนตามจำนวนขั้นต่ำ เตือนรอบเบิกรายเดือน หรือไม่แจ้งเตือนได้ การเตือนรายเดือนจะเริ่มตรวจรอบตั้งแต่เดือนถัดไปหลังบันทึก</p></div><div class="card help-card"><h3>ตรวจวันศุกร์</h3><p>กรอกจำนวนที่นับได้จริง หากไม่ตรงกับระบบ ให้เลือกเหตุผล สามารถฝากเพื่อนตรวจแทนเฉพาะรอบได้ ผู้รับต้องกดยืนยันก่อน ส่วน Admin เลือกชื่อเจ้าหน้าที่เพื่อทำแทนหรือมอบหมายให้คนอื่นได้ทันที ระบบเก็บผู้ดูแลหลัก ผู้ได้รับมอบหมาย และผู้ตรวจจริงแยกกัน</p></div><div class="card help-card"><h3>สแกนตรวจ Lot</h3><p>เปิดกล้องหรือพิมพ์รหัส QR เพื่อดูยอด Lot ยอดรวม ผู้ดูแล ขั้นต่ำ และยืนยันตรวจหรือปรับยอดได้ทันที</p></div><div class="card help-card"><h3>สถานะผู้ตรวจ</h3><p>เปิดเมนู “สถานะผู้ตรวจ” แล้วกำหนดช่วงวันที่ เพื่อดูว่าแต่ละวันศุกร์ใครตรวจครบหรือยังไม่ครบ</p></div><div class="card help-card"><h3>สติ๊กเกอร์เดิม</h3><p>สติ๊กเกอร์รหัสเดิมยังสแกนได้ ไม่ต้องเปลี่ยนใหม่ทั้งหมด</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบไม่ตัดยอดเอง เปิดตรวจวันศุกร์และกด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์ถัดไป</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมดูได้ในหน้าประวัติและรายงาน</p></div><div class="card help-card"><h3>พิมพ์สติ๊กเกอร์ภายหลัง</h3><p>หลังรับเข้าผ่านโทรศัพท์ ให้เปิดเมนู “พิมพ์สติ๊กเกอร์” บนคอมพิวเตอร์ที่ต่อเครื่องพิมพ์ รายการรับเข้าจะอยู่ในคิวอัตโนมัติ เลือกจำนวนดวงแล้วกด TSC 310 หรือ Zebra 420t</p></div><div class="card help-card"><h3>เครื่องพิมพ์สติ๊กเกอร์</h3><p>ฉลากจริง 25 × 20 mm ระบบมีโปรไฟล์แยก TSC 310 และ Zebra 420t และจำเครื่องเริ่มต้นเฉพาะอุปกรณ์ ในหน้าพิมพ์ Chrome ให้เลือกชื่อเครื่องจริงให้ตรงกับปุ่มที่กด ปิด Header/Footer และใช้ Margin None</p></div></div>`;
+  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>สร้างบัญชีครั้งแรก</h3><ol class="help-steps"><li>ใช้เฉพาะอีเมลมหิดล @mahidol.ac.th ที่ Admin อนุญาตไว้</li><li>ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว</li><li>กด “สร้างบัญชีครั้งแรก” แล้วกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</li></ol></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>พิมพ์ชื่อวัสดุบางส่วนแล้วเลือกจากรายการ</li><li>ตรวจชื่อผู้นำเข้าปัจจุบัน ใส่ Lot วันหมดอายุ และจำนวน แล้วบันทึก</li></ol></div><div class="card help-card"><h3>นำออก</h3><ol class="help-steps"><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าและวิธีนำออก แล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>ระบบบันทึกแยกเป็น “สแกน QR” หรือ “พิมพ์รหัสเอง” ในประวัติและรายงาน</li></ol></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแล</h3><p>มี 3 เมนูย่อย: ภาพรวม, ต้องเบิก และตั้งค่าการเตือน เลือกเตือนตามจำนวนขั้นต่ำ เตือนรอบเบิกรายเดือน หรือไม่แจ้งเตือนได้ และกำหนดเกณฑ์ใกล้หมดอายุแยกต่อวัสดุเป็น 1 เดือนหรือ 8 เดือน การเตือนรายเดือนจะเริ่มตรวจรอบตั้งแต่เดือนถัดไปหลังบันทึก</p></div><div class="card help-card"><h3>ตรวจวันศุกร์</h3><p>กรอกจำนวนที่นับได้จริง หากไม่ตรงกับระบบ ให้เลือกเหตุผล สามารถฝากเพื่อนตรวจแทนเฉพาะรอบได้ ผู้รับต้องกดยืนยันก่อน ส่วน Admin เลือกชื่อเจ้าหน้าที่เพื่อทำแทนหรือมอบหมายให้คนอื่นได้ทันที ระบบเก็บผู้ดูแลหลัก ผู้ได้รับมอบหมาย และผู้ตรวจจริงแยกกัน</p></div><div class="card help-card"><h3>สแกนตรวจ Lot</h3><p>เปิดกล้องหรือพิมพ์รหัส QR เพื่อดูยอด Lot ยอดรวม ผู้ดูแล ขั้นต่ำ และยืนยันตรวจหรือปรับยอดได้ทันที</p></div><div class="card help-card"><h3>สถานะผู้ตรวจ</h3><p>เปิดเมนู “สถานะผู้ตรวจ” แล้วกำหนดช่วงวันที่ เพื่อดูว่าแต่ละวันศุกร์ใครตรวจครบหรือยังไม่ครบ</p></div><div class="card help-card"><h3>สติ๊กเกอร์เดิม</h3><p>สติ๊กเกอร์รหัสเดิมยังสแกนได้ ไม่ต้องเปลี่ยนใหม่ทั้งหมด</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบไม่ตัดยอดเอง เปิดตรวจวันศุกร์และกด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์ถัดไป</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมดูได้ในหน้าประวัติและรายงาน</p></div><div class="card help-card"><h3>พิมพ์สติ๊กเกอร์ภายหลัง</h3><p>หลังรับเข้าผ่านโทรศัพท์ ให้เปิดเมนู “พิมพ์สติ๊กเกอร์” บนคอมพิวเตอร์ที่ต่อเครื่องพิมพ์ รายการรับเข้าจะอยู่ในคิวอัตโนมัติ เลือกจำนวนดวงแล้วกด TSC 310 หรือ Zebra 420t</p></div><div class="card help-card"><h3>เครื่องพิมพ์สติ๊กเกอร์</h3><p>ฉลากจริง 25 × 20 mm ระบบสร้างสติ๊กเกอร์เป็นภาพคงที่แยกสำหรับ TSC 310 และ Zebra 420t เพื่อไม่ให้ข้อความขยายหรือแยกข้ามดวง ในหน้าพิมพ์ Chrome ให้เลือกชื่อเครื่องจริงให้ตรงกับปุ่มที่กด ใช้ Scale 100% หรือ Actual size ปิด Header/Footer และใช้ Margin None</p></div></div>`;
   refreshInstallUI();
 }
 

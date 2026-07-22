@@ -621,3 +621,11 @@ input,select,textarea,button{min-width:0}
 @media(max-width:600px){.device-printer-settings>summary{grid-template-columns:38px minmax(0,1fr) 18px;padding:13px}.device-printer-settings>summary>span:first-child{width:38px;height:38px}.device-printer-settings .device-printer-options{padding:0 13px 12px}.device-printer-help{margin:0 13px 13px}}
 
 .report-minimum-note{display:grid;gap:2px;margin:0 0 14px}.report-minimum-note span{font-size:.84rem}
+
+/* v1.4.14 — Zebra label text scaling is handled in label.html to avoid browser minimum-font clamping. */
+
+/* v1.4.15 — แสดงสถานะใกล้หมดอายุ 8 เดือนร่วมกับสถานะขั้นต่ำ/รอบเบิก */
+.material-status-badges{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+.material-status-badges em{margin:0}
+
+/* v1.4.16 — เกณฑ์แจ้งใกล้หมดอายุแยกต่อวัสดุ 1 หรือ 8 เดือน */
