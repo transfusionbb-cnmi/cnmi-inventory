@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.27';
+const APP_VERSION = '1.4.28';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const DEFAULT_EXPIRY_ALERT_MONTHS = 1;
 const MAX_EXPIRY_ALERT_MONTHS = 8;
@@ -25,6 +25,8 @@ let myStockTab = 'overview';
 let weeklyAdminActingForEmail = '';
 let scannerStream = null;
 let scannerTimer = null;
+let authLogoutTimer = null;
+let enteringApp = false;
 let pendingIssueCode = new URLSearchParams(location.search).get('issue') || new URLSearchParams(location.search).get('lot');
 let deferredInstallPrompt = null;
 const MOVE_HISTORY_PAGE_SIZE = 7;
@@ -285,7 +287,7 @@ function ensureQrDecoder() {
       return;
     }
     const script = document.createElement('script');
-    script.src = 'third_party/jsQR-1.4.0.js?v=1.4.27';
+    script.src = 'third_party/jsQR-1.4.0.js?v=1.4.28';
     script.async = false;
     script.dataset.jsqrLoader = '1';
     script.onload = () => resolve(typeof window.jsQR === 'function');
@@ -549,6 +551,7 @@ async function switchActingMode(mode) {
 
 async function init() {
   initPwaInstall();
+  ensureQrDecoder().catch(() => false);
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
   if ($('#staffPlannerLink') && C.STAFF_PLANNER_URL) $('#staffPlannerLink').href = C.STAFF_PLANNER_URL;
 
@@ -575,9 +578,23 @@ async function init() {
   });
   const {data} = await sb.auth.getSession();
   session = data.session;
-  sb.auth.onAuthStateChange((_event, s) => {
-    session = s;
-    if (!s) showLogin();
+  sb.auth.onAuthStateChange((event, nextSession) => {
+    if (authLogoutTimer) { clearTimeout(authLogoutTimer); authLogoutTimer = null; }
+    if (nextSession) {
+      session = nextSession;
+      if (event === 'SIGNED_IN' && appView.classList.contains('hidden') && !enteringApp) enterApp();
+      return;
+    }
+    // iPhone/PWA อาจส่ง session ว่างชั่วคราวตอนสลับแอปหรือรีเฟรช token
+    // รอและตรวจซ้ำก่อนพากลับหน้า login เพื่อไม่ให้หลุดจากระบบโดยไม่จำเป็น
+    authLogoutTimer = setTimeout(async () => {
+      try {
+        const {data: latest} = await sb.auth.getSession();
+        if (latest?.session) { session = latest.session; return; }
+      } catch (_) {}
+      session = null;
+      showLogin();
+    }, event === 'SIGNED_OUT' ? 250 : 2500);
   });
   if (session) await enterApp();
 }
@@ -620,8 +637,11 @@ async function loadProfile() {
 }
 
 async function enterApp() {
+  if (enteringApp) return;
+  enteringApp = true;
   try {
-    const {data} = await sb.auth.getSession();
+    const {data, error} = await sb.auth.getSession();
+    if (error) throw error;
     session = data.session;
     if (!session) return showLogin();
     await loadProfile();
@@ -635,9 +655,15 @@ async function enterApp() {
     await navigate(initialRoute);
     if (pendingIssueCode) setTimeout(openPendingIssue, 250);
   } catch (e) {
-    toast(errMsg(e), true);
-    await sb.auth.signOut();
-    showLogin();
+    const message = errMsg(e);
+    toast(message, true);
+    // ห้าม signOut เมื่อเป็นปัญหาเครือข่าย/โหลดข้อมูลชั่วคราว เพราะทำให้ผู้ใช้หลุดจากระบบ
+    if (/ยังไม่ได้รับสิทธิ์|inactive|JWT|refresh token|session/i.test(message)) {
+      try { await sb.auth.signOut(); } catch (_) {}
+      showLogin();
+    }
+  } finally {
+    enteringApp = false;
   }
 }
 
@@ -2047,7 +2073,7 @@ async function startCameraScanner(mode = 'issue') {
   const status = $('#scanStatus');
   try {
     let stream;
-    const preferred = {video:{facingMode:{ideal:'environment'},width:{ideal:1920,min:640},height:{ideal:1080,min:480}},audio:false};
+    const preferred = {video:{facingMode:{ideal:'environment'},width:{ideal:1280,min:640},height:{ideal:720,min:480}},audio:false};
     try {
       stream = await navigator.mediaDevices.getUserMedia(preferred);
     } catch (_) {
@@ -2067,7 +2093,7 @@ async function startCameraScanner(mode = 'issue') {
     if (!video.videoWidth) {
       await Promise.race([
         new Promise(resolve => video.addEventListener('loadedmetadata', resolve, {once:true})),
-        new Promise(resolve => setTimeout(resolve, 1800))
+        new Promise(resolve => setTimeout(resolve, 700))
       ]);
     }
     await video.play();
@@ -2113,7 +2139,7 @@ async function startCameraScanner(mode = 'issue') {
         if (!supported || supported.includes('qr_code')) detector = new BarcodeDetector({formats:['qr_code']});
       } catch (_) {}
     }
-    const decoderReady = await ensureQrDecoder();
+    const decoderReady = detector ? true : await ensureQrDecoder();
     if (!detector && !decoderReady) throw new Error('ตัวอ่าน QR ภายในแอปโหลดไม่สำเร็จ กรุณารีเฟรชหน้าแล้วลองใหม่');
     status.textContent = 'พร้อมสแกน QR';
 
@@ -2132,17 +2158,16 @@ async function startCameraScanner(mode = 'issue') {
         busy = true;
         try {
           let value = '';
-          const frameReady = drawVideoFrame(video,canvas,ctx);
-          if (detector && frameReady) {
-            const codes = await detector.detect(canvas);
-            value = pickCenteredBarcode(codes, canvas.width, canvas.height);
-          }
-          if (!value && detector) {
+          if (detector) {
             const codes = await detector.detect(video);
             value = pickCenteredBarcode(codes, Number(video.videoWidth||1), Number(video.videoHeight||1));
           }
-          if (!value && typeof window.jsQR === 'function' && canvas.width && canvas.height) {
-            value = decodeQrCanvas(canvas,ctx) || '';
+          const frameReady = !value && drawVideoFrame(video,canvas,ctx);
+          if (!value && typeof window.jsQR === 'function' && frameReady) {
+            const image = ctx.getImageData(0,0,canvas.width,canvas.height);
+            const fast = window.jsQR(image.data,image.width,image.height,{inversionAttempts:'dontInvert'});
+            value = fast?.data || '';
+            if (!value && scans % 8 === 0) value = decodeQrCanvas(canvas,ctx) || '';
           }
           if (finish(value)) return;
           scans += 1;
@@ -2157,7 +2182,7 @@ async function startCameraScanner(mode = 'issue') {
           busy = false;
         }
       }
-      scannerTimer = setTimeout(scan,110);
+      scannerTimer = setTimeout(scan,55);
     };
     scan();
   } catch (e) {
