@@ -1,109 +1,175 @@
 <!doctype html>
 <html lang="th">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>พิมพ์ QR Sticker</title>
-<style>
-*{box-sizing:border-box}
-:root{--paper-w:25mm;--paper-h:20mm;--safe-h:19.72mm;--pad-y:.62mm;--pad-x:.78mm;--text-col:14.55mm;--qr-col:8.35mm;--col-gap:.54mm;--text-gap:.18mm;--name-size:7.85pt;--name-medium:6.85pt;--name-long:5.85pt;--name-xlong:5.05pt;--code-size:3.55pt;--meta-size:4.45pt;--qr-size:8.20mm;--key-size:3.10pt;--key-width:8.05mm;--key-height:3.25mm;--qr-pad-left:.45mm}
-html,body{margin:0;padding:0;background:#eef2f3;font-family:Tahoma,"Leelawadee UI","Noto Sans Thai",Arial,sans-serif;color:#000;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.print-pages{width:var(--paper-w);margin:0;padding:0}
-.preview{position:relative;width:var(--paper-w);height:var(--safe-h);margin:0;padding:0;background:#fff;overflow:hidden;break-inside:avoid;page-break-inside:avoid}
-.preview:not(:last-child){break-after:page;page-break-after:always}
-.label{position:absolute;left:0;top:0;width:var(--paper-w);height:var(--safe-h);padding:var(--pad-y) var(--pad-x);display:grid;grid-template-columns:minmax(0,var(--text-col)) minmax(0,var(--qr-col));gap:var(--col-gap);overflow:hidden;background:#fff;border:0}
-/* Zebra: keep physical page size, but scale text with transform instead of sub-minimum font sizes.
-   Chrome/Windows can clamp very small CSS fonts, which caused the text to remain huge while the QR became tiny. */
-body[data-profile="zebra"]{--paper-w:25.4mm;--paper-h:20mm;--safe-h:19.55mm;--pad-y:.72mm;--pad-x:.85mm;--text-col:14.80mm;--qr-col:8.20mm;--col-gap:.35mm;--text-gap:.10mm;--name-size:11.50pt;--name-medium:10.50pt;--name-long:9.40pt;--name-xlong:8.50pt;--code-size:8.00pt;--meta-size:9.00pt;--qr-size:7.65mm;--key-size:6.20pt;--key-width:7.90mm;--key-height:2.35mm;--qr-pad-left:.28mm}
-.text{min-width:0;position:relative;overflow:hidden;padding:.03mm .15mm .03mm .02mm}
-.text-position{width:100%;height:100%;display:flex;align-items:center;overflow:visible}
-.text-inner{min-width:0;width:100%;display:flex;flex-direction:column;justify-content:center;align-items:stretch;gap:var(--text-gap)}
-body[data-profile="zebra"] .text-position{position:absolute;left:0;top:50%;width:208.333%;height:auto;transform:translateY(-50%)}
-body[data-profile="zebra"] .text-inner{transform:scale(.48);transform-origin:left center}
-.name{min-width:0;flex:0 0 auto;font-size:var(--name-size);font-weight:900;line-height:1.00;letter-spacing:-.018em;display:block;overflow:visible;overflow-wrap:anywhere;word-break:normal}
-.name.medium{font-size:var(--name-medium);line-height:1.01}.name.long{font-size:var(--name-long);line-height:1.01}.name.xlong{font-size:var(--name-xlong);line-height:1.01}
-.code{flex:0 0 auto;font-size:var(--code-size);font-weight:800;letter-spacing:.01em;line-height:1.08;white-space:nowrap;overflow:hidden;color:#333;margin:0}
-.meta-stack{flex:0 0 auto;display:grid;gap:.10mm;margin:0}
-.meta{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:baseline;gap:.24mm;font-size:var(--meta-size);line-height:1.08;white-space:nowrap}
-.meta span{font-weight:800;color:#333}.meta b{font-weight:900;overflow:hidden;white-space:nowrap}
-.qr-wrap{min-width:0;display:grid;grid-template-rows:auto auto;align-content:center;justify-items:center;gap:.20mm;padding-left:var(--qr-pad-left);border-left:.09mm solid #777}
-.qr{width:var(--qr-size);height:var(--qr-size);display:grid;place-items:center;align-self:end}
-.qr svg{width:100%;height:100%;display:block}
-.key-frame{width:var(--key-width);height:var(--key-height);overflow:hidden;display:grid;place-items:start center}
-.key{font-size:var(--key-size);font-weight:900;line-height:1.03;text-align:center;width:100%;max-height:100%;overflow:hidden;overflow-wrap:anywhere;word-break:break-word;color:#111}
-body[data-profile="zebra"] .key{width:200%;transform:scale(.5);transform-origin:top center;white-space:nowrap;overflow:visible;word-break:normal}
-.screen-status{position:fixed;left:29mm;top:5mm;width:340px;padding:14px 16px;border-radius:12px;background:#fff;color:#087b6f;box-shadow:0 8px 28px rgba(0,0,0,.16);font-size:13px;font-weight:700;line-height:1.45}
-.screen-status small{display:block;margin-top:4px;color:#667a76;font-weight:500}
-@media print{
-  html,body{width:var(--paper-w)!important;min-height:0!important;margin:0!important;padding:0!important;overflow:visible!important;background:#fff!important}
-  .print-pages,.preview{width:var(--paper-w)!important}
-  .preview{height:var(--safe-h)!important;margin:0!important}
-  .preview:last-child{break-after:auto!important;page-break-after:auto!important}
-  .screen-status{display:none!important}
-}
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#087b6f">
+  <meta name="description" content="ระบบบริหารจัดการสต๊อกวัสดุและเวชภัณฑ์ หน่วยเวชศาสตร์บริการโลหิต CNMI">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="CNMI Inventory">
+  <link rel="manifest" href="manifest.webmanifest?v=1.4.15">
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+  <link rel="apple-touch-icon" sizes="76x76" href="icons/icon-76.png">
+  <link rel="apple-touch-icon" sizes="120x120" href="icons/icon-120.png">
+  <link rel="apple-touch-icon" sizes="152x152" href="icons/icon-152.png">
+  <link rel="apple-touch-icon" sizes="167x167" href="icons/icon-167.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png">
+  <link rel="stylesheet" href="assets/app.css?v=1.4.15">
+  <title>CNMI Inventory</title>
 </head>
 <body>
-<div class="print-pages" id="printPages"></div>
-<div class="screen-status" id="screenStatus">กำลังเตรียมหน้าพิมพ์…</div>
-<script src="assets/qr-lite.js?v=1.4.14"></script>
-<script>
-'use strict';
-const p=new URLSearchParams(location.search);
-const safe=(v,f='-')=>v&&v!=='null'?v:f;
-const code=safe(p.get('code'));
-const lot=safe(p.get('lot'));
-const key=safe(p.get('key'),`${code}-${lot}`);
-const qrText=safe(p.get('qr'),key);
-const name=safe(p.get('name'));
-const exp=safe(p.get('exp'),'ไม่ระบุ');
-const profile=p.get('profile')==='zebra'?'zebra':'tsc';
-const copies=Math.max(1,Math.min(100,Math.round(Number(p.get('copies'))||1)));
-document.body.dataset.profile=profile;
-const pageStyle=document.createElement('style');
-pageStyle.textContent=profile==='zebra'?'@page{size:25.4mm 20mm;margin:0}':'@page{size:25mm 20mm;margin:0}';
-document.head.appendChild(pageStyle);
-const statusEl=document.getElementById('screenStatus');
-const pages=document.getElementById('printPages');
-const profileName=profile==='zebra'?'Zebra 420t':'TSC 310';
-function labelMarkup(index){return `<div class="preview"><div class="label"><div class="text"><div class="text-position"><div class="text-inner"><div class="name"></div><div class="code"></div><div class="meta-stack"><div class="meta"><span>Lot</span><b class="lot"></b></div><div class="meta"><span>EXP</span><b class="exp"></b></div></div></div></div></div><div class="qr-wrap"><div class="qr"></div><div class="key-frame"><div class="key"></div></div></div></div></div>`;}
-pages.innerHTML=Array.from({length:copies},(_,i)=>labelMarkup(i)).join('');
-[...pages.querySelectorAll('.preview')].forEach(page=>{
-  const nameEl=page.querySelector('.name');
-  nameEl.textContent=name;
-  page.querySelector('.code').textContent=`รหัส ${code}`;
-  page.querySelector('.lot').textContent=lot;
-  page.querySelector('.exp').textContent=exp;
-  page.querySelector('.key').textContent=key;
-  if(name.length>52)nameEl.classList.add('xlong');else if(name.length>36)nameEl.classList.add('long');else if(name.length>22)nameEl.classList.add('medium');
-  try{page.querySelector('.qr').innerHTML=window.CNMIQRCode.svg(qrText,{level:'L',margin:1});}catch(e){page.querySelector('.qr').textContent='QR';console.error(e);}
-});
-function fitName(page){
-  const nameEl=page.querySelector('.name'),textEl=page.querySelector('.text'),inner=page.querySelector('.text-inner');
-  let size=parseFloat(getComputedStyle(nameEl).fontSize),guard=0;
-  const scale=profile==='zebra'?.48:1;
-  const min=profile==='zebra'?7.2:4.8;
-  const tooTall=()=>{
-    const style=getComputedStyle(nameEl);
-    const lineHeight=parseFloat(style.lineHeight)||size;
-    const lines=Math.ceil(nameEl.scrollHeight/lineHeight-.01);
-    return inner.scrollHeight*scale>textEl.clientHeight+.5||nameEl.scrollWidth*scale>textEl.clientWidth+.5||lines>4;
-  };
-  while(tooTall()&&size>min&&guard<36){size-=.2;nameEl.style.fontSize=`${size}px`;guard++;}
-}
-function fitKey(page){
-  const el=page.querySelector('.key'),frame=page.querySelector('.key-frame');
-  let size=parseFloat(getComputedStyle(el).fontSize),guard=0;
-  const scale=profile==='zebra'?.5:1;
-  const min=profile==='zebra'?4.8:3.2;
-  while((el.scrollWidth*scale>frame.clientWidth+.5||el.scrollHeight*scale>frame.clientHeight+.5)&&size>min&&guard<24){size-=.2;el.style.fontSize=`${size}px`;guard++;}
-}
-function nextFrame(){return new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));}
-async function prepare(){if(document.fonts&&document.fonts.ready){try{await document.fonts.ready;}catch(_){}}await nextFrame();[...pages.querySelectorAll('.preview')].forEach(page=>{fitName(page);fitKey(page);});await nextFrame();}
-async function startPrint(){try{if(document.readyState!=='complete')await new Promise(resolve=>window.addEventListener('load',resolve,{once:true}));await prepare();await new Promise(resolve=>setTimeout(resolve,100));statusEl.innerHTML=`กำลังเปิดหน้าพิมพ์ ${profileName}…<small>${copies} ดวง · ตรวจชื่อเครื่องพิมพ์จริงให้ตรงกับ ${profileName}</small>`;window.focus();window.print();}catch(e){statusEl.textContent='เปิดหน้าพิมพ์ไม่สำเร็จ กรุณากด Ctrl + P';console.error(e);}}
-window.addEventListener('afterprint',()=>setTimeout(()=>window.close(),180));
-window.addEventListener('load',async()=>{await prepare();statusEl.innerHTML=`โปรไฟล์ ${profileName}<small>${copies} ดวง · ขนาดจริง 25 × 20 mm</small>`;if(p.get('auto')==='1')startPrint();},{once:true});
-setTimeout(()=>{if(p.get('auto')==='1'&&!document.hidden)statusEl.innerHTML=`หากหน้าพิมพ์ยังไม่เปิด กรุณากด Ctrl + P<small>เลือกเครื่อง ${profileName}</small>`;},5000);
-</script>
+  <svg class="svg-sprite" aria-hidden="true">
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5v9a1.5 1.5 0 0 1-1.5 1.5H15v-7H9v7H4.5A1.5 1.5 0 0 1 3 19.5z"/></symbol>
+    <symbol id="i-box" viewBox="0 0 24 24"><path d="m4 7 8-4 8 4-8 4z"/><path d="M4 7v10l8 4 8-4V7M12 11v10"/></symbol>
+    <symbol id="i-swap" viewBox="0 0 24 24"><path d="M7 7h12l-3-3m3 3-3 3M17 17H5l3 3m-3-3 3-3"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M9 11.5 11 14l4.5-5"/><rect x="4" y="3" width="16" height="18" rx="3"/><path d="M8 3.5h8"/></symbol>
+    <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></symbol>
+    <symbol id="i-print" viewBox="0 0 24 24"><path d="M7 9V3h10v6M7 17H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/><path d="M7 14h10v7H7z"/></symbol>
+    <symbol id="i-qr" viewBox="0 0 24 24"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM15 14h2v2h-2zM19 14h2v4h-2zM14 19h4v2h-4zM20 20h1v1h-1z"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.8 1.8 0 0 0 .4 2l.1.1-2.8 2.8-.1-.1a1.8 1.8 0 0 0-2-.4 1.8 1.8 0 0 0-1.1 1.6V21h-4v-.1A1.8 1.8 0 0 0 8.8 19a1.8 1.8 0 0 0-2 .4l-.1.1-2.8-2.8.1-.1a1.8 1.8 0 0 0 .4-2A1.8 1.8 0 0 0 3 13.5H3v-4h.1A1.8 1.8 0 0 0 4.7 8.4a1.8 1.8 0 0 0-.4-2l-.1-.1 2.8-2.8.1.1a1.8 1.8 0 0 0 2 .4A1.8 1.8 0 0 0 10.2 2.4V2h4v.4A1.8 1.8 0 0 0 15.3 4a1.8 1.8 0 0 0 2-.4l.1-.1 2.8 2.8-.1.1a1.8 1.8 0 0 0-.4 2 1.8 1.8 0 0 0 1.6 1.1h.1v4h-.1A1.8 1.8 0 0 0 19.4 15z"/></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.8 9a2.3 2.3 0 1 1 3.4 2c-.8.5-1.2 1-1.2 2M12 17h.01"/></symbol>
+    <symbol id="i-logout" viewBox="0 0 24 24"><path d="M14 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2v-3M10 12h11m-4-4 4 4-4 4"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3 2.8 20h18.4z"/><path d="M12 9v5M12 17h.01"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 3h7v7M21 3l-9 9"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 7h3l1.5-2h7L17 7h3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z"/><circle cx="12" cy="13" r="4"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 6v5h-5"/><path d="M18.5 15a7 7 0 1 1-.5-7l2 3"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m-4-4 4 4 4-4"/><path d="M4 19h16"/></symbol>
+    <symbol id="i-smartphone" viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M10 5h4M11 19h2"/></symbol>
+    <symbol id="i-share" viewBox="0 0 24 24"><path d="M12 16V3m-4 4 4-4 4 4"/><path d="M5 11v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/><path d="m4 8 6-5 6 8 5-5"/></symbol>
+  </svg>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="modal" class="modal hidden" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true">
+      <button class="icon-button modal-close" aria-label="ปิด"><span aria-hidden="true">×</span></button>
+      <div id="modalBody"></div>
+    </div>
+  </div>
+
+  <main id="loginView" class="login-shell">
+    <section class="login-card">
+      <div class="login-brand">
+        <img src="icons/icon-192.png" alt="" class="login-logo">
+        <div>
+          <p class="eyebrow">หน่วยเวชศาสตร์บริการโลหิต</p>
+          <h1>CNMI Inventory</h1>
+          <p class="muted">ระบบบริหารจัดการสต๊อกวัสดุและเวชภัณฑ์</p>
+        </div>
+      </div>
+      <form id="loginForm" class="stack login-form">
+        <label>อีเมล
+          <input id="loginEmail" type="email" autocomplete="username" required placeholder="name@mahidol.ac.th" inputmode="email">
+        </label>
+        <label>รหัสผ่าน
+          <input id="loginPassword" type="password" autocomplete="current-password" minlength="6" required>
+        </label>
+        <button class="primary large" type="submit">เข้าสู่ระบบ</button>
+        <button class="secondary" type="button" id="registerBtn">สร้างบัญชีครั้งแรก</button>
+      </form>
+      <div class="login-help">
+        <svg class="icon"><use href="#i-help"></use></svg>
+        <span><strong>ครั้งแรก:</strong> ใช้อีเมลมหิดลที่ได้รับสิทธิ์ ตั้งรหัสผ่านสำหรับแอป แล้วกด “สร้างบัญชีครั้งแรก” จากนั้นกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</span>
+      </div>
+      <section class="install-panel" aria-label="ติดตั้งแอปบนโทรศัพท์">
+        <div class="install-panel-head">
+          <span class="install-panel-icon"><svg class="icon"><use href="#i-smartphone"></use></svg></span>
+          <div><strong>ติดตั้งเป็นแอปบนโทรศัพท์</strong><small data-install-status>เลือก Android หรือ iPhone/iPad</small></div>
+        </div>
+        <div class="install-actions">
+          <button class="install-platform-btn android" type="button" data-install-platform="android">
+            <svg class="icon"><use href="#i-download"></use></svg><span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span>
+          </button>
+          <button class="install-platform-btn ios" type="button" data-install-platform="ios">
+            <svg class="icon"><use href="#i-share"></use></svg><span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span>
+          </button>
+        </div>
+      </section>
+      <p id="setupWarning" class="notice hidden"></p>
+    </section>
+  </main>
+
+  <div id="appView" class="app hidden">
+    <aside class="desktop-sidebar" aria-label="เมนูหลักสำหรับคอมพิวเตอร์">
+      <div class="sidebar-brand">
+        <img src="icons/icon-72.png" alt="" class="sidebar-logo">
+        <div><strong>CNMI Inventory</strong><small>ระบบบริหารจัดการสต๊อก</small></div>
+      </div>
+
+      <section class="role-switch-card admin-account-only hidden" aria-label="เลือกโหมดการทำงาน">
+        <span>ทำงานในบทบาท</span>
+        <div class="role-segment">
+          <button data-role-mode="staff" type="button">Staff</button>
+          <button data-role-mode="admin" type="button">Admin</button>
+        </div>
+        <small id="roleModeLabel">โหมดเจ้าหน้าที่</small>
+      </section>
+
+      <nav class="side-nav" aria-label="เมนูคอมพิวเตอร์">
+        <button class="side-link" data-route="home"><svg class="nav-icon"><use href="#i-home"></use></svg><span>หน้าหลัก</span></button>
+        <button class="side-link" data-route="stock"><svg class="nav-icon"><use href="#i-box"></use></svg><span>ค้นหาสต๊อกทั้งหมด</span></button>
+        <button class="side-link" data-route="my-stock"><svg class="nav-icon"><use href="#i-user"></use></svg><span>สต๊อกที่ฉันดูแล</span></button>
+        <button class="side-link" data-route="usage"><svg class="nav-icon"><use href="#i-chart"></use></svg><span>วิเคราะห์การใช้</span></button>
+        <button class="side-link urgent-link" data-route="urgent"><svg class="nav-icon"><use href="#i-alert"></use></svg><span>ต้องเบิกด่วน</span><b id="urgentBadge" class="nav-badge hidden">0</b></button>
+        <button class="side-link" data-route="move" data-move-tab="receive"><svg class="nav-icon"><use href="#i-plus"></use></svg><span>นำเข้า</span></button>
+        <button class="side-link" data-route="move" data-move-tab="issue"><svg class="nav-icon"><use href="#i-minus"></use></svg><span>นำออก</span></button>
+        <button class="side-link" data-route="weekly"><svg class="nav-icon"><use href="#i-check"></use></svg><span>ตรวจวันศุกร์</span></button>
+        <button class="side-link" data-route="scan-stock"><svg class="nav-icon"><use href="#i-camera"></use></svg><span>สแกนตรวจ Lot</span></button>
+        <button class="side-link" data-route="weekly-status"><svg class="nav-icon"><use href="#i-user"></use></svg><span>สถานะผู้ตรวจ</span></button>
+        <button class="side-link" data-route="labels"><svg class="nav-icon"><use href="#i-print"></use></svg><span>พิมพ์สติ๊กเกอร์</span></button>
+        <button class="side-link" data-route="activity"><svg class="nav-icon"><use href="#i-history"></use></svg><span>ประวัติ</span></button>
+        <div class="side-divider"></div>
+        <button class="side-link" data-route="reports"><svg class="nav-icon"><use href="#i-download"></use></svg><span>รายงาน & ส่งออก</span></button>
+        <button class="side-link admin-only hidden" data-route="admin"><svg class="nav-icon"><use href="#i-settings"></use></svg><span>ตั้งค่า</span></button>
+        <button class="side-link" data-open-install type="button"><svg class="nav-icon"><use href="#i-smartphone"></use></svg><span>ติดตั้งแอป</span></button>
+        <button class="side-link" data-route="help"><svg class="nav-icon"><use href="#i-help"></use></svg><span>คู่มือ</span></button>
+      </nav>
+      <div class="sidebar-version">Version 1.4.15</div>
+    </aside>
+
+    <div class="content-shell">
+      <header class="topbar">
+        <div class="topbar-brand">
+          <img src="icons/icon-72.png" alt="" class="topbar-logo">
+          <div><strong>CNMI Inventory</strong><small id="userBadge"></small></div>
+        </div>
+        <div class="top-actions">
+          <div class="top-role-switch admin-account-only hidden" aria-label="เลือกโหมดการทำงาน">
+            <button data-role-mode="staff" type="button">Staff</button>
+            <button data-role-mode="admin" type="button">Admin</button>
+          </div>
+          <a class="app-switch-link" id="staffPlannerLink" href="https://staff.cnmiblood.com" target="_blank" rel="noopener noreferrer" title="เปิด Staff Planner">
+            <span>Staff Planner</span><svg class="icon"><use href="#i-external"></use></svg>
+          </a>
+          <button class="icon-button admin-only hidden" data-route="admin" title="ตั้งค่า" aria-label="ตั้งค่า"><svg class="icon"><use href="#i-settings"></use></svg></button>
+          <button class="icon-button" data-route="help" title="คู่มือ" aria-label="คู่มือ"><svg class="icon"><use href="#i-help"></use></svg></button>
+          <button class="icon-button" id="logoutBtn" title="ออกจากระบบ" aria-label="ออกจากระบบ"><svg class="icon"><use href="#i-logout"></use></svg></button>
+        </div>
+      </header>
+
+      <main id="page" class="page"></main>
+
+      <nav class="bottom-nav" aria-label="เมนูหลักบนมือถือ">
+        <button data-route="home"><svg class="nav-icon"><use href="#i-home"></use></svg><small>ภาพรวม</small></button>
+        <button data-route="move" data-move-tab="issue"><svg class="nav-icon"><use href="#i-swap"></use></svg><small>ทำรายการ</small></button>
+        <button data-route="urgent" class="mobile-urgent"><svg class="nav-icon"><use href="#i-alert"></use></svg><small>ติดตาม</small></button>
+        <button type="button" data-mobile-menu><svg class="nav-icon"><use href="#i-menu"></use></svg><small>เมนู</small></button>
+      </nav>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="third_party/jsQR-1.4.0.js?v=1.4.15" data-jsqr-loader="1"></script>
+  <script src="assets/config.js?v=1.4.15"></script>
+  <script src="assets/app.js?v=1.4.15"></script>
 </body>
 </html>
