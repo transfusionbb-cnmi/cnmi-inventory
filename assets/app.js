@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.12';
+const APP_VERSION = '1.4.13';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const C = window.APP_CONFIG || {};
 const configured = C.SUPABASE_URL && !C.SUPABASE_URL.includes('YOUR-PROJECT') && C.SUPABASE_ANON_KEY && !C.SUPABASE_ANON_KEY.includes('YOUR-ANON');
@@ -2564,7 +2564,38 @@ async function exportReport(kind) {
   if (kind === 'stock') {
     const rows = window._reportStock || [];
     saveCsv(`CNMI_Inventory_Stock_${stamp}.csv`, [['รหัสวัสดุ','ชื่อวัสดุ','Lot','วันหมดอายุ','คงเหลือ','หน่วย','ผู้ดูแล','สถานะ','รหัสเดิมที่สแกนได้'], ...rows.map(x => [x.material_code,x.material_name,x.lot_no,x.expiry_date || '',x.balance,x.unit,x.responsible_name || '',isExpired(x)?'หมดอายุรอนำออก':'ใช้งาน',pgArray(x.legacy_lot_keys).join(' | ')])]);
-    toast('ส่งออก CSV แล้ว');
+    toast('ส่งออกสต๊อกตาม Lot แล้ว');
+    return;
+  }
+  if (kind === 'minimum-stock') {
+    let summaries = window._reportMinimumStock || [];
+    if (!summaries.length) summaries = await ensureInventorySummary();
+    const groups = buildMaterialGroups(summaries, []);
+    const rows = groups.map(g => {
+      const mode = g.alert_mode || 'MINIMUM';
+      const status = materialGroupStatus(g).label;
+      const shortage = mode === 'MINIMUM' ? Math.max(Number(g.min_qty || 0) - Number(g.total_balance || 0), 0) : '';
+      const modeLabel = mode === 'MONTHLY' ? 'เตือนรอบเบิกรายเดือน' : mode === 'NONE' ? 'ไม่เปิดแจ้งเตือน' : 'เตือนตามจำนวนขั้นต่ำ';
+      return [
+        g.material_code,
+        g.material_name,
+        Number(g.total_balance || 0),
+        Number(g.min_qty || 0),
+        shortage,
+        g.unit,
+        modeLabel,
+        mode === 'MONTHLY' ? Number(g.reorder_day || 1) : '',
+        g.responsible_name || '',
+        status,
+        Number(g.active_lots || 0),
+        g.nearest_expiry || ''
+      ];
+    });
+    saveCsv(`CNMI_Inventory_Minimum_Stock_${stamp}.csv`, [[
+      'รหัสวัสดุ','ชื่อวัสดุ','คงเหลือรวม','Minimum Stock','จำนวนที่ขาดจากขั้นต่ำ','หน่วย',
+      'รูปแบบแจ้งเตือน','วันที่เตือนรายเดือน','ผู้ดูแล','สถานะ','จำนวน Lot ที่ใช้งาน','วันหมดอายุใกล้สุด'
+    ], ...rows]);
+    toast(`ส่งออก Minimum Stock แล้ว ${rows.length.toLocaleString('th-TH')} รายการ`);
     return;
   }
   const context = window._reportContext || {};
@@ -2591,9 +2622,10 @@ async function renderReports(defaultTab = '') {
     $$('[data-report-tab]').forEach(x => x.classList.toggle('active', x.dataset.reportTab === tab));
     $('#reportPane').innerHTML='<div class="card usage-loading">กำลังเปิดรายงานที่เลือก…</div>';
     if (tab === 'stock') {
-      const lots=await getLots(true);
+      const [lots,summaries]=await Promise.all([getLots(true),ensureInventorySummary()]);
       window._reportStock=lots;
-      $('#reportPane').innerHTML = `<section class="card report-result-card"><div class="report-actions"><div><strong>สต๊อกคงเหลือปัจจุบัน</strong><span class="muted small">${lots.length} Lot ที่ยัง Active</span></div><button class="primary" data-export-report="stock">${icon('download')} ส่งออกสต๊อก CSV</button></div><div class="table-wrap"><table class="data-table"><thead><tr><th>สินค้า</th><th>Lot</th><th>คงเหลือ</th><th>EXP</th><th>ผู้ดูแล</th><th>สถานะ</th></tr></thead><tbody>${lots.map(x => `<tr><td><strong>${esc(x.material_name)}</strong></td><td>${esc(lotKey(x))}</td><td>${qty(x.balance)} ${esc(x.unit)}</td><td>${d(x.expiry_date)}</td><td>${esc(x.responsible_name || '-')}</td><td>${statusBadge(x)}</td></tr>`).join('')}</tbody></table></div></section>`;
+      window._reportMinimumStock=summaries;
+      $('#reportPane').innerHTML = `<section class="card report-result-card"><div class="report-actions"><div><strong>สต๊อกคงเหลือปัจจุบัน</strong><span class="muted small">${lots.length} Lot ที่ยัง Active · Minimum Stock ${summaries.length} รายการวัสดุ</span></div><div class="actions" style="margin-top:0"><button class="secondary" data-export-report="minimum-stock">${icon('download')} Export Minimum Stock</button><button class="primary" data-export-report="stock">${icon('download')} ส่งออกสต๊อกตาม Lot</button></div></div><div class="notice report-minimum-note"><strong>ไฟล์ Minimum Stock</strong><span>สรุปหนึ่งแถวต่อวัสดุ พร้อมยอดคงเหลือ ขั้นต่ำ จำนวนที่ขาด ผู้ดูแล สถานะ และวันหมดอายุใกล้สุด</span></div><div class="table-wrap"><table class="data-table"><thead><tr><th>สินค้า</th><th>Lot</th><th>คงเหลือ</th><th>EXP</th><th>ผู้ดูแล</th><th>สถานะ</th></tr></thead><tbody>${lots.map(x => `<tr><td><strong>${esc(x.material_name)}</strong></td><td>${esc(lotKey(x))}</td><td>${qty(x.balance)} ${esc(x.unit)}</td><td>${d(x.expiry_date)}</td><td>${esc(x.responsible_name || '-')}</td><td>${statusBadge(x)}</td></tr>`).join('')}</tbody></table></div></section>`;
       queueResponsiveTables($('#reportPane'));
       return;
     }
