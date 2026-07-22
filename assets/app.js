@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.11';
+const APP_VERSION = '1.4.12';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const C = window.APP_CONFIG || {};
 const configured = C.SUPABASE_URL && !C.SUPABASE_URL.includes('YOUR-PROJECT') && C.SUPABASE_ANON_KEY && !C.SUPABASE_ANON_KEY.includes('YOUR-ANON');
@@ -30,7 +30,7 @@ const REPORT_PAGE_SIZE = 10;
 const LABEL_QUEUE_PAGE_SIZE = 10;
 const LABEL_PRINTERS = Object.freeze({
   tsc:{key:'tsc',name:'TSC 310',fullName:'TSC 310',profileCode:'TSC_310',className:'tsc',note:'ฉลาก 25 × 20 mm · ปรับขนาดสำหรับ TSC'},
-  zebra:{key:'zebra',name:'Zebra 420t',fullName:'Zebra GC420t',profileCode:'ZEBRA_420T',className:'zebra',note:'ฉลาก USER 25.4 × 20 mm · ปรับขนาดสำหรับ Zebra'}
+  zebra:{key:'zebra',name:'Zebra 420t',fullName:'Zebra GC420t',profileCode:'ZEBRA_420T',className:'zebra',note:'ฉลาก USER 25.4 × 20 mm · ชดเชยการขยายจาก Driver'}
 });
 const LABEL_PRINTER_STORAGE_KEY = 'cnmi-inventory-label-printer';
 

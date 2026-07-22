@@ -10,9 +10,9 @@
 html,body{margin:0;padding:0;background:#eef2f3;font-family:Tahoma,"Leelawadee UI","Noto Sans Thai",Arial,sans-serif;color:#000;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .print-pages{width:var(--paper-w);margin:0;padding:0}
 .preview{position:relative;width:var(--paper-w);height:var(--safe-h);margin:0;padding:0;background:#fff;overflow:hidden;break-inside:avoid;page-break-inside:avoid}
-.preview+.preview{break-before:page;page-break-before:always}
+.preview:not(:last-child){break-after:page;page-break-after:always}
 .label{position:absolute;left:0;top:0;width:var(--paper-w);height:var(--safe-h);padding:var(--pad-y) var(--pad-x);display:grid;grid-template-columns:minmax(0,var(--text-col)) minmax(0,var(--qr-col));gap:var(--col-gap);overflow:hidden;background:#fff;border:0}
-body[data-profile="zebra"]{--paper-w:25.4mm;--paper-h:20mm;--safe-h:19.68mm;--pad-y:.95mm;--pad-x:1.20mm;--text-col:14.15mm;--qr-col:6.95mm;--col-gap:.50mm;--text-gap:.12mm;--name-size:5.15pt;--name-medium:4.55pt;--name-long:4.00pt;--name-xlong:3.55pt;--code-size:2.65pt;--meta-size:3.30pt;--qr-size:6.00mm;--key-size:2.40pt;--key-width:6.25mm;--key-height:2.65mm;--qr-pad-left:.36mm}
+body[data-profile="zebra"]{--paper-w:25.4mm;--paper-h:20mm;--safe-h:19.45mm;--pad-y:1.05mm;--pad-x:1.30mm;--text-col:14.55mm;--qr-col:5.60mm;--col-gap:.42mm;--text-gap:.08mm;--name-size:3.45pt;--name-medium:3.15pt;--name-long:2.85pt;--name-xlong:2.55pt;--code-size:1.85pt;--meta-size:2.35pt;--qr-size:4.05mm;--key-size:1.55pt;--key-width:4.65mm;--key-height:1.90mm;--qr-pad-left:.28mm}
 .text{min-width:0;display:flex;flex-direction:column;justify-content:center;align-items:stretch;gap:var(--text-gap);overflow:hidden;padding:.03mm .15mm .03mm .02mm}
 .name{min-width:0;flex:0 0 auto;font-size:var(--name-size);font-weight:900;line-height:1.00;letter-spacing:-.018em;display:block;overflow:visible;overflow-wrap:anywhere;word-break:normal}
 .name.medium{font-size:var(--name-medium);line-height:1.01}.name.long{font-size:var(--name-long);line-height:1.01}.name.xlong{font-size:var(--name-xlong);line-height:1.01}
@@ -30,6 +30,7 @@ body[data-profile="zebra"]{--paper-w:25.4mm;--paper-h:20mm;--safe-h:19.68mm;--pa
   html,body{width:var(--paper-w)!important;min-height:0!important;margin:0!important;padding:0!important;overflow:visible!important;background:#fff!important}
   .print-pages,.preview{width:var(--paper-w)!important}
   .preview{height:var(--safe-h)!important;margin:0!important}
+  .preview:last-child{break-after:auto!important;page-break-after:auto!important}
   .screen-status{display:none!important}
 }
 </style>
@@ -37,7 +38,7 @@ body[data-profile="zebra"]{--paper-w:25.4mm;--paper-h:20mm;--safe-h:19.68mm;--pa
 <body>
 <div class="print-pages" id="printPages"></div>
 <div class="screen-status" id="screenStatus">กำลังเตรียมหน้าพิมพ์…</div>
-<script src="assets/qr-lite.js?v=1.4.11"></script>
+<script src="assets/qr-lite.js?v=1.4.12"></script>
 <script>
 'use strict';
 const p=new URLSearchParams(location.search);
@@ -71,11 +72,11 @@ pages.innerHTML=Array.from({length:copies},(_,i)=>labelMarkup(i)).join('');
 });
 function fitName(page){
   const nameEl=page.querySelector('.name'),textEl=page.querySelector('.text');
-  let size=parseFloat(getComputedStyle(nameEl).fontSize),guard=0;const min=profile==='zebra'?3.6:4.8;
+  let size=parseFloat(getComputedStyle(nameEl).fontSize),guard=0;const min=profile==='zebra'?2.25:4.8;
   const tooTall=()=>{const style=getComputedStyle(nameEl);const lineHeight=parseFloat(style.lineHeight)||size;const lines=Math.ceil(nameEl.getBoundingClientRect().height/lineHeight-.01);return textEl.scrollHeight>textEl.clientHeight+.5||nameEl.scrollWidth>nameEl.clientWidth+.5||lines>4;};
   while(tooTall()&&size>min&&guard<36){size-=.2;nameEl.style.fontSize=`${size}px`;guard++;}
 }
-function fitKey(page){const el=page.querySelector('.key');let size=parseFloat(getComputedStyle(el).fontSize),guard=0;while((el.scrollHeight>el.clientHeight+1||el.scrollWidth>el.clientWidth+1)&&size>(profile==='zebra'?2.8:3.2)&&guard<18){size-=.2;el.style.fontSize=`${size}px`;guard++;}}
+function fitKey(page){const el=page.querySelector('.key');let size=parseFloat(getComputedStyle(el).fontSize),guard=0;while((el.scrollHeight>el.clientHeight+1||el.scrollWidth>el.clientWidth+1)&&size>(profile==='zebra'?1.65:3.2)&&guard<18){size-=.2;el.style.fontSize=`${size}px`;guard++;}}
 function nextFrame(){return new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));}
 async function prepare(){if(document.fonts&&document.fonts.ready){try{await document.fonts.ready;}catch(_){}}await nextFrame();[...pages.querySelectorAll('.preview')].forEach(page=>{fitName(page);fitKey(page);});await nextFrame();}
 async function startPrint(){try{if(document.readyState!=='complete')await new Promise(resolve=>window.addEventListener('load',resolve,{once:true}));await prepare();await new Promise(resolve=>setTimeout(resolve,100));statusEl.innerHTML=`กำลังเปิดหน้าพิมพ์ ${profileName}…<small>${copies} ดวง · ตรวจชื่อเครื่องพิมพ์จริงให้ตรงกับ ${profileName}</small>`;window.focus();window.print();}catch(e){statusEl.textContent='เปิดหน้าพิมพ์ไม่สำเร็จ กรุณากด Ctrl + P';console.error(e);}}
