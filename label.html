@@ -9,23 +9,26 @@
 :root{--paper-w:25mm;--paper-h:20mm}
 html,body{margin:0;padding:0;width:var(--paper-w);background:#eef2f3;font-family:Tahoma,"Leelawadee UI","Noto Sans Thai",Arial,sans-serif;color:#000;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 #printPages{width:var(--paper-w);margin:0;padding:0;line-height:0}
-.label-canvas{display:block;width:var(--paper-w);height:var(--paper-h);margin:0;padding:0;background:#fff;overflow:hidden;break-inside:avoid;page-break-inside:avoid;break-after:page;page-break-after:always}
-.label-canvas:last-child{break-after:auto;page-break-after:auto}
-.screen-status{position:fixed;left:29mm;top:5mm;width:370px;padding:14px 16px;border-radius:12px;background:#fff;color:#087b6f;box-shadow:0 8px 28px rgba(0,0,0,.16);font-size:13px;font-weight:700;line-height:1.45}
+.label-page{position:relative;display:block;width:var(--paper-w);height:var(--paper-h);margin:0;padding:0;background:#fff;overflow:hidden;break-inside:avoid;page-break-inside:avoid;break-after:page;page-break-after:always}
+.label-page:last-child{break-after:auto;page-break-after:auto}
+.label-canvas,.label-vector{position:absolute;inset:0;display:block;width:var(--paper-w);height:var(--paper-h);margin:0;padding:0;background:transparent;overflow:hidden}
+.label-canvas{image-rendering:pixelated}
+.label-vector{pointer-events:none}
+.screen-status{position:fixed;left:29mm;top:5mm;width:390px;padding:14px 16px;border-radius:12px;background:#fff;color:#087b6f;box-shadow:0 8px 28px rgba(0,0,0,.16);font-size:13px;font-weight:700;line-height:1.45}
 .screen-status small{display:block;margin-top:4px;color:#667a76;font-weight:500}
 @page{size:25mm 20mm;margin:0}
 @media print{
   html,body{width:var(--paper-w)!important;height:auto!important;min-height:0!important;margin:0!important;padding:0!important;overflow:visible!important;background:#fff!important;line-height:0!important}
   #printPages{width:var(--paper-w)!important;margin:0!important;padding:0!important;line-height:0!important}
-  .label-canvas{display:block!important;width:var(--paper-w)!important;height:var(--paper-h)!important;margin:0!important;padding:0!important}
+  .label-page,.label-canvas,.label-vector{display:block!important;width:var(--paper-w)!important;height:var(--paper-h)!important;margin:0!important;padding:0!important}
   .screen-status{display:none!important}
 }
 </style>
 </head>
 <body>
 <div id="printPages"></div>
-<div class="screen-status" id="screenStatus">กำลังสร้างสติ๊กเกอร์แบบภาพคงที่…</div>
-<script src="assets/qr-lite.js?v=1.4.23"></script>
+<div class="screen-status" id="screenStatus">กำลังสร้างสติ๊กเกอร์ QR ขนาดใหญ่…</div>
+<script src="assets/qr-lite.js?v=1.4.24"></script>
 <script>
 'use strict';
 const p=new URLSearchParams(location.search);
@@ -38,33 +41,40 @@ const name=safe(p.get('name'));
 const exp=safe(p.get('exp'),'ไม่ระบุ');
 const profile=p.get('profile')==='zebra'?'zebra':'tsc';
 const copies=Math.max(1,Math.min(100,Math.round(Number(p.get('copies'))||1)));
+const profileName=profile==='zebra'?'Zebra GC420t':'TSC 310';
 const statusEl=document.getElementById('screenStatus');
 const pages=document.getElementById('printPages');
-const PROFILES={
-  zebra:{name:'Zebra 420t',dpi:203,width:200,height:160,layout:{x:.062,y:.046,w:.876,h:.708,sepRatio:.60,qrRatio:.285,nameStart:.078,nameMin:.050,codeSize:.038,metaSize:.049,keyStart:.029,keyMin:.021,lineWidth:1}},
-  tsc:{name:'TSC 310',dpi:300,width:296,height:236,layout:{x:.034,y:.026,w:.932,h:.748,sepRatio:.60,qrRatio:.302,nameStart:.086,nameMin:.054,codeSize:.041,metaSize:.053,keyStart:.031,keyMin:.022,lineWidth:1}}
-};
-const PROFILE=PROFILES[profile]||PROFILES.tsc;
-const profileName=PROFILE.name;
 
-function makeCanvas(){
+/*
+  วาดภาพตามจำนวนจุดจริงของหัวพิมพ์ เพื่อลดการย่อภาพจาก Browser
+  ซึ่งเป็นสาเหตุให้เส้นตรงและช่อง QR กลายเป็นจุด/เส้นประบนกระดาษ
+*/
+const DEVICE=profile==='zebra'
+  ? {dpi:203,w:200,h:160}
+  : {dpi:300,w:295,h:236};
+const PX_W=DEVICE.w, PX_H=DEVICE.h;
+
+function makePage(){
+  const page=document.createElement('div');
+  page.className='label-page';
+  page.setAttribute('aria-label',`สติ๊กเกอร์ ${name} Lot ${lot}`);
   const canvas=document.createElement('canvas');
   canvas.className='label-canvas';
-  canvas.width=PROFILE.width;
-  canvas.height=PROFILE.height;
-  canvas.style.width='var(--paper-w)';
-  canvas.style.height='var(--paper-h)';
-  canvas.style.imageRendering='pixelated';
-  canvas.setAttribute('aria-label',`สติ๊กเกอร์ ${name} Lot ${lot}`);
-  return canvas;
+  canvas.width=PX_W;
+  canvas.height=PX_H;
+  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  svg.classList.add('label-vector');
+  svg.setAttribute('viewBox',`0 0 ${PX_W} ${PX_H}`);
+  svg.setAttribute('preserveAspectRatio','none');
+  svg.setAttribute('shape-rendering','crispEdges');
+  page.append(canvas,svg);
+  return {page,canvas,svg};
 }
 
-function pxW(v){return Math.max(0,Math.round(PROFILE.width*v));}
-function pxH(v){return Math.max(0,Math.round(PROFILE.height*v));}
-function setFont(ctx,weight,size){ctx.font=`${weight} ${Math.max(8,Math.round(size))}px Tahoma, \"Leelawadee UI\", Arial, sans-serif`;}
+function setFont(ctx,weight,size){ctx.font=`${weight} ${Math.max(1,Math.round(size))}px Tahoma, "Leelawadee UI", Arial, sans-serif`;}
 function fitSingleLine(ctx,text,maxWidth,start,min,weight=900){
   let size=start;
-  while(size>min){setFont(ctx,weight,size);if(ctx.measureText(text).width<=maxWidth)return size;size-=1;}
+  while(size>min){setFont(ctx,weight,size);if(ctx.measureText(text).width<=maxWidth)return size;size-=.5;}
   return min;
 }
 function splitToken(ctx,token,maxWidth){
@@ -89,203 +99,148 @@ function wrapText(ctx,text,maxWidth){
 }
 function fitName(ctx,text,maxWidth,maxHeight,start,min,maxLines){
   let size=start,lines=[];
-  const absoluteMin=Math.max(8,min-4);
+  const absoluteMin=Math.max(profile==='zebra'?8.5:12,min-3);
   while(size>=absoluteMin){
     setFont(ctx,900,size);
     lines=wrapText(ctx,text,maxWidth);
     const allowedLines=size>=min?maxLines:maxLines+1;
-    const lineHeight=Math.max(size*1.02,size+1);
+    const lineHeight=size*1.04;
     const widest=Math.max(0,...lines.map(x=>ctx.measureText(x).width));
-    if(lines.length&&lines.length<=allowedLines&&widest<=maxWidth+1&&lines.length*lineHeight<=maxHeight+1)return {size,lines,lineHeight};
-    size-=1;
+    if(lines.length&&lines.length<=allowedLines&&widest<=maxWidth+.5&&lines.length*lineHeight<=maxHeight+.5)return {size,lines,lineHeight};
+    size-=.5;
   }
   setFont(ctx,900,absoluteMin);
-  lines=wrapText(ctx,text,maxWidth);
-  return {size:absoluteMin,lines,lineHeight:Math.max(absoluteMin*1.02,absoluteMin+1)};
+  lines=wrapText(ctx,text,maxWidth).slice(0,maxLines+1);
+  return {size:absoluteMin,lines,lineHeight:absoluteMin*1.04};
 }
 function drawText(ctx,text,x,y,weight,size,align='left'){
   setFont(ctx,weight,size);ctx.textAlign=align;ctx.textBaseline='alphabetic';ctx.fillStyle='#000';ctx.fillText(text,x,y);
 }
-function renderQrImage(targetSize, quiet=4, fixedModulePx=0){
-  const modules=window.CNMIQRCode.matrix(qrText,'L');
-  const count=modules.length;
-  const total=count+quiet*2;
-  const modulePx=fixedModulePx>0?fixedModulePx:Math.max(1,Math.floor(targetSize/total));
-  const drawSize=modulePx*total;
-  const canvas=document.createElement('canvas');
-  canvas.width=drawSize; canvas.height=drawSize;
-  const ctx=canvas.getContext('2d',{alpha:false});
-  ctx.fillStyle='#fff'; ctx.fillRect(0,0,drawSize,drawSize);
+
+function profileLayout(){
+  if(profile==='zebra'){
+    return {
+      x:4,y:4,w:192,h:152,sepRatio:.44,
+      nameStart:17,nameMin:11.5,codeSize:8.5,metaSize:11.5,keyStart:8,keyMin:6.5,
+      separator:2,quietModules:4,maxNameLines:4
+    };
+  }
+  return {
+    x:5,y:5,w:285,h:226,sepRatio:.46,
+    nameStart:25,nameMin:16,codeSize:11.5,metaSize:16,keyStart:11,keyMin:8.5,
+    separator:2,quietModules:4,maxNameLines:4
+  };
+}
+
+/*
+  วาด QR จาก matrix โดยตรง ทุก module เป็นจำนวน pixel เต็ม
+  ไม่มี SVG/Canvas downsampling และเว้น quiet zone 4 modules ตามมาตรฐาน
+*/
+function drawQrMatrix(ctx,matrix,boxX,boxY,boxW,boxH,quietModules){
+  const count=matrix.length;
+  const totalModules=count+quietModules*2;
+  const modulePx=Math.max(2,Math.floor(Math.min(boxW,boxH)/totalModules));
+  const qrPx=totalModules*modulePx;
+  const x=Math.round(boxX+(boxW-qrPx)/2);
+  const y=Math.round(boxY+(boxH-qrPx)/2);
+  ctx.save();
+  ctx.imageSmoothingEnabled=false;
+  ctx.fillStyle='#fff';
+  ctx.fillRect(x,y,qrPx,qrPx);
   ctx.fillStyle='#000';
   for(let r=0;r<count;r++){
     for(let c=0;c<count;c++){
-      if(modules[r][c]) ctx.fillRect((c+quiet)*modulePx,(r+quiet)*modulePx,modulePx,modulePx);
+      if(matrix[r][c])ctx.fillRect(x+(c+quietModules)*modulePx,y+(r+quietModules)*modulePx,modulePx,modulePx);
     }
   }
-  return {canvas,size:drawSize,modulePx,total,count,quiet};
+  ctx.restore();
+  return {x,y,size:qrPx,modulePx};
 }
-function fitWrappedLines(ctx,text,maxWidth,start,min,maxLines,weight=900){
-  let size=start,lines=[];
-  while(size>=min){
-    setFont(ctx,weight,size);
-    lines=wrapText(ctx,text,maxWidth);
-    const widest=Math.max(0,...lines.map(x=>ctx.measureText(x).width));
-    if(lines.length && lines.length<=maxLines && widest<=maxWidth+1) return {size,lines,lineHeight:Math.max(size*1.04,size+1)};
-    size-=1;
+
+function svgRect(svg,x,y,w,h,fill='#000'){
+  const rect=document.createElementNS('http://www.w3.org/2000/svg','rect');
+  rect.setAttribute('x',String(x));rect.setAttribute('y',String(y));
+  rect.setAttribute('width',String(w));rect.setAttribute('height',String(h));
+  rect.setAttribute('fill',fill);svg.appendChild(rect);return rect;
+}
+function drawQrVector(svg,matrix,boxX,boxY,boxW,boxH,quietModules){
+  const count=matrix.length;
+  const totalModules=count+quietModules*2;
+  const modulePx=Math.max(2,Math.floor(Math.min(boxW,boxH)/totalModules));
+  const qrPx=totalModules*modulePx;
+  const x=Math.round(boxX+(boxW-qrPx)/2);
+  const y=Math.round(boxY+(boxH-qrPx)/2);
+  svgRect(svg,x,y,qrPx,qrPx,'#fff');
+  for(let r=0;r<count;r++){
+    for(let c=0;c<count;c++){
+      if(matrix[r][c])svgRect(svg,x+(c+quietModules)*modulePx,y+(r+quietModules)*modulePx,modulePx,modulePx,'#000');
+    }
   }
-  setFont(ctx,weight,min);
-  lines=wrapText(ctx,text,maxWidth).slice(0,maxLines);
-  return {size:min,lines,lineHeight:Math.max(min*1.04,min+1)};
+  return {x,y,size:qrPx,modulePx};
 }
-function drawMultiline(ctx,lines,x,y,size,weight=900,lineHeight=0,align='left'){
-  const lh=lineHeight||Math.max(size*1.04,size+1);
-  lines.forEach(line=>{drawText(ctx,line,x,y,weight,size,align); y+=lh;});
-  return y;
-}
-function profileLayout(){
-  const L=PROFILE.layout;
-  return {
-    x:pxW(L.x), y:pxH(L.y), w:pxW(L.w), h:pxH(L.h), sepRatio:L.sepRatio,
-    qrSize:pxW(L.qrRatio), nameStart:pxH(L.nameStart), nameMin:pxH(L.nameMin),
-    codeSize:pxH(L.codeSize), metaSize:pxH(L.metaSize), keyStart:pxH(L.keyStart),
-    keyMin:pxH(L.keyMin), lineWidth:Math.max(1,Math.round(Math.min(PROFILE.width,PROFILE.height)*0.006))
-  };
-}
-function drawLabelGeneric(canvas,qrImg){
+
+function drawLabel(canvas,svg,matrix){
   const ctx=canvas.getContext('2d',{alpha:false});
-  ctx.save();ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.restore();
+  ctx.fillStyle='#fff';ctx.fillRect(0,0,PX_W,PX_H);
   const L=profileLayout();
   const sepX=Math.round(L.x+L.w*L.sepRatio);
-  const leftPad=Math.max(4,Math.round(canvas.width*0.012));
-  const leftX=L.x+leftPad;
-  const leftW=sepX-leftX-leftPad;
-  const rightX=sepX+Math.max(3,Math.round(canvas.width*0.016));
-  const rightW=L.x+L.w-rightX-2;
-  const codeH=L.codeSize*1.12, metaH=L.metaSize*1.08;
-  const fixedHeight=codeH+metaH*2+8;
-  const nameMaxH=Math.max(12,L.h-fixedHeight);
-  const fitted=fitName(ctx,name,leftW,nameMaxH,L.nameStart,L.nameMin,3);
-  const totalH=fitted.lines.length*fitted.lineHeight+codeH+metaH*2+6;
+  const leftX=L.x+2;
+  const leftW=sepX-leftX-4;
+  const rightX=sepX+4;
+  const rightW=L.x+L.w-rightX-1;
+  const codeH=L.codeSize*1.2,metaH=L.metaSize*1.12;
+  const fixedHeight=codeH+metaH*2+(profile==='zebra'?7:10);
+  const nameMaxH=Math.max(profile==='zebra'?48:72,L.h-fixedHeight);
+  const fitted=fitName(ctx,name,leftW,nameMaxH,L.nameStart,L.nameMin,L.maxNameLines);
+  const totalH=fitted.lines.length*fitted.lineHeight+codeH+metaH*2+(profile==='zebra'?5:8);
   let y=L.y+Math.max(0,(L.h-totalH)/2)+fitted.size;
   fitted.lines.forEach(line=>{drawText(ctx,line,leftX,y,900,fitted.size);y+=fitted.lineHeight;});
-  y+=1;
+  y+=profile==='zebra'?1:2;
   drawText(ctx,`รหัส ${code}`,leftX,y,800,L.codeSize);y+=codeH;
   drawText(ctx,`Lot ${lot}`,leftX,y,900,L.metaSize);y+=metaH;
   drawText(ctx,`EXP ${exp}`,leftX,y,900,L.metaSize);
-  ctx.save();ctx.strokeStyle='#111';ctx.lineWidth=L.lineWidth;ctx.beginPath();ctx.moveTo(sepX+0.5,L.y);ctx.lineTo(sepX+0.5,L.y+L.h);ctx.stroke();ctx.restore();
-  const keyAreaH=Math.max(11,pxH(0.06));
-  const qrX=Math.round(rightX+(rightW-qrImg.size)/2);
-  const qrY=Math.round(L.y+Math.max(0,(L.h-qrImg.size-keyAreaH-2)/2));
-  ctx.save();ctx.imageSmoothingEnabled=false;ctx.drawImage(qrImg.canvas,qrX,qrY,qrImg.size,qrImg.size);ctx.restore();
-  const keySize=fitSingleLine(ctx,key,rightW-2,L.keyStart,L.keyMin,900);
-  drawText(ctx,key,rightX+rightW/2,Math.min(canvas.height-2,qrY+qrImg.size+keySize+1),900,keySize,'center');
-}
 
-function drawLabelZebra(canvas,qrImg){
-  const ctx=canvas.getContext('2d',{alpha:false});
-  ctx.save();ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.restore();
-
-  // Zebra GC420t: 203 dpi ~= 8 dots/mm. Target QR about 10 x 10 mm.
-  const qrSize=80;               // ~10 mm
-  const leftPad=6;               // ~0.75 mm
-  const rightPad=4;              // ~0.5 mm
-  const topPad=4;                // ~0.5 mm
-  const bottomPad=4;             // ~0.5 mm
-  const gapToSep=4;
-  const sepX=canvas.width-rightPad-qrSize-gapToSep;
-  const qrX=canvas.width-rightPad-qrSize;
-  const qrY=topPad;
-  const leftX=leftPad;
-  const leftW=sepX-leftX-4;
-  const fullBottomW=canvas.width-leftPad-rightPad;
-
-  ctx.save();
-  ctx.strokeStyle='#111';
-  ctx.lineWidth=1;
-  ctx.beginPath();
-  ctx.moveTo(sepX+0.5,topPad);
-  ctx.lineTo(sepX+0.5,canvas.height-bottomPad);
-  ctx.stroke();
-  ctx.restore();
-
-  const shortName=fitWrappedLines(ctx,name,leftW,13,9,2,900);
-  const shortNameFits=shortName.lines.length<=2 && shortName.size>=9;
-
-  if(shortNameFits){
-    let y=24;
-    y=drawMultiline(ctx,shortName.lines,leftX,y,shortName.size,900,shortName.lineHeight)+5;
-    const codeFit=fitWrappedLines(ctx,`รหัส ${code}`,leftW,8,7,1,800);
-    y=drawMultiline(ctx,codeFit.lines,leftX,y,codeFit.size,800,codeFit.lineHeight)+1;
-    const lotFit=fitWrappedLines(ctx,`Lot ${lot}`,leftW,9,7,2,900);
-    y=drawMultiline(ctx,lotFit.lines,leftX,y,lotFit.size,900,lotFit.lineHeight)+1;
-    const expFit=fitWrappedLines(ctx,`EXP ${exp}`,leftW,9,7,2,900);
-    drawMultiline(ctx,expFit.lines,leftX,y,expFit.size,900,expFit.lineHeight);
-  } else {
-    let y=18;
-    const codeFit=fitWrappedLines(ctx,`รหัส ${code}`,leftW,8,7,1,800);
-    y=drawMultiline(ctx,codeFit.lines,leftX,y,codeFit.size,800,codeFit.lineHeight)+1;
-    const lotFit=fitWrappedLines(ctx,`Lot ${lot}`,leftW,9,7,2,900);
-    y=drawMultiline(ctx,lotFit.lines,leftX,y,lotFit.size,900,lotFit.lineHeight)+1;
-    const expFit=fitWrappedLines(ctx,`EXP ${exp}`,leftW,9,7,2,900);
-    drawMultiline(ctx,expFit.lines,leftX,y,expFit.size,900,expFit.lineHeight);
-
-    const bottomName=fitWrappedLines(ctx,name,fullBottomW,11,8,2,900);
-    const bottomBlockH=bottomName.lines.length*bottomName.lineHeight;
-    const by=canvas.height-bottomPad-bottomBlockH-2;
-    drawMultiline(ctx,bottomName.lines,leftX,by,bottomName.size,900,bottomName.lineHeight);
+  const keyAreaH=profile==='zebra'?13:19;
+  const qrBoxH=L.h-keyAreaH-2;
+  let qr;
+  if(profile==='zebra'){
+    // Keep the v1.4.17 layout exactly. Only QR and divider are vector objects,
+    // so the Zebra driver receives solid black geometry instead of a dithered bitmap.
+    svgRect(svg,sepX,L.y,L.separator,L.h,'#000');
+    qr=drawQrVector(svg,matrix,rightX,L.y,rightW,qrBoxH,L.quietModules);
+  }else{
+    ctx.fillStyle='#000';
+    ctx.fillRect(sepX,L.y,L.separator,L.h);
+    qr=drawQrMatrix(ctx,matrix,rightX,L.y,rightW,qrBoxH,L.quietModules);
   }
-
-  ctx.save();
-  ctx.imageSmoothingEnabled=false;
-  // Center the source QR inside fixed 80x80 target to guarantee ~10x10 mm on paper.
-  const dx=qrX+Math.round((qrSize-qrImg.size)/2);
-  const dy=qrY+Math.round((qrSize-qrImg.size)/2);
-  ctx.drawImage(qrImg.canvas,dx,dy,qrImg.size,qrImg.size);
-  ctx.restore();
-
-  const keyFit=fitWrappedLines(ctx,key,qrSize,7,6,2,900);
-  const keyH=keyFit.lines.length*keyFit.lineHeight;
-  const keyY=Math.min(canvas.height-bottomPad-keyH, qrY+qrSize+7);
-  drawMultiline(ctx,keyFit.lines,qrX+qrSize/2,keyY,keyFit.size,900,keyFit.lineHeight,'center');
-}
-
-function drawLabel(canvas,qrImg){
-  if(profile==='zebra') drawLabelZebra(canvas,qrImg);
-  else drawLabelGeneric(canvas,qrImg);
+  const keySize=fitSingleLine(ctx,key,rightW,L.keyStart,L.keyMin,900);
+  const keyY=Math.min(L.y+L.h-1,qr.y+qr.size+keySize+1);
+  drawText(ctx,key,rightX+rightW/2,keyY,900,keySize,'center');
 }
 
 async function prepare(){
   if(document.fonts&&document.fonts.ready){try{await document.fonts.ready;}catch(_){}}
-  const qrImg = profile==='zebra'
-    ? renderQrImage(80,3,3)
-    : renderQrImage(profileLayout().qrSize,4);
-  const canvases=Array.from({length:copies},makeCanvas);
-  canvases.forEach(c=>pages.appendChild(c));
-  for(const canvas of canvases) drawLabel(canvas,qrImg);
+  const matrix=window.CNMIQRCode.matrix(qrText,'L');
+  const items=Array.from({length:copies},makePage);
+  items.forEach(item=>pages.appendChild(item.page));
+  items.forEach(item=>drawLabel(item.canvas,item.svg,matrix));
   await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
 }
-async function prepare(){
-  if(document.fonts&&document.fonts.ready){try{await document.fonts.ready;}catch(_){}}
-  const qrImg=renderQrImage(profileLayout().qrSize,4);
-  const canvases=Array.from({length:copies},makeCanvas);
-  canvases.forEach(c=>pages.appendChild(c));
-  for(const canvas of canvases)await drawLabel(canvas,qrImg);
-  await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
-}
+
 async function startPrint(){
   try{
     await prepare();
-    statusEl.innerHTML=`กำลังเปิดหน้าพิมพ์ ${profileName}…<small>${copies} ดวง · ขนาดกระดาษ 25 × 20 mm · Native ${PROFILE.width} × ${PROFILE.height} dots</small>`;
+    statusEl.innerHTML=`กำลังเปิดหน้าพิมพ์ ${profileName}…<small>${copies} ดวง · รูปแบบ v1.4.17 · Zebra ใช้ QR เวกเตอร์ทึบ ลดอาการเป็นประ</small>`;
     await new Promise(resolve=>setTimeout(resolve,180));
     window.focus();window.print();
   }catch(e){statusEl.innerHTML='สร้างสติ๊กเกอร์ไม่สำเร็จ กรุณาปิดหน้านี้แล้วลองใหม่';console.error(e);}
 }
 window.addEventListener('afterprint',()=>setTimeout(()=>window.close(),180));
 window.addEventListener('load',()=>{
-  statusEl.innerHTML=`โปรไฟล์ ${profileName}<small>Zebra ปรับ QR เป็น 10 × 10 มม. และขยายงานให้เต็มฉลากมากขึ้น</small>`;
+  statusEl.innerHTML=`โปรไฟล์ ${profileName}<small>รูปแบบสติ๊กเกอร์เหมือน v1.4.17 · Zebra เปลี่ยนเฉพาะ QR และเส้นแบ่งเป็นเวกเตอร์ทึบ</small>`;
   if(p.get('auto')==='1')startPrint();else prepare();
 },{once:true});
-setTimeout(()=>{if(p.get('auto')==='1'&&!document.hidden)statusEl.innerHTML=`หากหน้าพิมพ์ยังไม่เปิด กรุณากด Ctrl + P<small>เลือก ${profileName} และ Scale 100%</small>`;},6000);
+setTimeout(()=>{if(p.get('auto')==='1'&&!document.hidden)statusEl.innerHTML=`หากหน้าพิมพ์ยังไม่เปิด กรุณากด Ctrl + P<small>เลือก ${profileName} และ Scale 100% / Actual size</small>`;},6000);
 </script>
 </body>
 </html>
