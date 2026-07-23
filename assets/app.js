@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.43';
+const APP_VERSION = '1.4.44';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const DEFAULT_EXPIRY_ALERT_DAYS = 30;
 const MAX_EXPIRY_ALERT_DAYS = 240;
@@ -458,7 +458,7 @@ function showIosInstallGuide() {
 
 
 function openMobileMenu() {
-  const adminItem = isAdminMode() ? `<button type="button" data-route="admin">${icon('settings')}<span><strong>ตั้งค่าระบบ</strong><small>ผู้ใช้ ผู้ดูแล และข้อมูลสินค้า</small></span></button>` : '';
+  const adminItem = isAdminMode() ? `<button type="button" data-route="indicators">${icon('chart')}<span><strong>ตัวชี้วัด</strong><small>คำนวณอัตโนมัติและบันทึกเหตุการณ์</small></span></button><button type="button" data-route="admin">${icon('settings')}<span><strong>ตั้งค่าระบบ</strong><small>ผู้ใช้ ผู้ดูแล และข้อมูลสินค้า</small></span></button>` : '';
   openModal(`<div class="mobile-menu-sheet"><div class="mobile-menu-head"><span class="owner-avatar">${esc((profile?.display_name || '?').trim().charAt(0))}</span><div><h3>เมนูทั้งหมด</h3><p>${esc(profile?.display_name || '')}</p></div></div><div class="mobile-menu-grid"><button type="button" data-route="stock">${icon('box')}<span><strong>ค้นหาสต๊อกทั้งหมด</strong><small>ค้นหาสินค้าและ Lot</small></span></button><button type="button" data-route="my-stock">${icon('user')}<span><strong>สต๊อกที่ฉันดูแล</strong><small>ดูของที่มี ต้องเบิก และตั้งค่าการเตือน</small></span></button><button type="button" data-route="usage">${icon('chart')}<span><strong>วิเคราะห์การใช้</strong><small>การใช้และแนวโน้มหมดอายุ</small></span></button><button type="button" data-route="labels">${icon('print')}<span><strong>พิมพ์ QR Sticker</strong><small>คิวสติ๊กเกอร์จากรายการรับเข้า</small></span></button><button type="button" data-route="open-labels">${icon('print')}<span><strong>พิมพ์วันเปิดใช้</strong><small>รายการนำออกวันนี้และย้อนหลัง</small></span></button><button type="button" data-route="open-label-create">${icon('plus')}<span><strong>สร้างสติ๊กเกอร์วันเปิด</strong><small>เลือกวัสดุและกำหนดวันที่เอง</small></span></button><button type="button" data-route="weekly">${icon('check')}<span><strong>ตรวจวันศุกร์</strong><small>ตรวจนับและปรับยอดจริง</small></span></button><button type="button" data-route="scan-stock">${icon('camera')}<span><strong>สแกนตรวจ Lot</strong><small>ดูยอดคงเหลือและตรวจด้วยกล้อง</small></span></button><button type="button" data-route="weekly-status">${icon('user')}<span><strong>สถานะผู้ตรวจ</strong><small>ดูย้อนหลังตามช่วงวันที่</small></span></button><button type="button" data-route="activity">${icon('history')}<span><strong>ประวัติ</strong><small>รายการที่ทำในระบบ</small></span></button><button type="button" data-route="reports">${icon('download')}<span><strong>รายงานและส่งออก</strong><small>CSV และข้อมูลย้อนหลัง</small></span></button>${adminItem}<button type="button" data-route="help">${icon('help')}<span><strong>คู่มือใช้งาน</strong><small>ขั้นตอนทำงาน</small></span></button><button type="button" data-open-install>${icon('smartphone')}<span><strong>ติดตั้งแอป</strong><small>Android และ iPhone/iPad</small></span></button></div></div>`);
 }
 
@@ -628,8 +628,8 @@ async function switchActingMode(mode) {
   actingMode = mode === 'admin' ? 'admin' : 'staff';
   localStorage.setItem(`cnmi-inventory-mode:${profile.email}`, actingMode);
   updateRoleUI();
-  if (!isAdminMode() && route === 'admin') await navigate('home');
-  else await navigate(route === 'admin' ? 'admin' : route);
+  if (!isAdminMode() && ['admin','indicators'].includes(route)) await navigate('home');
+  else await navigate(route);
 }
 
 async function init() {
@@ -896,7 +896,7 @@ async function enterApp() {
     appView.classList.remove('hidden');
     updateRoleUI();
     const hashRoute = location.hash.replace(/^#/, '');
-    const allowed = ['home','stock','my-stock','usage','urgent','move','labels','open-labels','open-label-create','weekly','scan-stock','weekly-status','activity','reports','help','admin'];
+    const allowed = ['home','stock','my-stock','usage','urgent','move','labels','open-labels','open-label-create','weekly','scan-stock','weekly-status','activity','reports','indicators','help','admin'];
     const initialRoute = allowed.includes(hashRoute) ? hashRoute : 'home';
     await navigate(initialRoute);
     if (pendingIssueCode) setTimeout(openPendingIssue, 250);
@@ -1074,9 +1074,9 @@ function navActive() {
 }
 
 async function navigate(r, options = {}) {
-  if (r === 'admin' && !isAdminMode()) {
+  if (['admin','indicators'].includes(r) && !isAdminMode()) {
     r = 'home';
-    toast('สลับเป็นโหมดผู้ดูแลระบบก่อนเข้าหน้าตั้งค่า', true);
+    toast('สลับเป็นโหมดผู้ดูแลระบบก่อน', true);
   }
   route = r;
   if (r === 'move') moveTab = options.tab || moveTab || 'receive';
@@ -1099,6 +1099,7 @@ async function navigate(r, options = {}) {
     else if (r === 'weekly-status') await renderWeeklyStatus();
     else if (r === 'activity') await renderActivity();
     else if (r === 'reports') await renderReports(reportTab);
+    else if (r === 'indicators') await renderIndicators();
     else if (r === 'help') renderHelp();
     else if (r === 'admin') await renderAdmin();
     else await renderHome();
@@ -3500,6 +3501,134 @@ async function renderReports(defaultTab = '') {
 }
 
 
+function indicatorStatusMeta(value) {
+  const status = String(value || 'NO_DATA').toUpperCase();
+  if (status === 'PASS') return {label:'ผ่านเป้าหมาย',cls:'ok',icon:'check'};
+  if (status === 'FAIL') return {label:'ไม่ผ่านเป้าหมาย',cls:'danger',icon:'alert'};
+  if (status === 'WARN') return {label:'ต้องติดตาม',cls:'warn',icon:'alert'};
+  return {label:'ยังไม่มีข้อมูล',cls:'neutral',icon:'history'};
+}
+
+function indicatorValueText(row) {
+  const value = row?.current_value;
+  if (value === null || value === undefined || value === '') return '-';
+  if (row.denominator !== null && row.denominator !== undefined) return `${Number(value).toLocaleString('th-TH',{maximumFractionDigits:2})}%`;
+  return Number(value).toLocaleString('th-TH');
+}
+
+function indicatorCardMarkup(row) {
+  const meta = indicatorStatusMeta(row.status);
+  const isManual = ['OPENED_REAGENT_EXPIRED_USE','LABEL_COMPLAINT'].includes(row.indicator_code);
+  return `<article class="indicator-card ${meta.cls}">
+    <div class="indicator-card-head"><span class="indicator-order">${Number(row.sort_order || 0)}</span><div><h3>${esc(row.title)}</h3><p>${esc(row.detail || '')}</p></div><span class="indicator-status ${meta.cls}">${icon(meta.icon)} ${meta.label}</span></div>
+    <div class="indicator-result"><div><small>ผลปัจจุบัน</small><strong>${indicatorValueText(row)}</strong></div><div><small>เป้าหมาย</small><strong>${esc(row.target_label || '-')}</strong></div>${row.denominator !== null && row.denominator !== undefined ? `<div><small>จำนวนที่ผ่าน</small><strong>${Number(row.numerator || 0).toLocaleString('th-TH')} / ${Number(row.denominator || 0).toLocaleString('th-TH')}</strong></div>` : `<div><small>แหล่งข้อมูล</small><strong>${isManual ? 'ทะเบียนเหตุการณ์' : 'ฐานข้อมูลปัจจุบัน'}</strong></div>`}</div>
+    <details class="indicator-detail"><summary>วิธีติดตามและแหล่งข้อมูล</summary><p><b>วิธีติดตาม:</b> ${esc(row.method || '-')}</p><p><b>แหล่งข้อมูล:</b> ${esc(row.source || '-')}</p>${isManual ? '<p class="indicator-manual-note">รายการนี้ต้องกด “บันทึกเหตุการณ์” เมื่อเกิดเหตุจริง หากไม่พบเหตุการณ์ ระบบจะแสดง 0</p>' : ''}</details>
+  </article>`;
+}
+
+function indicatorEventTypeLabel(value) {
+  return value === 'LABEL_COMPLAINT' ? 'ข้อร้องเรียนฉลากผิด Lot/วันเปิดใช้' : 'ใช้วัสดุหรือน้ำยาเกินวันใช้ได้ถึงหลังเปิด';
+}
+
+async function openIndicatorEventModal(eventRow = null, onSaved = null) {
+  if (!isAdminMode()) return toast('กรุณาสลับเป็นโหมด Admin ก่อน', true);
+  const materials = await loadMaterials();
+  const eventType = eventRow?.event_type || 'OPENED_REAGENT_EXPIRED_USE';
+  const occurred = eventRow?.occurred_on || dateInputValue(new Date());
+  const materialCode = eventRow?.material_code || '';
+  openModal(`<div class="indicator-event-modal"><p class="eyebrow">Indicator event</p><h3>${eventRow ? 'แก้ไขเหตุการณ์ตัวชี้วัด' : 'บันทึกเหตุการณ์ตัวชี้วัด'}</h3><p class="muted small">ใช้เฉพาะเหตุการณ์ที่ระบบคำนวณจาก Transaction ไม่ได้ เพื่อไม่ต้องเก็บทะเบียนแยกนอกแอป</p><form id="indicatorEventForm" class="form-grid">
+    <label>ประเภทเหตุการณ์<select id="indicatorEventType"><option value="OPENED_REAGENT_EXPIRED_USE" ${eventType==='OPENED_REAGENT_EXPIRED_USE'?'selected':''}>ใช้วัสดุ/น้ำยาเกินวันใช้ได้ถึงหลังเปิด</option><option value="LABEL_COMPLAINT" ${eventType==='LABEL_COMPLAINT'?'selected':''}>ข้อร้องเรียนฉลากผิด Lot หรือวันเปิดใช้ผิด</option></select></label>
+    <label>วันที่เกิดเหตุ<input id="indicatorOccurredOn" type="date" value="${esc(occurred)}" required></label>
+    ${materialComboboxMarkup({id:'indicatorMaterial',label:'วัสดุ (ถ้ามี)',placeholder:'พิมพ์ชื่อวัสดุ',materials,initialCode:materialCode,hint:'เว้นว่างได้หากเหตุการณ์ไม่ระบุวัสดุ'})}
+    <label>Lot (ถ้ามี)<input id="indicatorLotNo" value="${esc(eventRow?.lot_no || '')}" maxlength="80"></label>
+    <label>รายละเอียดเหตุการณ์<textarea id="indicatorDetail" rows="4" required placeholder="ระบุสิ่งที่พบ ผลกระทบ และข้อมูลสำคัญ">${esc(eventRow?.detail || '')}</textarea></label>
+    <label>การแก้ไข/ป้องกัน<textarea id="indicatorCorrective" rows="3" placeholder="ระบุการแก้ไขทันทีหรือแผนป้องกันซ้ำ">${esc(eventRow?.corrective_action || '')}</textarea></label>
+    <label>สถานะ<select id="indicatorEventStatus"><option value="OPEN" ${eventRow?.status!=='CLOSED'?'selected':''}>อยู่ระหว่างดำเนินการ</option><option value="CLOSED" ${eventRow?.status==='CLOSED'?'selected':''}>ปิดเหตุการณ์แล้ว</option></select></label>
+    <button class="primary large" type="submit">${icon('check')} บันทึกเหตุการณ์</button>
+  </form></div>`);
+  setupMaterialCombobox('indicatorMaterial',materials,{maxResults:20});
+  $('#indicatorEventForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn=e.submitter; btn.disabled=true;
+    const {error}=await sb.rpc('fn_save_inventory_indicator_event',{
+      p_event_type:$('#indicatorEventType').value,
+      p_occurred_on:$('#indicatorOccurredOn').value,
+      p_material_code:$('#indicatorMaterial').value || null,
+      p_lot_no:$('#indicatorLotNo').value.trim() || null,
+      p_detail:$('#indicatorDetail').value.trim(),
+      p_corrective_action:$('#indicatorCorrective').value.trim() || null,
+      p_status:$('#indicatorEventStatus').value,
+      p_event_id:eventRow?.id || null
+    });
+    btn.disabled=false;
+    if(error) return toast(errMsg(error),true);
+    closeModal(); toast('บันทึกเหตุการณ์ตัวชี้วัดแล้ว');
+    if(typeof onSaved==='function') await onSaved();
+  });
+}
+
+async function renderIndicators() {
+  if (!isAdminMode()) { page.innerHTML='<div class="card notice">กรุณาสลับเป็นโหมดผู้ดูแลระบบก่อนดูตัวชี้วัด</div>'; return; }
+  const today=new Date();
+  const monthStart=new Date(today.getFullYear(),today.getMonth(),1);
+  page.innerHTML=`<div class="page-head indicator-page-head"><div><p class="eyebrow">Quality indicators</p><h2>ตัวชี้วัดระบบ Inventory</h2><p class="muted small">ระบบคำนวณจากฐานข้อมูลจริงอัตโนมัติ ส่วนเหตุการณ์ใช้เกินวันหลังเปิดและข้อร้องเรียนให้บันทึกในหน้านี้</p></div><div class="actions"><button class="secondary" id="indicatorAddEvent">${icon('plus')} บันทึกเหตุการณ์</button><button class="primary" id="indicatorExport">${icon('download')} ส่งออก CSV</button></div></div>
+  <form id="indicatorFilterForm" class="card indicator-filter"><div class="form-grid two"><label>ตั้งแต่วันที่<input id="indicatorFrom" type="date" value="${dateInputValue(monthStart)}" required></label><label>ถึงวันที่<input id="indicatorTo" type="date" value="${dateInputValue(today)}" required></label></div><div class="indicator-filter-actions"><div class="preset-group"><button type="button" data-indicator-preset="month" class="active">เดือนนี้</button><button type="button" data-indicator-preset="previous">เดือนก่อน</button><button type="button" data-indicator-preset="six">6 เดือนล่าสุด</button><button type="button" data-indicator-preset="year">ปีนี้</button></div><button class="primary" type="submit">${icon('chart')} คำนวณใหม่</button></div></form>
+  <section id="indicatorSummary" class="indicator-summary"></section><section id="indicatorGrid" class="indicator-grid"><div class="card usage-loading">กำลังคำนวณตัวชี้วัด…</div></section>
+  <section class="card indicator-events-card"><div class="section-title compact"><div><h3>ทะเบียนเหตุการณ์ที่ต้องบันทึก</h3><p class="muted small">ใช้สำหรับ 2 ตัวชี้วัดที่ระบบไม่สามารถรู้จากการเบิกจ่ายโดยอัตโนมัติ</p></div><button class="mini" id="indicatorAddEventInline">${icon('plus')} เพิ่มเหตุการณ์</button></div><div id="indicatorEventList"><div class="usage-loading">กำลังโหลดเหตุการณ์…</div></div></section>`;
+  let indicatorRows=[];
+  let eventRows=[];
+  const readRange=()=>({from:$('#indicatorFrom').value,to:$('#indicatorTo').value});
+  const draw=()=>{
+    const pass=indicatorRows.filter(x=>x.status==='PASS').length;
+    const fail=indicatorRows.filter(x=>x.status==='FAIL').length;
+    const nodata=indicatorRows.filter(x=>x.status==='NO_DATA').length;
+    $('#indicatorSummary').innerHTML=`<div><span>ทั้งหมด</span><strong>${indicatorRows.length}</strong><small>ตัวชี้วัด</small></div><div class="ok"><span>ผ่านเป้าหมาย</span><strong>${pass}</strong><small>รายการ</small></div><div class="danger"><span>ไม่ผ่าน</span><strong>${fail}</strong><small>รายการ</small></div><div><span>ยังไม่มีข้อมูล</span><strong>${nodata}</strong><small>รายการ</small></div>`;
+    $('#indicatorGrid').innerHTML=indicatorRows.map(indicatorCardMarkup).join('') || '<div class="card empty">ไม่พบตัวชี้วัด</div>';
+    $('#indicatorEventList').innerHTML=eventRows.length?`<div class="table-wrap"><table class="data-table"><thead><tr><th>วันที่</th><th>ประเภท</th><th>วัสดุ/Lot</th><th>รายละเอียด</th><th>สถานะ</th><th>จัดการ</th></tr></thead><tbody>${eventRows.map(x=>`<tr><td>${d(x.occurred_on)}</td><td>${esc(indicatorEventTypeLabel(x.event_type))}</td><td>${esc(x.materials?.name || x.material_code || '-')}<div class="muted tiny">${x.lot_no?`Lot ${esc(x.lot_no)}`:'ไม่ระบุ Lot'}</div></td><td>${esc(x.detail)}${x.corrective_action?`<div class="muted tiny">แก้ไข: ${esc(x.corrective_action)}</div>`:''}</td><td>${x.status==='CLOSED'?'<span class="badge ok">ปิดแล้ว</span>':'<span class="badge warn">กำลังดำเนินการ</span>'}</td><td><button class="mini" data-edit-indicator-event="${esc(x.id)}">แก้ไข</button></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty indicator-events-empty">ยังไม่มีเหตุการณ์ในช่วงวันที่นี้</div>';
+    $$('[data-edit-indicator-event]').forEach(b=>b.addEventListener('click',()=>openIndicatorEventModal(eventRows.find(x=>x.id===b.dataset.editIndicatorEvent),load)));
+    queueResponsiveTables(page);
+  };
+  const load=async()=>{
+    const {from,to}=readRange();
+    if(!from||!to) return toast('กรุณาเลือกช่วงวันที่',true);
+    if(to<from) return toast('วันที่สิ้นสุดต้องไม่น้อยกว่าวันเริ่มต้น',true);
+    $('#indicatorGrid').innerHTML='<div class="card usage-loading">กำลังคำนวณตัวชี้วัด…</div>';
+    const [indicatorRes,eventRes]=await Promise.all([
+      sb.rpc('fn_inventory_indicators',{p_from:from,p_to:to}),
+      sb.from('inventory_indicator_events').select('*,materials(name)').gte('occurred_on',from).lte('occurred_on',to).order('occurred_on',{ascending:false}).order('created_at',{ascending:false})
+    ]);
+    if(indicatorRes.error) throw indicatorRes.error;
+    if(eventRes.error) throw eventRes.error;
+    indicatorRows=(indicatorRes.data||[]).sort((a,b)=>Number(a.sort_order)-Number(b.sort_order));
+    eventRows=eventRes.data||[];
+    window._indicatorRows=indicatorRows;
+    window._indicatorEvents=eventRows;
+    draw();
+  };
+  const setPreset=key=>{
+    const end=new Date(); let start=new Date(end);
+    if(key==='month') start=new Date(end.getFullYear(),end.getMonth(),1);
+    else if(key==='previous'){start=new Date(end.getFullYear(),end.getMonth()-1,1);end.setDate(0);}
+    else if(key==='six'){start=new Date(end.getFullYear(),end.getMonth()-5,1);}
+    else if(key==='year') start=new Date(end.getFullYear(),0,1);
+    $('#indicatorFrom').value=dateInputValue(start);$('#indicatorTo').value=dateInputValue(end);
+    $$('[data-indicator-preset]').forEach(b=>b.classList.toggle('active',b.dataset.indicatorPreset===key));
+    load().catch(e=>toast(errMsg(e),true));
+  };
+  $('#indicatorFilterForm').addEventListener('submit',e=>{e.preventDefault();$$('[data-indicator-preset]').forEach(b=>b.classList.remove('active'));load().catch(err=>toast(errMsg(err),true));});
+  $$('[data-indicator-preset]').forEach(b=>b.addEventListener('click',()=>setPreset(b.dataset.indicatorPreset)));
+  const addEvent=()=>openIndicatorEventModal(null,load);
+  $('#indicatorAddEvent').addEventListener('click',addEvent);$('#indicatorAddEventInline').addEventListener('click',addEvent);
+  $('#indicatorExport').addEventListener('click',()=>{
+    const {from,to}=readRange();
+    if(!indicatorRows.length) return toast('ยังไม่มีข้อมูลสำหรับส่งออก',true);
+    saveCsv(`CNMI_Inventory_Indicators_${from}_${to}.csv`,[['ลำดับ','ตัวชี้วัด','เป้าหมาย','ผลปัจจุบัน','จำนวนผ่าน','จำนวนทั้งหมด','สถานะ','รายละเอียด','วิธีติดตาม','แหล่งข้อมูล'],...indicatorRows.map(x=>[x.sort_order,x.title,x.target_label,indicatorValueText(x),x.numerator??'',x.denominator??'',indicatorStatusMeta(x.status).label,x.detail,x.method,x.source])]);
+    toast('ส่งออกตัวชี้วัด CSV แล้ว');
+  });
+  try{await load();}catch(e){$('#indicatorGrid').innerHTML=`<div class="card notice">${esc(errMsg(e))}<br><small>หากเพิ่งอัปเดต กรุณารัน SQL หมายเลข 26 ใน Supabase ก่อน</small></div>`;$('#indicatorEventList').innerHTML='';}
+}
+
+
 function nextMaterialCode(materials = []) {
   const numbers = materials.map(x => String(x.code || '').match(/^BB(\d+)$/i)).filter(Boolean).map(m => Number(m[1])).filter(Number.isFinite);
   const next = (numbers.length ? Math.max(...numbers) : 0) + 1;
@@ -3686,7 +3815,7 @@ function openMaterialEditor(code) {
 }
 
 function renderHelp() {
-  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>สร้างบัญชีครั้งแรก</h3><ol class="help-steps"><li>ใช้เฉพาะอีเมลมหิดล @mahidol.ac.th ที่ Admin อนุญาตไว้</li><li>ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว</li><li>กด “สร้างบัญชีครั้งแรก” แล้วกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</li></ol></div><div class="card help-card"><h3>ลืมรหัสผ่าน</h3><ol class="help-steps"><li>หน้าเข้าสู่ระบบกด “ลืมรหัสผ่าน” แล้วกรอกอีเมลมหิดล</li><li>เปิดลิงก์จากอีเมลและตั้งรหัสผ่านใหม่ด้วยตนเอง</li><li>Admin สามารถกด “ส่งลิงก์รีเซ็ต” จากเมนูผู้ใช้งานได้ แต่จะไม่เห็นหรือกำหนดรหัสผ่านแทนเจ้าหน้าที่</li><li>หากระบบแจ้งว่าส่งอีเมลครบโควตา ให้หยุดกดซ้ำ รอประมาณ 1 ชั่วโมงแล้วลองใหม่ และตรวจทั้ง Inbox กับ Spam</li></ol></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>พิมพ์ชื่อวัสดุบางส่วนแล้วเลือกจากรายการ</li><li>ตรวจชื่อผู้นำเข้าปัจจุบัน ใส่ Lot วันหมดอายุ และจำนวน แล้วบันทึก</li></ol></div><div class="card help-card"><h3>นำออก</h3><ol class="help-steps"><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าและวิธีนำออก แล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>วัสดุที่ตั้งให้ใช้สติ๊กเกอร์วันเปิด จะไปอยู่ในเมนู “พิมพ์วันเปิดใช้” ให้เลือกพิมพ์เมื่อเปิดใช้จริง โดยรายการล่าสุดอยู่บนสุด</li></ol></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแล</h3><p>มี 3 เมนูย่อย: ภาพรวม, ต้องเบิก และตั้งค่าการเตือน เลือกเตือนตามจำนวนขั้นต่ำ เตือนรอบเบิกรายเดือน หรือไม่แจ้งเตือนได้ และกำหนดเกณฑ์ใกล้หมดอายุแยกต่อวัสดุเป็น 1 สัปดาห์ 2 สัปดาห์ 1 เดือน หรือ 8 เดือน รวมถึงเลือกเตือนเมื่อกำลังใช้ชิ้นสุดท้ายหรือเมื่อน้อยกว่าขั้นต่ำเท่านั้น การเตือนรายเดือนจะเริ่มตรวจรอบตั้งแต่เดือนถัดไปหลังบันทึก</p></div><div class="card help-card"><h3>ตรวจวันศุกร์</h3><p>กรอกจำนวนที่นับได้จริง หากไม่ตรงกับระบบ ให้เลือกเหตุผล สามารถฝากเพื่อนตรวจแทนเฉพาะรอบได้ ผู้รับต้องกดยืนยันก่อน ส่วน Admin เลือกชื่อเจ้าหน้าที่เพื่อทำแทนหรือมอบหมายให้คนอื่นได้ทันที ระบบเก็บผู้ดูแลหลัก ผู้ได้รับมอบหมาย และผู้ตรวจจริงแยกกัน</p></div><div class="card help-card"><h3>สแกนตรวจ Lot</h3><p>เปิดกล้องหรือพิมพ์รหัส QR เพื่อดูยอด Lot ยอดรวม ผู้ดูแล ขั้นต่ำ และยืนยันตรวจหรือปรับยอดได้ทันที</p></div><div class="card help-card"><h3>สถานะผู้ตรวจ</h3><p>เปิดเมนู “สถานะผู้ตรวจ” แล้วกำหนดช่วงวันที่ เพื่อดูว่าแต่ละวันศุกร์ใครตรวจครบหรือยังไม่ครบ</p></div><div class="card help-card"><h3>สติ๊กเกอร์เดิม</h3><p>สติ๊กเกอร์รหัสเดิมยังสแกนได้ ไม่ต้องเปลี่ยนใหม่ทั้งหมด</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบไม่ตัดยอดเอง เปิดตรวจวันศุกร์และกด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์ถัดไป</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมดูได้ในหน้าประวัติและรายงาน</p></div><div class="card help-card"><h3>พิมพ์ QR Sticker ภายหลัง</h3><p>หลังรับเข้าผ่านโทรศัพท์ ให้เปิดเมนู “พิมพ์ QR Sticker” บนคอมพิวเตอร์ที่ต่อเครื่องพิมพ์ รายการรับเข้าจะอยู่ในคิวอัตโนมัติ เลือกจำนวนดวงแล้วกดพิมพ์</p></div><div class="card help-card"><h3>พิมพ์วันเปิดใช้</h3><p>เปิดเมนู “พิมพ์วันเปิดใช้” เลือกรายการนำออก แล้วระบุวัน–เวลาเปิดและอายุหลังเปิด โดยเลือกใช้ถึง EXP ผู้ผลิต, 24 ชั่วโมง, 7 วัน, 28 วัน, 1 เดือน, 3 เดือน, 6 เดือน หรือกำหนดเองได้ ระบบคำนวณวันใช้ได้ถึงให้อัตโนมัติและไม่ให้เกิน EXP ผู้ผลิต</p></div><div class="card help-card"><h3>สร้างสติ๊กเกอร์วันเปิดเอง</h3><p>เลือกวัสดุ กรอก Lot และ EXP ผู้ผลิต ระบุวัน–เวลาเปิดและอายุหลังเปิด ระบบคำนวณวันใช้ได้ถึงและสร้างสติ๊กเกอร์โดยไม่ตัดยอดสต๊อกเพิ่ม</p></div><div class="card help-card"><h3>ตั้งค่าผู้ดูแลระบบ</h3><p>หน้า Admin แยกเป็น 3 เมนูย่อย ได้แก่ ภาพรวม ผู้ใช้งาน และวัสดุและผู้ดูแล โดย Admin เพิ่มวัสดุใหม่พร้อมรหัส ชื่อ หน่วย Minimum เกณฑ์ EXP ผู้ดูแลหลัก ผู้ช่วย และอายุหลังเปิดเริ่มต้นได้</p></div><div class="card help-card"><h3>เครื่องพิมพ์สติ๊กเกอร์</h3><p>ฉลากจริง 25 × 20 mm ระบบใช้รูปแบบสติ๊กเกอร์มาตรฐานเดียวกันทุกเครื่อง พร้อม QR ขนาดใหญ่และขอบขาวมาตรฐาน ในหน้าพิมพ์ Chrome ให้เลือกเครื่องพิมพ์และตั้งกระดาษตามเครื่องที่ใช้งาน ใช้ Scale 100% หรือ Actual size ปิด Header/Footer และใช้ Margin None</p></div></div>`;
+  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>สร้างบัญชีครั้งแรก</h3><ol class="help-steps"><li>ใช้เฉพาะอีเมลมหิดล @mahidol.ac.th ที่ Admin อนุญาตไว้</li><li>ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว</li><li>กด “สร้างบัญชีครั้งแรก” แล้วกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</li></ol></div><div class="card help-card"><h3>ลืมรหัสผ่าน</h3><ol class="help-steps"><li>หน้าเข้าสู่ระบบกด “ลืมรหัสผ่าน” แล้วกรอกอีเมลมหิดล</li><li>เปิดลิงก์จากอีเมลและตั้งรหัสผ่านใหม่ด้วยตนเอง</li><li>Admin สามารถกด “ส่งลิงก์รีเซ็ต” จากเมนูผู้ใช้งานได้ แต่จะไม่เห็นหรือกำหนดรหัสผ่านแทนเจ้าหน้าที่</li><li>หากระบบแจ้งว่าส่งอีเมลครบโควตา ให้หยุดกดซ้ำ รอประมาณ 1 ชั่วโมงแล้วลองใหม่ และตรวจทั้ง Inbox กับ Spam</li></ol></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>พิมพ์ชื่อวัสดุบางส่วนแล้วเลือกจากรายการ</li><li>ตรวจชื่อผู้นำเข้าปัจจุบัน ใส่ Lot วันหมดอายุ และจำนวน แล้วบันทึก</li></ol></div><div class="card help-card"><h3>นำออก</h3><ol class="help-steps"><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าและวิธีนำออก แล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>วัสดุที่ตั้งให้ใช้สติ๊กเกอร์วันเปิด จะไปอยู่ในเมนู “พิมพ์วันเปิดใช้” ให้เลือกพิมพ์เมื่อเปิดใช้จริง โดยรายการล่าสุดอยู่บนสุด</li></ol></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแล</h3><p>มี 3 เมนูย่อย: ภาพรวม, ต้องเบิก และตั้งค่าการเตือน เลือกเตือนตามจำนวนขั้นต่ำ เตือนรอบเบิกรายเดือน หรือไม่แจ้งเตือนได้ และกำหนดเกณฑ์ใกล้หมดอายุแยกต่อวัสดุเป็น 1 สัปดาห์ 2 สัปดาห์ 1 เดือน หรือ 8 เดือน รวมถึงเลือกเตือนเมื่อกำลังใช้ชิ้นสุดท้ายหรือเมื่อน้อยกว่าขั้นต่ำเท่านั้น การเตือนรายเดือนจะเริ่มตรวจรอบตั้งแต่เดือนถัดไปหลังบันทึก</p></div><div class="card help-card"><h3>ตรวจวันศุกร์</h3><p>กรอกจำนวนที่นับได้จริง หากไม่ตรงกับระบบ ให้เลือกเหตุผล สามารถฝากเพื่อนตรวจแทนเฉพาะรอบได้ ผู้รับต้องกดยืนยันก่อน ส่วน Admin เลือกชื่อเจ้าหน้าที่เพื่อทำแทนหรือมอบหมายให้คนอื่นได้ทันที ระบบเก็บผู้ดูแลหลัก ผู้ได้รับมอบหมาย และผู้ตรวจจริงแยกกัน</p></div><div class="card help-card"><h3>สแกนตรวจ Lot</h3><p>เปิดกล้องหรือพิมพ์รหัส QR เพื่อดูยอด Lot ยอดรวม ผู้ดูแล ขั้นต่ำ และยืนยันตรวจหรือปรับยอดได้ทันที</p></div><div class="card help-card"><h3>สถานะผู้ตรวจ</h3><p>เปิดเมนู “สถานะผู้ตรวจ” แล้วกำหนดช่วงวันที่ เพื่อดูว่าแต่ละวันศุกร์ใครตรวจครบหรือยังไม่ครบ</p></div><div class="card help-card"><h3>สติ๊กเกอร์เดิม</h3><p>สติ๊กเกอร์รหัสเดิมยังสแกนได้ ไม่ต้องเปลี่ยนใหม่ทั้งหมด</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบไม่ตัดยอดเอง เปิดตรวจวันศุกร์และกด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์ถัดไป</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมดูได้ในหน้าประวัติและรายงาน</p></div><div class="card help-card"><h3>พิมพ์ QR Sticker ภายหลัง</h3><p>หลังรับเข้าผ่านโทรศัพท์ ให้เปิดเมนู “พิมพ์ QR Sticker” บนคอมพิวเตอร์ที่ต่อเครื่องพิมพ์ รายการรับเข้าจะอยู่ในคิวอัตโนมัติ เลือกจำนวนดวงแล้วกดพิมพ์</p></div><div class="card help-card"><h3>พิมพ์วันเปิดใช้</h3><p>เปิดเมนู “พิมพ์วันเปิดใช้” เลือกรายการนำออก แล้วระบุวัน–เวลาเปิดและอายุหลังเปิด โดยเลือกใช้ถึง EXP ผู้ผลิต, 24 ชั่วโมง, 7 วัน, 28 วัน, 1 เดือน, 3 เดือน, 6 เดือน หรือกำหนดเองได้ ระบบคำนวณวันใช้ได้ถึงให้อัตโนมัติและไม่ให้เกิน EXP ผู้ผลิต</p></div><div class="card help-card"><h3>สร้างสติ๊กเกอร์วันเปิดเอง</h3><p>เลือกวัสดุ กรอก Lot และ EXP ผู้ผลิต ระบุวัน–เวลาเปิดและอายุหลังเปิด ระบบคำนวณวันใช้ได้ถึงและสร้างสติ๊กเกอร์โดยไม่ตัดยอดสต๊อกเพิ่ม</p></div><div class="card help-card"><h3>ตัวชี้วัด</h3><p>Admin เปิดเมนู “ตัวชี้วัด” เลือกช่วงวันที่ ระบบคำนวณ 12 ตัวชี้วัดจากผู้ใช้ วัสดุ Transaction การตรวจวันศุกร์ สติ๊กเกอร์ และ Audit Log อัตโนมัติ ส่วนเหตุการณ์ใช้เกินวันหลังเปิดหรือข้อร้องเรียนฉลาก ให้กด “บันทึกเหตุการณ์” ในหน้าเดียวกัน และส่งออก CSV ได้</p></div><div class="card help-card"><h3>ตั้งค่าผู้ดูแลระบบ</h3><p>หน้า Admin แยกเป็น 3 เมนูย่อย ได้แก่ ภาพรวม ผู้ใช้งาน และวัสดุและผู้ดูแล โดย Admin เพิ่มวัสดุใหม่พร้อมรหัส ชื่อ หน่วย Minimum เกณฑ์ EXP ผู้ดูแลหลัก ผู้ช่วย และอายุหลังเปิดเริ่มต้นได้</p></div><div class="card help-card"><h3>เครื่องพิมพ์สติ๊กเกอร์</h3><p>ฉลากจริง 25 × 20 mm ระบบใช้รูปแบบสติ๊กเกอร์มาตรฐานเดียวกันทุกเครื่อง พร้อม QR ขนาดใหญ่และขอบขาวมาตรฐาน ในหน้าพิมพ์ Chrome ให้เลือกเครื่องพิมพ์และตั้งกระดาษตามเครื่องที่ใช้งาน ใช้ Scale 100% หรือ Actual size ปิด Header/Footer และใช้ Margin None</p></div></div>`;
   refreshInstallUI();
 }
 

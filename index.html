@@ -9,14 +9,14 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="CNMI Inventory">
-  <link rel="manifest" href="manifest.webmanifest?v=1.4.43">
+  <link rel="manifest" href="manifest.webmanifest?v=1.4.44">
   <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
   <link rel="apple-touch-icon" sizes="76x76" href="icons/icon-76.png">
   <link rel="apple-touch-icon" sizes="120x120" href="icons/icon-120.png">
   <link rel="apple-touch-icon" sizes="152x152" href="icons/icon-152.png">
   <link rel="apple-touch-icon" sizes="167x167" href="icons/icon-167.png">
   <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png">
-  <link rel="stylesheet" href="assets/app.css?v=1.4.43">
+  <link rel="stylesheet" href="assets/app.css?v=1.4.44">
   <title>CNMI Inventory</title>
 </head>
 <body>
@@ -132,11 +132,12 @@
         <button class="side-link" data-route="activity"><svg class="nav-icon"><use href="#i-history"></use></svg><span>ประวัติ</span></button>
         <div class="side-divider"></div>
         <button class="side-link" data-route="reports"><svg class="nav-icon"><use href="#i-download"></use></svg><span>รายงาน & ส่งออก</span></button>
+        <button class="side-link admin-only hidden" data-route="indicators"><svg class="nav-icon"><use href="#i-chart"></use></svg><span>ตัวชี้วัด</span></button>
         <button class="side-link admin-only hidden" data-route="admin"><svg class="nav-icon"><use href="#i-settings"></use></svg><span>ตั้งค่า</span></button>
         <button class="side-link" data-open-install type="button"><svg class="nav-icon"><use href="#i-smartphone"></use></svg><span>ติดตั้งแอป</span></button>
         <button class="side-link" data-route="help"><svg class="nav-icon"><use href="#i-help"></use></svg><span>คู่มือ</span></button>
       </nav>
-      <div class="sidebar-version">Version 1.4.43</div>
+      <div class="sidebar-version">Version 1.4.44</div>
     </aside>
 
     <div class="content-shell">
@@ -172,7 +173,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="third_party/jsQR-1.4.0.js?v=1.4.30" data-jsqr-loader="1"></script>
-  <script src="assets/config.js?v=1.4.43"></script>
-  <script src="assets/app.js?v=1.4.43"></script>
+  <script src="assets/config.js?v=1.4.44"></script>
+  <script src="assets/app.js?v=1.4.44"></script>
 </body>
 </html>
