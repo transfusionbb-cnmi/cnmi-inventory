@@ -718,7 +718,7 @@ input,select,textarea,button{min-width:0}
 /* v1.4.39 — add “ใช้ถึง EXP ผู้ผลิต” as an opened-reagent period option */
 
 
-/* v1.4.42 — password recovery for staff and admin-assisted reset links */
+/* v1.4.43 — password recovery with email quota guidance */
 .forgot-password-button{justify-self:center;width:max-content;margin-top:-2px;border:0;background:transparent;color:var(--brand-strong);font-weight:800;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
 .forgot-password-button:hover{color:#055c54}
 .auth-modal-head{display:flex;align-items:flex-start;gap:14px;margin-bottom:16px}.auth-modal-head>span{width:50px;height:50px;border-radius:16px;display:grid;place-items:center;flex:0 0 auto;background:#eaf7f4;color:var(--brand-strong)}.auth-modal-head>span .icon{width:25px;height:25px}.auth-modal-head h3,.auth-modal-head p{margin:0}.auth-modal-head p:not(.eyebrow){margin-top:4px;color:var(--muted);line-height:1.5}
@@ -727,3 +727,5 @@ input,select,textarea,button{min-width:0}
 .modal.password-recovery-open .modal-close{display:none}.modal.password-recovery-open{cursor:default}
 .admin-reset-user{display:grid;gap:3px;padding:14px 16px;margin:12px 0;border:1px solid var(--line);border-radius:15px;background:var(--surface)}.admin-reset-user span{color:var(--muted);word-break:break-all}.admin-reset-button{white-space:nowrap}.admin-reset-button:disabled{opacity:.45;cursor:not-allowed}
 @media(max-width:600px){.auth-modal-head{align-items:center}.auth-modal-head>span{width:44px;height:44px}.admin-reset-button{width:100%}}
+
+.password-email-limit-note{border-color:#ead7aa;background:#fff9e8;color:#6d5520}.password-email-limit-note strong{color:#795b0b}
