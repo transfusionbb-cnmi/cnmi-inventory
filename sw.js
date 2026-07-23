@@ -1,5 +1,5 @@
 const CACHE_PREFIX='cnmi-inventory-';
-const CACHE=CACHE_PREFIX+'v1.4.36';
+const CACHE=CACHE_PREFIX+'v1.4.37';
 const ASSETS=[
   './','./index.html','./label.html','./open-label.html','./assets/app.css','./assets/app.js','./assets/qr-lite.js',
   './manifest.webmanifest','./third_party/jsQR-1.4.0.js','./icons/favicon-32.png','./icons/icon-192.png','./icons/icon-512.png',

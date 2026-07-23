@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.36';
+const APP_VERSION = '1.4.37';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const DEFAULT_EXPIRY_ALERT_DAYS = 30;
 const MAX_EXPIRY_ALERT_DAYS = 240;
@@ -1649,13 +1649,14 @@ async function renderLabels() {
 
 function openLabelIssueCard(row) {
   const printed = Number(row.print_count || 0) > 0;
+  const requiredBadge = row.open_label_required ? '<span class="badge ok">กำหนดให้ติดวันเปิดใช้</span>' : '';
   const status = printed
     ? `<span class="badge ok">พิมพ์แล้ว ${qty(row.print_count)} ครั้ง</span><small>ล่าสุด ${dt(row.last_printed_at)}</small>`
     : `<span class="badge warn">ยังไม่พิมพ์</span><small>เลือกพิมพ์เมื่อเปิดใช้จริง</small>`;
   return `<article class="open-label-issue-card" data-open-label-issue-card="${esc(row.transaction_id)}">
     <div class="open-label-issue-main">
       <div class="open-label-issue-title">
-        <div><strong>${esc(row.material_name || row.label_name || row.material_code || '-')}</strong><p><span class="code-pill">${esc(`${row.material_code}-${row.lot_no}`)}</span> · นำออก ${dt(row.created_at)}</p></div>
+        <div><strong>${esc(row.material_name || row.label_name || row.material_code || '-')}</strong>${requiredBadge}<p><span class="code-pill">${esc(`${row.material_code}-${row.lot_no}`)}</span> · นำออก ${dt(row.created_at)}</p></div>
         <div class="label-print-status">${status}</div>
       </div>
       <div class="open-label-issue-meta">
@@ -1704,14 +1705,14 @@ async function printOpenLabelIssue(transactionId) {
 
 async function renderOpenLabels() {
   const today = dateInputValue(new Date());
-  page.innerHTML = `<div class="page-head open-label-page-head"><div><p class="eyebrow">Opened reagent label</p><h2>พิมพ์สติ๊กเกอร์วันเปิดใช้</h2><p class="muted small">รายการนำออกล่าสุดอยู่บนสุด เจ้าหน้าที่เลือกพิมพ์เมื่อเปิดน้ำยาจริง ขนาดสติ๊กเกอร์เดิม 25 × 20 mm</p></div><button class="mini ghost" type="button" id="refreshOpenLabelQueue">${icon('refresh')} รีเฟรช</button></div>
+  page.innerHTML = `<div class="page-head open-label-page-head"><div><p class="eyebrow">Opened reagent label</p><h2>พิมพ์สติ๊กเกอร์วันเปิดใช้</h2><p class="muted small">แสดงวัสดุทุกชิ้นที่นำออก โดยเรียงรายการล่าสุดไว้บนสุด เจ้าหน้าที่เลือกพิมพ์เมื่อเปิดใช้จริง ขนาดสติ๊กเกอร์เดิม 25 × 20 mm</p></div><button class="mini ghost" type="button" id="refreshOpenLabelQueue">${icon('refresh')} รีเฟรช</button></div>
   <section class="open-label-mode-tabs" aria-label="เลือกวิธีค้นหารายการ"><button type="button" class="active" data-open-label-tab="today">รายการวันนี้</button><button type="button" data-open-label-tab="history">พิมพ์ย้อนหลัง</button></section>
   <section id="openLabelTodayPanel"><div class="section-title compact"><div><h3>รายการนำออกวันนี้</h3><p class="muted small">${d(today)} · เรียงรายการล่าสุดไว้บนสุด</p></div><a class="mini secondary" href="#open-label-create" data-route="open-label-create">${icon('plus')} สร้างสติ๊กเกอร์เอง</a></div><div id="openLabelTodayList"><div class="card usage-loading">กำลังโหลดรายการวันนี้…</div></div></section>
   <section id="openLabelHistoryPanel" class="hidden"><section class="card open-label-history-filter"><div><h3>ค้นหารายการย้อนหลัง</h3><p class="muted small">เลือกวันที่ แล้วกรองวัสดุหรือผู้นำออกเพิ่มเติมได้</p></div><div class="open-label-history-grid"><label>วันที่นำออก<input id="openLabelHistoryDate" type="date" value="${today}" max="${today}"></label><label>วัสดุ<select id="openLabelHistoryMaterial"><option value="">ทุกวัสดุ</option></select></label><label>ผู้นำออก<select id="openLabelHistoryOperator"><option value="">ทุกคน</option></select></label><button type="button" class="primary" id="searchOpenLabelHistory">${icon('search')} ค้นหา</button></div></section><div id="openLabelHistoryList"><div class="card empty">เลือกตัวกรองแล้วกดค้นหา</div></div></section>`;
 
   const [todayRes, materialRes, staffRes] = await Promise.all([
     sb.from('v_open_label_issue_queue').select('*').eq('issue_date',today).order('created_at',{ascending:false}).order('transaction_id',{ascending:false}).limit(500),
-    sb.from('materials').select('code,name,label_name').eq('is_main',true).eq('status','Active').eq('open_label_required',true).order('name'),
+    sb.from('materials').select('code,name,label_name').eq('is_main',true).eq('status','Active').order('name'),
     sb.from('staff_directory').select('email,display_name').eq('active',true).order('display_name')
   ]);
   if (todayRes.error) throw todayRes.error;
@@ -1719,7 +1720,7 @@ async function renderOpenLabels() {
   if (staffRes.error) throw staffRes.error;
 
   openLabelIssueRowsCache = todayRes.data || [];
-  drawOpenLabelIssueRows(openLabelIssueRowsCache, 'openLabelTodayList', 'วันนี้ยังไม่มีรายการนำออกที่ต้องใช้สติ๊กเกอร์วันเปิด');
+  drawOpenLabelIssueRows(openLabelIssueRowsCache, 'openLabelTodayList', 'วันนี้ยังไม่มีรายการนำออก');
 
   const materialSelect = $('#openLabelHistoryMaterial');
   materialSelect.insertAdjacentHTML('beforeend', (materialRes.data || []).map(x => `<option value="${esc(x.code)}">${esc(x.name)}</option>`).join(''));
