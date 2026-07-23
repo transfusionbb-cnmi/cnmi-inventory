@@ -644,3 +644,44 @@ input,select,textarea,button{min-width:0}
 .open-label-confirm>span,.open-label-setting>span{display:grid;gap:3px}
 .open-label-confirm strong,.open-label-setting strong{color:#075f57}
 .open-label-confirm small,.open-label-setting small{color:var(--muted);font-size:.74rem;line-height:1.45}
+
+/* v1.4.36 — open-label print queue and manual generator */
+.open-label-page-head{align-items:flex-start}
+.open-label-mode-tabs{display:flex;gap:6px;width:max-content;max-width:100%;margin:18px 0;padding:5px;border:1px solid var(--line);border-radius:16px;background:#edf5f3;overflow-x:auto}
+.open-label-mode-tabs button{border:0;border-radius:12px;background:transparent;color:var(--muted);padding:10px 18px;font-weight:800;white-space:nowrap}
+.open-label-mode-tabs button.active{background:#fff;color:var(--brand-strong);box-shadow:0 5px 16px rgba(20,70,63,.09)}
+#openLabelTodayList,#openLabelHistoryList{display:grid;gap:14px}
+.open-label-issue-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:center;background:#fff;border:1px solid #d9e8e5;border-radius:22px;padding:18px 20px;box-shadow:0 10px 30px rgba(20,70,63,.055)}
+.open-label-issue-title{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+.open-label-issue-title strong{font-size:1.08rem}
+.open-label-issue-title p{margin:7px 0 0;color:var(--muted)}
+.open-label-issue-meta{display:flex;flex-wrap:wrap;gap:10px 24px;margin-top:14px;color:var(--muted)}
+.open-label-issue-meta b{color:var(--text)}
+.open-label-issue-action{min-width:190px}
+.open-label-issue-action .primary{width:100%}
+.open-label-history-filter{display:grid;gap:16px;margin-bottom:16px}
+.open-label-history-filter h3,.open-label-history-filter p{margin:0}
+.open-label-history-grid{display:grid;grid-template-columns:minmax(160px,.8fr) minmax(220px,1.2fr) minmax(220px,1.2fr) auto;gap:12px;align-items:end}
+.open-label-history-grid label{display:grid;gap:7px;font-weight:800}
+.open-label-generator-card{max-width:920px;margin-inline:auto}
+.open-label-generator-head{display:flex;align-items:center;gap:14px;margin-bottom:18px}
+.open-label-generator-head>.icon{width:34px;height:34px;padding:8px;border-radius:12px;background:#eaf7f4;color:var(--brand-strong)}
+.open-label-generator-head h3,.open-label-generator-head p{margin:0}
+.open-label-generator-form{grid-template-columns:repeat(2,minmax(0,1fr))}
+.open-label-generator-form .material-combo-label,.open-label-generator-form .open-label-generator-note,.open-label-generator-form .wide-action{grid-column:1/-1}
+.open-label-generator-note{display:flex;gap:10px;align-items:flex-start;padding:13px 14px;border-radius:14px;background:#f1f7f6;color:#526c67;font-size:.9rem;line-height:1.5}
+.open-label-generator-note .icon{width:20px;height:20px;flex:0 0 auto;color:var(--brand-strong)}
+@media(max-width:900px){
+  .open-label-history-grid{grid-template-columns:1fr 1fr}
+  .open-label-issue-card{grid-template-columns:1fr}
+  .open-label-issue-action{min-width:0}
+}
+@media(max-width:600px){
+  .open-label-mode-tabs{width:100%}
+  .open-label-mode-tabs button{flex:1}
+  .open-label-history-grid,.open-label-generator-form{grid-template-columns:1fr}
+  .open-label-history-grid>*{width:100%}
+  .open-label-issue-title{display:grid}
+  .open-label-issue-title .label-print-status{text-align:left;justify-items:start}
+  .open-label-generator-form .material-combo-label,.open-label-generator-form .open-label-generator-note,.open-label-generator-form .wide-action{grid-column:auto}
+}
