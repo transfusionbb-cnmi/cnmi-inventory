@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.41';
+const APP_VERSION = '1.4.42';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const DEFAULT_EXPIRY_ALERT_DAYS = 30;
 const MAX_EXPIRY_ALERT_DAYS = 240;
@@ -29,6 +29,8 @@ let scannerStream = null;
 let scannerTimer = null;
 let authLogoutTimer = null;
 let enteringApp = false;
+let passwordRecoveryMode = new URLSearchParams(location.search).get('password_reset') === '1' || /(?:^|[&#])type=recovery(?:&|$)/i.test(location.hash);
+let passwordRecoverySession = null;
 let pendingIssueCode = new URLSearchParams(location.search).get('issue') || new URLSearchParams(location.search).get('lot');
 let deferredInstallPrompt = null;
 const MOVE_HISTORY_PAGE_SIZE = 7;
@@ -47,6 +49,29 @@ const icon = (name, cls = 'icon') => `<svg class="${cls}" aria-hidden="true"><us
 const isAdminAccount = () => profile?.role === 'admin';
 const isAdminMode = () => isAdminAccount() && actingMode === 'admin';
 const isMahidolEmail = email => /^[^@\s]+@mahidol\.ac\.th$/i.test(String(email || '').trim());
+
+
+function passwordResetRedirectUrl() {
+  const configuredBase = String(C.PUBLIC_URL || '').trim().replace(/\/$/, '');
+  const base = configuredBase || location.origin;
+  return `${base}/?password_reset=1`;
+}
+
+function passwordRecoveryErrorFromUrl() {
+  const hash = new URLSearchParams(location.hash.replace(/^#/, ''));
+  const query = new URLSearchParams(location.search);
+  return hash.get('error_description') || query.get('error_description') || '';
+}
+
+function clearPasswordRecoveryUrl() {
+  const url = new URL(location.href);
+  url.searchParams.delete('password_reset');
+  url.searchParams.delete('error');
+  url.searchParams.delete('error_code');
+  url.searchParams.delete('error_description');
+  url.hash = '';
+  history.replaceState({}, document.title, `${url.pathname}${url.search}` || '/');
+}
 
 const normalizedEmail = value => String(value || '').trim().toLowerCase();
 function ownerRoleFor(row, email) {
@@ -347,7 +372,7 @@ function openModal(html) {
 function closeModal() {
   stopScanner();
   $('#modal').classList.add('hidden');
-  $('#modal').classList.remove('material-picker-open','scanner-open');
+  $('#modal').classList.remove('material-picker-open','scanner-open','password-recovery-open');
   $('#modal').setAttribute('aria-hidden', 'true');
   $('#modalBody').innerHTML = '';
 }
@@ -614,10 +639,16 @@ async function init() {
   if ($('#staffPlannerLink') && C.STAFF_PLANNER_URL) $('#staffPlannerLink').href = C.STAFF_PLANNER_URL;
 
   $('#modal').addEventListener('click', e => {
-    if (e.target.id === 'modal' || e.target.closest('.modal-close')) closeModal();
+    if (!(e.target.id === 'modal' || e.target.closest('.modal-close'))) return;
+    if (passwordRecoveryMode && $('#modal').classList.contains('password-recovery-open')) {
+      cancelPasswordRecovery();
+      return;
+    }
+    closeModal();
   });
   $('#loginForm').addEventListener('submit', login);
   $('#registerBtn').addEventListener('click', register);
+  $('#forgotPasswordBtn').addEventListener('click', openForgotPassword);
   $('#logoutBtn').addEventListener('click', logout);
   document.addEventListener('click', globalClick);
   const tableObserver = new MutationObserver(() => queueResponsiveTables(document));
@@ -634,12 +665,20 @@ async function init() {
   sb = window.supabase.createClient(C.SUPABASE_URL, C.SUPABASE_ANON_KEY, {
     auth: {persistSession:true, autoRefreshToken:true, detectSessionInUrl:true}
   });
-  const {data} = await sb.auth.getSession();
-  session = data.session;
   sb.auth.onAuthStateChange((event, nextSession) => {
     if (authLogoutTimer) { clearTimeout(authLogoutTimer); authLogoutTimer = null; }
+    if (event === 'PASSWORD_RECOVERY') {
+      passwordRecoveryMode = true;
+      passwordRecoverySession = nextSession;
+      session = nextSession;
+      setTimeout(showPasswordResetForm, 0);
+      return;
+    }
     if (nextSession) {
       session = nextSession;
+      // เมื่อ URL เป็นหน้ากู้คืนรหัสผ่าน ต้องรอ event PASSWORD_RECOVERY เท่านั้น
+      // เพื่อไม่ให้ session เดิมที่ค้างอยู่ในเบราว์เซอร์ถูกใช้เปลี่ยนรหัสผ่านผิดบัญชี
+      if (passwordRecoveryMode) return;
       if (event === 'SIGNED_IN' && appView.classList.contains('hidden') && !enteringApp) enterApp();
       return;
     }
@@ -654,7 +693,17 @@ async function init() {
       showLogin();
     }, event === 'SIGNED_OUT' ? 250 : 2500);
   });
-  if (session) await enterApp();
+  const {data} = await sb.auth.getSession();
+  session = data.session;
+  if (passwordRecoveryMode) {
+    // Supabase จะส่ง PASSWORD_RECOVERY เมื่อแลก recovery token สำเร็จ
+    // ให้เวลาประมวลผล URL ก่อนสรุปว่าลิงก์ใช้ไม่ได้
+    setTimeout(() => {
+      if (passwordRecoveryMode && !passwordRecoverySession) {
+        showPasswordRecoveryError(passwordRecoveryErrorFromUrl() || 'ลิงก์รีเซ็ตรหัสผ่านไม่ถูกต้อง หมดอายุ หรือถูกใช้งานแล้ว');
+      }
+    }, 1600);
+  } else if (session) await enterApp();
 }
 
 async function login(e) {
@@ -687,6 +736,125 @@ async function register() {
   toast('สร้างบัญชีแล้ว กดเข้าสู่ระบบด้วยอีเมลและรหัสเดิม');
 }
 
+
+function openForgotPassword() {
+  if (!configured) return toast('กรุณาตั้งค่า Supabase ก่อน', true);
+  const currentEmail = $('#loginEmail')?.value?.trim().toLowerCase() || '';
+  openModal(`<section class="password-reset-request"><div class="auth-modal-head"><span>${icon('help')}</span><div><p class="eyebrow">Password reset</p><h3>ลืมรหัสผ่าน</h3><p>ระบบจะส่งลิงก์สำหรับตั้งรหัสผ่านใหม่ไปยังอีเมลมหิดลของเจ้าหน้าที่</p></div></div><form id="forgotPasswordForm" class="form-grid"><label>อีเมลมหิดล<input id="forgotPasswordEmail" type="email" inputmode="email" autocomplete="email" value="${esc(currentEmail)}" placeholder="name@mahidol.ac.th" required></label><div class="auth-security-note"><strong>เพื่อความปลอดภัย</strong><span>Admin จะไม่เห็นรหัสผ่านเดิมหรือรหัสผ่านใหม่ เจ้าหน้าที่ต้องเปิดลิงก์จากอีเมลและตั้งรหัสผ่านด้วยตนเอง</span></div><button class="primary large" type="submit">ส่งลิงก์รีเซ็ตรหัสผ่าน</button><button class="secondary" type="button" data-modal-close>ยกเลิก</button></form></section>`);
+  $('#forgotPasswordForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    const button = event.submitter || $('#forgotPasswordForm button[type="submit"]');
+    const email = $('#forgotPasswordEmail').value.trim().toLowerCase();
+    if (!isMahidolEmail(email)) return toast('ใช้ได้เฉพาะอีเมลมหิดล @mahidol.ac.th', true);
+    button.disabled = true;
+    button.textContent = 'กำลังส่งลิงก์...';
+    try {
+      const {error} = await sb.auth.resetPasswordForEmail(email, {redirectTo:passwordResetRedirectUrl()});
+      if (error) throw error;
+      closeModal();
+      toast('ส่งคำขอแล้ว กรุณาตรวจอีเมลและเปิดลิงก์เพื่อตั้งรหัสผ่านใหม่');
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = 'ส่งลิงก์รีเซ็ตรหัสผ่าน';
+      toast(passwordResetErrorMessage(error), true);
+    }
+  });
+  requestAnimationFrame(() => $('#forgotPasswordEmail')?.focus({preventScroll:true}));
+}
+
+function passwordResetErrorMessage(error) {
+  const message = String(error?.message || error || '');
+  if (/rate limit|too many requests|security purposes/i.test(message)) return 'ส่งคำขอถี่เกินไป กรุณารอสักครู่แล้วลองใหม่';
+  if (/invalid.*email|email.*invalid/i.test(message)) return 'รูปแบบอีเมลไม่ถูกต้อง';
+  return errMsg(error);
+}
+
+function showPasswordRecoveryError(message) {
+  appView.classList.add('hidden');
+  loginView.classList.remove('hidden');
+  openModal(`<section class="password-recovery-result"><div class="auth-result-icon error">!</div><h3>ไม่สามารถใช้ลิงก์รีเซ็ตนี้ได้</h3><p>${esc(message)}</p><button class="primary wide-action" type="button" id="requestNewResetLink">ขอลิงก์ใหม่</button><button class="secondary wide-action" type="button" id="returnToLogin">กลับหน้าเข้าสู่ระบบ</button></section>`);
+  $('#modal').classList.add('password-recovery-open');
+  $('#requestNewResetLink').addEventListener('click', async () => {
+    await cancelPasswordRecovery(false);
+    openForgotPassword();
+  });
+  $('#returnToLogin').addEventListener('click', () => cancelPasswordRecovery());
+}
+
+function showPasswordResetForm() {
+  if (!sb || !passwordRecoveryMode || !session) return;
+  appView.classList.add('hidden');
+  loginView.classList.remove('hidden');
+  openModal(`<section class="password-recovery-form"><div class="auth-modal-head"><span>${icon('settings')}</span><div><p class="eyebrow">Set new password</p><h3>กำหนดรหัสผ่านใหม่</h3><p>ตั้งรหัสผ่านใหม่สำหรับ CNMI Inventory แล้วเข้าสู่ระบบอีกครั้ง</p></div></div><form id="newPasswordForm" class="form-grid"><label>รหัสผ่านใหม่<input id="newPassword" type="password" autocomplete="new-password" minlength="6" required><small class="field-hint">อย่างน้อย 6 ตัวอักษร และไม่ควรใช้รหัสเดียวกับบัญชีอื่น</small></label><label>ยืนยันรหัสผ่านใหม่<input id="confirmNewPassword" type="password" autocomplete="new-password" minlength="6" required></label><div class="auth-security-note"><strong>รหัสผ่านเป็นข้อมูลส่วนบุคคล</strong><span>ไม่ต้องแจ้งรหัสผ่านให้ Admin หรือบุคคลอื่น</span></div><button class="primary large" type="submit">บันทึกรหัสผ่านใหม่</button><button class="secondary" type="button" id="cancelPasswordRecovery">ยกเลิกและกลับหน้าเข้าสู่ระบบ</button></form></section>`);
+  $('#modal').classList.add('password-recovery-open');
+  $('#cancelPasswordRecovery').addEventListener('click', () => cancelPasswordRecovery());
+  $('#newPasswordForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    const password = $('#newPassword').value;
+    const confirmation = $('#confirmNewPassword').value;
+    if (password.length < 6) return toast('รหัสผ่านต้องมีอย่างน้อย 6 ตัว', true);
+    if (password !== confirmation) return toast('รหัสผ่านทั้งสองช่องไม่ตรงกัน', true);
+    const button = event.submitter || $('#newPasswordForm button[type="submit"]');
+    button.disabled = true;
+    button.textContent = 'กำลังบันทึก...';
+    try {
+      const {error} = await sb.auth.updateUser({password});
+      if (error) throw error;
+      passwordRecoveryMode = false;
+      passwordRecoverySession = null;
+      clearPasswordRecoveryUrl();
+      try { await sb.auth.signOut(); } catch (_) {}
+      session = null;
+      closeModal();
+      showLogin();
+      $('#loginPassword').value = '';
+      toast('ตั้งรหัสผ่านใหม่แล้ว กรุณาเข้าสู่ระบบ');
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = 'บันทึกรหัสผ่านใหม่';
+      toast(passwordResetErrorMessage(error), true);
+    }
+  });
+  requestAnimationFrame(() => $('#newPassword')?.focus({preventScroll:true}));
+}
+
+async function cancelPasswordRecovery(showMessage = true) {
+  passwordRecoveryMode = false;
+  passwordRecoverySession = null;
+  clearPasswordRecoveryUrl();
+  try { if (sb) await sb.auth.signOut(); } catch (_) {}
+  session = null;
+  closeModal();
+  showLogin();
+  if (showMessage) toast('ยกเลิกการตั้งรหัสผ่านใหม่แล้ว');
+}
+
+function openAdminPasswordReset(email, displayName) {
+  if (!isAdminMode()) return toast('ต้องอยู่ในโหมด Admin', true);
+  openModal(`<section class="admin-password-reset"><div class="auth-modal-head"><span>${icon('user')}</span><div><p class="eyebrow">Admin assistance</p><h3>ส่งลิงก์รีเซ็ตรหัสผ่าน</h3><p>ยืนยันตัวบุคคลก่อนส่งลิงก์ไปยังอีเมลของเจ้าหน้าที่</p></div></div><div class="admin-reset-user"><strong>${esc(displayName || email)}</strong><span>${esc(email)}</span></div><div class="auth-security-note"><strong>Admin ไม่ได้เปลี่ยนรหัสให้เจ้าหน้าที่</strong><span>ระบบจะส่งลิงก์ให้เจ้าหน้าที่ตั้งรหัสผ่านใหม่ด้วยตนเอง และ Admin จะไม่เห็นรหัสผ่านใหม่</span></div><div class="form-actions"><button class="secondary" type="button" data-modal-close>ยกเลิก</button><button class="primary" type="button" id="confirmAdminPasswordReset">ยืนยันส่งลิงก์</button></div></section>`);
+  $('#confirmAdminPasswordReset').addEventListener('click', async event => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    button.textContent = 'กำลังส่ง...';
+    try {
+      const {error} = await sb.auth.resetPasswordForEmail(email, {redirectTo:passwordResetRedirectUrl()});
+      if (error) throw error;
+      const {error:auditError} = await sb.rpc('fn_log_password_reset_request', {p_target_email:email, p_source:'ADMIN'});
+      closeModal();
+      if (auditError) {
+        console.warn('Password reset audit log failed', auditError);
+        toast(`ส่งลิงก์ไปที่ ${email} แล้ว แต่บันทึก Audit Log ไม่สำเร็จ`, true);
+      } else {
+        toast(`ส่งลิงก์รีเซ็ตรหัสผ่านไปที่ ${email} แล้ว`);
+      }
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = 'ยืนยันส่งลิงก์';
+      toast(passwordResetErrorMessage(error), true);
+    }
+  });
+}
+
 async function loadProfile() {
   const {data, error} = await sb.from('profiles').select('*').eq('id', session.user.id).maybeSingle();
   if (error) throw error;
@@ -695,6 +863,7 @@ async function loadProfile() {
 }
 
 async function enterApp() {
+  if (passwordRecoveryMode) return showPasswordResetForm();
   if (enteringApp) return;
   enteringApp = true;
   try {
@@ -742,11 +911,12 @@ async function logout() {
   showLogin();
 }
 
-function globalClick(e) {
+async function globalClick(e) {
   const modalCloseBtn = e.target.closest('[data-modal-close]');
   if (modalCloseBtn) {
     e.preventDefault();
-    closeModal();
+    if (passwordRecoveryMode && $('#modal').classList.contains('password-recovery-open')) await cancelPasswordRecovery();
+    else closeModal();
     return;
   }
   const openInstall = e.target.closest('[data-open-install]');
@@ -3352,8 +3522,8 @@ async function renderAdmin() {
     <section class="card admin-workload-card"><div class="section-title compact"><div><h3>ภาระงานผู้ดูแล</h3><p class="muted small">นับจากวัสดุที่เป็นผู้ดูแลหลักและผู้ช่วยดูแล</p></div></div><div class="admin-workload-grid">${(s || []).map(person=>{const primary=(m||[]).filter(x=>normalizedEmail(x.responsible_email)===normalizedEmail(person.email)).length;const assistant=(m||[]).filter(x=>normalizedEmail(x.assistant_responsible_email)===normalizedEmail(person.email)).length;return `<div class="admin-workload-person"><strong>${esc(person.display_name)}</strong><span>หลัก ${primary}</span><span>ผู้ช่วย ${assistant}</span><em>รวม ${primary+assistant}</em></div>`;}).join('')}</div></section>
   </section>
   <section data-admin-panel="users" class="admin-panel ${adminTab==='users'?'':'hidden'}">
-    <div class="section-title"><div><h3>ผู้ใช้งาน</h3><p class="muted small">กำหนดสิทธิ์บัญชีและสลับบทบาทได้ตามการอนุมัติ</p></div></div>
-    <div class="table-wrap"><table class="data-table"><thead><tr><th>ชื่อ</th><th>อีเมล</th><th>สิทธิ์บัญชี</th></tr></thead><tbody>${(s || []).map(x => `<tr><td>${esc(x.display_name)}</td><td>${esc(x.email)}</td><td><select data-role-email="${esc(x.email)}"><option value="staff" ${x.role === 'staff' ? 'selected' : ''}>เจ้าหน้าที่</option><option value="admin" ${x.role === 'admin' ? 'selected' : ''}>Admin (สลับได้ 2 โหมด)</option></select></td></tr>`).join('')}</tbody></table></div>
+    <div class="section-title"><div><h3>ผู้ใช้งาน</h3><p class="muted small">กำหนดสิทธิ์บัญชี สถานะ และส่งลิงก์รีเซ็ตรหัสผ่านเมื่อยืนยันตัวเจ้าหน้าที่แล้ว</p></div></div>
+    <div class="table-wrap"><table class="data-table"><thead><tr><th>ชื่อ</th><th>อีเมล</th><th>สถานะ</th><th>สิทธิ์บัญชี</th><th>รหัสผ่าน</th></tr></thead><tbody>${(s || []).map(x => `<tr><td>${esc(x.display_name)}</td><td>${esc(x.email)}</td><td>${x.active === false ? '<span class="badge warn">ปิดใช้งาน</span>' : '<span class="badge ok">Active</span>'}</td><td><select data-role-email="${esc(x.email)}" ${x.active === false ? 'disabled' : ''}><option value="staff" ${x.role === 'staff' ? 'selected' : ''}>เจ้าหน้าที่</option><option value="admin" ${x.role === 'admin' ? 'selected' : ''}>Admin (สลับได้ 2 โหมด)</option></select></td><td><button type="button" class="mini admin-reset-button" data-password-reset-email="${esc(x.email)}" data-password-reset-name="${esc(x.display_name)}" ${x.active === false ? 'disabled' : ''}>ส่งลิงก์รีเซ็ต</button></td></tr>`).join('')}</tbody></table></div>
   </section>
   <section data-admin-panel="materials" class="admin-panel ${adminTab==='materials'?'':'hidden'}">
     <div class="section-title admin-owner-head"><div><h3>วัสดุและผู้ดูแล</h3><p class="muted small">เพิ่มวัสดุใหม่ กำหนด Minimum เกณฑ์ EXP ผู้ดูแลหลัก ผู้ช่วย และอายุหลังเปิด</p></div><div class="admin-material-actions"><div class="search-box">${icon('search')}<input id="adminMaterialSearch" placeholder="ค้นหารหัส ชื่อ หรือผู้ดูแล"></div><button type="button" class="primary" id="adminAddMaterial">${icon('plus')} เพิ่มวัสดุ</button></div></div>
@@ -3382,6 +3552,7 @@ async function renderAdmin() {
     toast('บันทึกสิทธิ์แล้ว');
     if (sel.dataset.roleEmail === profile.email) { await loadProfile(); actingMode = profile.role === 'admin' ? actingMode : 'staff'; updateRoleUI(); }
   }));
+  $$('[data-password-reset-email]').forEach(button => button.addEventListener('click', () => openAdminPasswordReset(button.dataset.passwordResetEmail, button.dataset.passwordResetName)));
   drawMaterials();
   switchTab(adminTab);
 }
@@ -3496,7 +3667,7 @@ function openMaterialEditor(code) {
 }
 
 function renderHelp() {
-  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>สร้างบัญชีครั้งแรก</h3><ol class="help-steps"><li>ใช้เฉพาะอีเมลมหิดล @mahidol.ac.th ที่ Admin อนุญาตไว้</li><li>ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว</li><li>กด “สร้างบัญชีครั้งแรก” แล้วกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</li></ol></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>พิมพ์ชื่อวัสดุบางส่วนแล้วเลือกจากรายการ</li><li>ตรวจชื่อผู้นำเข้าปัจจุบัน ใส่ Lot วันหมดอายุ และจำนวน แล้วบันทึก</li></ol></div><div class="card help-card"><h3>นำออก</h3><ol class="help-steps"><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าและวิธีนำออก แล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>วัสดุที่ตั้งให้ใช้สติ๊กเกอร์วันเปิด จะไปอยู่ในเมนู “พิมพ์วันเปิดใช้” ให้เลือกพิมพ์เมื่อเปิดใช้จริง โดยรายการล่าสุดอยู่บนสุด</li></ol></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแล</h3><p>มี 3 เมนูย่อย: ภาพรวม, ต้องเบิก และตั้งค่าการเตือน เลือกเตือนตามจำนวนขั้นต่ำ เตือนรอบเบิกรายเดือน หรือไม่แจ้งเตือนได้ และกำหนดเกณฑ์ใกล้หมดอายุแยกต่อวัสดุเป็น 1 สัปดาห์ 2 สัปดาห์ 1 เดือน หรือ 8 เดือน รวมถึงเลือกเตือนเมื่อกำลังใช้ชิ้นสุดท้ายหรือเมื่อน้อยกว่าขั้นต่ำเท่านั้น การเตือนรายเดือนจะเริ่มตรวจรอบตั้งแต่เดือนถัดไปหลังบันทึก</p></div><div class="card help-card"><h3>ตรวจวันศุกร์</h3><p>กรอกจำนวนที่นับได้จริง หากไม่ตรงกับระบบ ให้เลือกเหตุผล สามารถฝากเพื่อนตรวจแทนเฉพาะรอบได้ ผู้รับต้องกดยืนยันก่อน ส่วน Admin เลือกชื่อเจ้าหน้าที่เพื่อทำแทนหรือมอบหมายให้คนอื่นได้ทันที ระบบเก็บผู้ดูแลหลัก ผู้ได้รับมอบหมาย และผู้ตรวจจริงแยกกัน</p></div><div class="card help-card"><h3>สแกนตรวจ Lot</h3><p>เปิดกล้องหรือพิมพ์รหัส QR เพื่อดูยอด Lot ยอดรวม ผู้ดูแล ขั้นต่ำ และยืนยันตรวจหรือปรับยอดได้ทันที</p></div><div class="card help-card"><h3>สถานะผู้ตรวจ</h3><p>เปิดเมนู “สถานะผู้ตรวจ” แล้วกำหนดช่วงวันที่ เพื่อดูว่าแต่ละวันศุกร์ใครตรวจครบหรือยังไม่ครบ</p></div><div class="card help-card"><h3>สติ๊กเกอร์เดิม</h3><p>สติ๊กเกอร์รหัสเดิมยังสแกนได้ ไม่ต้องเปลี่ยนใหม่ทั้งหมด</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบไม่ตัดยอดเอง เปิดตรวจวันศุกร์และกด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์ถัดไป</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมดูได้ในหน้าประวัติและรายงาน</p></div><div class="card help-card"><h3>พิมพ์ QR Sticker ภายหลัง</h3><p>หลังรับเข้าผ่านโทรศัพท์ ให้เปิดเมนู “พิมพ์ QR Sticker” บนคอมพิวเตอร์ที่ต่อเครื่องพิมพ์ รายการรับเข้าจะอยู่ในคิวอัตโนมัติ เลือกจำนวนดวงแล้วกดพิมพ์</p></div><div class="card help-card"><h3>พิมพ์วันเปิดใช้</h3><p>เปิดเมนู “พิมพ์วันเปิดใช้” เลือกรายการนำออก แล้วระบุวัน–เวลาเปิดและอายุหลังเปิด โดยเลือกใช้ถึง EXP ผู้ผลิต, 24 ชั่วโมง, 7 วัน, 28 วัน, 1 เดือน, 3 เดือน, 6 เดือน หรือกำหนดเองได้ ระบบคำนวณวันใช้ได้ถึงให้อัตโนมัติและไม่ให้เกิน EXP ผู้ผลิต</p></div><div class="card help-card"><h3>สร้างสติ๊กเกอร์วันเปิดเอง</h3><p>เลือกวัสดุ กรอก Lot และ EXP ผู้ผลิต ระบุวัน–เวลาเปิดและอายุหลังเปิด ระบบคำนวณวันใช้ได้ถึงและสร้างสติ๊กเกอร์โดยไม่ตัดยอดสต๊อกเพิ่ม</p></div><div class="card help-card"><h3>ตั้งค่าผู้ดูแลระบบ</h3><p>หน้า Admin แยกเป็น 3 เมนูย่อย ได้แก่ ภาพรวม ผู้ใช้งาน และวัสดุและผู้ดูแล โดย Admin เพิ่มวัสดุใหม่พร้อมรหัส ชื่อ หน่วย Minimum เกณฑ์ EXP ผู้ดูแลหลัก ผู้ช่วย และอายุหลังเปิดเริ่มต้นได้</p></div><div class="card help-card"><h3>เครื่องพิมพ์สติ๊กเกอร์</h3><p>ฉลากจริง 25 × 20 mm ระบบใช้รูปแบบสติ๊กเกอร์มาตรฐานเดียวกันทุกเครื่อง พร้อม QR ขนาดใหญ่และขอบขาวมาตรฐาน ในหน้าพิมพ์ Chrome ให้เลือกเครื่องพิมพ์และตั้งกระดาษตามเครื่องที่ใช้งาน ใช้ Scale 100% หรือ Actual size ปิด Header/Footer และใช้ Margin None</p></div></div>`;
+  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>สร้างบัญชีครั้งแรก</h3><ol class="help-steps"><li>ใช้เฉพาะอีเมลมหิดล @mahidol.ac.th ที่ Admin อนุญาตไว้</li><li>ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว</li><li>กด “สร้างบัญชีครั้งแรก” แล้วกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</li></ol></div><div class="card help-card"><h3>ลืมรหัสผ่าน</h3><ol class="help-steps"><li>หน้าเข้าสู่ระบบกด “ลืมรหัสผ่าน” แล้วกรอกอีเมลมหิดล</li><li>เปิดลิงก์จากอีเมลและตั้งรหัสผ่านใหม่ด้วยตนเอง</li><li>Admin สามารถกด “ส่งลิงก์รีเซ็ต” จากเมนูผู้ใช้งานได้ แต่จะไม่เห็นหรือกำหนดรหัสผ่านแทนเจ้าหน้าที่</li></ol></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>พิมพ์ชื่อวัสดุบางส่วนแล้วเลือกจากรายการ</li><li>ตรวจชื่อผู้นำเข้าปัจจุบัน ใส่ Lot วันหมดอายุ และจำนวน แล้วบันทึก</li></ol></div><div class="card help-card"><h3>นำออก</h3><ol class="help-steps"><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าและวิธีนำออก แล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>วัสดุที่ตั้งให้ใช้สติ๊กเกอร์วันเปิด จะไปอยู่ในเมนู “พิมพ์วันเปิดใช้” ให้เลือกพิมพ์เมื่อเปิดใช้จริง โดยรายการล่าสุดอยู่บนสุด</li></ol></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแล</h3><p>มี 3 เมนูย่อย: ภาพรวม, ต้องเบิก และตั้งค่าการเตือน เลือกเตือนตามจำนวนขั้นต่ำ เตือนรอบเบิกรายเดือน หรือไม่แจ้งเตือนได้ และกำหนดเกณฑ์ใกล้หมดอายุแยกต่อวัสดุเป็น 1 สัปดาห์ 2 สัปดาห์ 1 เดือน หรือ 8 เดือน รวมถึงเลือกเตือนเมื่อกำลังใช้ชิ้นสุดท้ายหรือเมื่อน้อยกว่าขั้นต่ำเท่านั้น การเตือนรายเดือนจะเริ่มตรวจรอบตั้งแต่เดือนถัดไปหลังบันทึก</p></div><div class="card help-card"><h3>ตรวจวันศุกร์</h3><p>กรอกจำนวนที่นับได้จริง หากไม่ตรงกับระบบ ให้เลือกเหตุผล สามารถฝากเพื่อนตรวจแทนเฉพาะรอบได้ ผู้รับต้องกดยืนยันก่อน ส่วน Admin เลือกชื่อเจ้าหน้าที่เพื่อทำแทนหรือมอบหมายให้คนอื่นได้ทันที ระบบเก็บผู้ดูแลหลัก ผู้ได้รับมอบหมาย และผู้ตรวจจริงแยกกัน</p></div><div class="card help-card"><h3>สแกนตรวจ Lot</h3><p>เปิดกล้องหรือพิมพ์รหัส QR เพื่อดูยอด Lot ยอดรวม ผู้ดูแล ขั้นต่ำ และยืนยันตรวจหรือปรับยอดได้ทันที</p></div><div class="card help-card"><h3>สถานะผู้ตรวจ</h3><p>เปิดเมนู “สถานะผู้ตรวจ” แล้วกำหนดช่วงวันที่ เพื่อดูว่าแต่ละวันศุกร์ใครตรวจครบหรือยังไม่ครบ</p></div><div class="card help-card"><h3>สติ๊กเกอร์เดิม</h3><p>สติ๊กเกอร์รหัสเดิมยังสแกนได้ ไม่ต้องเปลี่ยนใหม่ทั้งหมด</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบไม่ตัดยอดเอง เปิดตรวจวันศุกร์และกด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์ถัดไป</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมดูได้ในหน้าประวัติและรายงาน</p></div><div class="card help-card"><h3>พิมพ์ QR Sticker ภายหลัง</h3><p>หลังรับเข้าผ่านโทรศัพท์ ให้เปิดเมนู “พิมพ์ QR Sticker” บนคอมพิวเตอร์ที่ต่อเครื่องพิมพ์ รายการรับเข้าจะอยู่ในคิวอัตโนมัติ เลือกจำนวนดวงแล้วกดพิมพ์</p></div><div class="card help-card"><h3>พิมพ์วันเปิดใช้</h3><p>เปิดเมนู “พิมพ์วันเปิดใช้” เลือกรายการนำออก แล้วระบุวัน–เวลาเปิดและอายุหลังเปิด โดยเลือกใช้ถึง EXP ผู้ผลิต, 24 ชั่วโมง, 7 วัน, 28 วัน, 1 เดือน, 3 เดือน, 6 เดือน หรือกำหนดเองได้ ระบบคำนวณวันใช้ได้ถึงให้อัตโนมัติและไม่ให้เกิน EXP ผู้ผลิต</p></div><div class="card help-card"><h3>สร้างสติ๊กเกอร์วันเปิดเอง</h3><p>เลือกวัสดุ กรอก Lot และ EXP ผู้ผลิต ระบุวัน–เวลาเปิดและอายุหลังเปิด ระบบคำนวณวันใช้ได้ถึงและสร้างสติ๊กเกอร์โดยไม่ตัดยอดสต๊อกเพิ่ม</p></div><div class="card help-card"><h3>ตั้งค่าผู้ดูแลระบบ</h3><p>หน้า Admin แยกเป็น 3 เมนูย่อย ได้แก่ ภาพรวม ผู้ใช้งาน และวัสดุและผู้ดูแล โดย Admin เพิ่มวัสดุใหม่พร้อมรหัส ชื่อ หน่วย Minimum เกณฑ์ EXP ผู้ดูแลหลัก ผู้ช่วย และอายุหลังเปิดเริ่มต้นได้</p></div><div class="card help-card"><h3>เครื่องพิมพ์สติ๊กเกอร์</h3><p>ฉลากจริง 25 × 20 mm ระบบใช้รูปแบบสติ๊กเกอร์มาตรฐานเดียวกันทุกเครื่อง พร้อม QR ขนาดใหญ่และขอบขาวมาตรฐาน ในหน้าพิมพ์ Chrome ให้เลือกเครื่องพิมพ์และตั้งกระดาษตามเครื่องที่ใช้งาน ใช้ Scale 100% หรือ Actual size ปิด Header/Footer และใช้ Margin None</p></div></div>`;
   refreshInstallUI();
 }
 
