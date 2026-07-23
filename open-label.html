@@ -33,6 +33,7 @@ const name=safe(p.get('name'));
 const lot=safe(p.get('lot'));
 const opened=safe(p.get('opened'));
 const exp=safe(p.get('exp'),'ไม่ระบุ');
+const period=safe(p.get('period'),'');
 const user=safe(p.get('user'));
 const footer=safe(p.get('footer'),'FM-CNPL-034 Rev.00 วันบังคับใช้ 1 สิงหาคม 2562');
 const copies=Math.max(1,Math.min(20,Math.round(Number(p.get('copies'))||1)));
@@ -101,16 +102,21 @@ function drawLabel(svg){
   nameFit.lines.forEach((line,index)=>svgText(svg,line,valueX,nameY+index*nameFit.lineHeight,{weight:700,size:nameFit.size}));
 
   const rowSize=20;
-  const lotSize=fitSingleLine(lot,valueW,21,13,600);
+  const periodWidth=period?82:0;
+  const lotSize=fitSingleLine(lot,valueW-periodWidth,21,13,600);
   svgText(svg,'Lot:',x,74,{weight:500,size:rowSize});
   svgText(svg,lot,valueX,74,{weight:600,size:lotSize});
+  if(period){
+    const periodSize=fitSingleLine(period,periodWidth,17,11,700);
+    svgText(svg,period,right,74,{weight:700,size:periodSize,anchor:'end'});
+  }
 
   const openedSize=fitSingleLine(opened,valueW,21,13,600);
   svgText(svg,'เปิด:',x,108,{weight:500,size:rowSize});
   svgText(svg,opened,valueX,108,{weight:600,size:openedSize});
 
   const expSize=fitSingleLine(exp,valueW,21,13,600);
-  svgText(svg,'Exp:',x,142,{weight:500,size:rowSize});
+  svgText(svg,'ใช้ถึง:',x,142,{weight:500,size:rowSize});
   svgText(svg,exp,valueX,142,{weight:600,size:expSize});
 
   const userLabel='ผู้เปิดใช้:';

@@ -688,3 +688,29 @@ input,select,textarea,button{min-width:0}
 
 /* v1.4.37 — show every issued material in opened-label queue */
 .open-label-issue-title strong + .badge{margin-left:8px;vertical-align:middle}
+
+/* v1.4.38 — admin submenus, material creation and calculated opened-reagent expiry */
+.admin-subnav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:16px 0 22px}
+.admin-subnav button{display:flex;align-items:center;gap:12px;min-height:76px;padding:14px 16px;border:1px solid var(--line);border-radius:18px;background:var(--surface);color:var(--text);text-align:left;box-shadow:0 6px 20px rgba(20,70,63,.04)}
+.admin-subnav button>.icon{width:24px;height:24px;flex:0 0 auto;color:var(--brand-strong)}
+.admin-subnav button span{display:grid;gap:3px;min-width:0}
+.admin-subnav button strong{font-size:.98rem}
+.admin-subnav button small{color:var(--muted);font-weight:600;line-height:1.35}
+.admin-subnav button.active{border-color:#87c9bc;background:#eaf7f4;box-shadow:0 7px 22px rgba(8,123,111,.1)}
+.admin-panel{display:grid;gap:16px}
+.admin-material-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap}
+.admin-material-actions .search-box{min-width:min(100%,340px)}
+.field-disabled{opacity:.55}
+.open-label-setup-modal{display:grid;gap:14px}
+.open-label-calculation{grid-column:1/-1;display:grid;gap:5px;padding:14px 16px;border:1px solid #bfe2da;border-radius:15px;background:#f1faf7}
+.open-label-calculation small{color:var(--muted);font-weight:700}
+.open-label-calculation strong{font-size:1.16rem;color:#075f57}
+.open-label-calculation strong.error-text{color:#b42318}
+.open-label-calculation span{color:#9a5b00;font-size:.84rem;font-weight:700;line-height:1.45}
+@media(max-width:800px){
+  .admin-subnav{grid-template-columns:1fr}
+  .admin-subnav button{min-height:64px}
+  .admin-owner-head{align-items:stretch;flex-direction:column}
+  .admin-material-actions{justify-content:stretch}
+  .admin-material-actions .search-box,.admin-material-actions .primary{width:100%}
+}
