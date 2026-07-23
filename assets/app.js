@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.38';
+const APP_VERSION = '1.4.39';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const DEFAULT_EXPIRY_ALERT_DAYS = 30;
 const MAX_EXPIRY_ALERT_DAYS = 240;
@@ -1356,6 +1356,7 @@ function dateInputValue(date) {
 
 
 const OPEN_LABEL_PERIODS = [
+  ['MANUFACTURER_EXPIRY','ใช้ถึง EXP ผู้ผลิต'],
   ['24_HOURS','24 ชั่วโมง'],
   ['28_DAYS','28 วัน'],
   ['1_MONTH','1 เดือน'],
@@ -1367,7 +1368,7 @@ function openLabelPeriodLabel(value) {
   return OPEN_LABEL_PERIODS.find(([code]) => code === String(value || '').toUpperCase())?.[1] || 'ระบุวันใช้ได้ถึงเอง';
 }
 function openLabelPeriodShort(value) {
-  return ({'24_HOURS':'24 ชม.','28_DAYS':'28 วัน','1_MONTH':'1 เดือน','3_MONTHS':'3 เดือน','6_MONTHS':'6 เดือน','CUSTOM':'กำหนดเอง'})[String(value || '').toUpperCase()] || 'กำหนดเอง';
+  return ({'MANUFACTURER_EXPIRY':'EXP ผู้ผลิต','24_HOURS':'24 ชม.','28_DAYS':'28 วัน','1_MONTH':'1 เดือน','3_MONTHS':'3 เดือน','6_MONTHS':'6 เดือน','CUSTOM':'กำหนดเอง'})[String(value || '').toUpperCase()] || 'กำหนดเอง';
 }
 function openLabelPeriodOptions(selected = 'CUSTOM') {
   const current = String(selected || 'CUSTOM').toUpperCase();
@@ -1405,8 +1406,12 @@ function calculateOpenLabelUseUntil({openedAt, period, manufacturerExpiry = '', 
   const openedDate = parseLocalDateTime(openedAt);
   if (!openedDate) return {error:'กรุณาระบุวันและเวลาเปิดใช้'};
   const code = String(period || 'CUSTOM').toUpperCase();
+  const manufacturerLimit = manufacturerExpiryLimit(manufacturerExpiry);
   let calculated = null;
-  if (code === '24_HOURS') calculated = new Date(openedDate.getTime() + 24*60*60*1000);
+  if (code === 'MANUFACTURER_EXPIRY') {
+    if (!manufacturerLimit) return {error:'ไม่พบ EXP ผู้ผลิต กรุณาตรวจสอบข้อมูล Lot'};
+    calculated = manufacturerLimit;
+  } else if (code === '24_HOURS') calculated = new Date(openedDate.getTime() + 24*60*60*1000);
   else if (code === '28_DAYS') calculated = new Date(openedDate.getTime() + 28*24*60*60*1000);
   else if (code === '1_MONTH') calculated = addCalendarMonthsClamped(openedDate,1);
   else if (code === '3_MONTHS') calculated = addCalendarMonthsClamped(openedDate,3);
@@ -1414,8 +1419,7 @@ function calculateOpenLabelUseUntil({openedAt, period, manufacturerExpiry = '', 
   else calculated = parseLocalDateTime(customUseUntil);
   if (!calculated) return {error:'กรุณาระบุวันและเวลาใช้ได้ถึง'};
   if (calculated <= openedDate) return {error:'วันใช้ได้ถึงต้องอยู่หลังวันและเวลาเปิดใช้'};
-  const manufacturerLimit = manufacturerExpiryLimit(manufacturerExpiry);
-  const capped = Boolean(manufacturerLimit && calculated > manufacturerLimit);
+  const capped = Boolean(code !== 'MANUFACTURER_EXPIRY' && manufacturerLimit && calculated > manufacturerLimit);
   const useUntil = capped ? manufacturerLimit : calculated;
   return {openedDate, calculated, useUntil, manufacturerLimit, capped, period:code, periodLabel:openLabelPeriodLabel(code)};
 }
@@ -1817,8 +1821,11 @@ async function printOpenLabelIssue(transactionId) {
     });
     resultEl.textContent = result.error || openLabelCalculationText(result);
     resultEl.classList.toggle('error-text', Boolean(result.error));
-    warningEl.classList.toggle('hidden', !result.capped);
-    warningEl.textContent = result.capped ? 'อายุหลังเปิดที่คำนวณได้เกิน EXP ผู้ผลิต ระบบจึงใช้ EXP ผู้ผลิตเป็นวันใช้ได้ถึง' : '';
+    const manufacturerMode = !result.error && result.period === 'MANUFACTURER_EXPIRY';
+    warningEl.classList.toggle('hidden', !(result.capped || manufacturerMode));
+    warningEl.textContent = result.capped
+      ? 'อายุหลังเปิดที่คำนวณได้เกิน EXP ผู้ผลิต ระบบจึงใช้ EXP ผู้ผลิตเป็นวันใช้ได้ถึง'
+      : manufacturerMode ? 'เลือกใช้ถึง EXP ผู้ผลิต ระบบกำหนดวันใช้ได้ถึงตามวันหมดอายุของ Lot นี้' : '';
     return result;
   };
   ['openLabelSetupOpenedAt','openLabelSetupPeriod','openLabelSetupCustom'].forEach(id => $(`#${id}`)?.addEventListener('input',calculate));
@@ -1952,8 +1959,11 @@ async function renderOpenLabelCreate() {
     const warningEl = $('#openLabelCalculatedWarning');
     resultEl.textContent = result.error || openLabelCalculationText(result);
     resultEl.classList.toggle('error-text', Boolean(result.error));
-    warningEl.classList.toggle('hidden', !result.capped);
-    warningEl.textContent = result.capped ? 'อายุหลังเปิดที่คำนวณได้เกิน EXP ผู้ผลิต ระบบจึงใช้ EXP ผู้ผลิตเป็นวันใช้ได้ถึง' : '';
+    const manufacturerMode = !result.error && result.period === 'MANUFACTURER_EXPIRY';
+    warningEl.classList.toggle('hidden', !(result.capped || manufacturerMode));
+    warningEl.textContent = result.capped
+      ? 'อายุหลังเปิดที่คำนวณได้เกิน EXP ผู้ผลิต ระบบจึงใช้ EXP ผู้ผลิตเป็นวันใช้ได้ถึง'
+      : manufacturerMode ? 'เลือกใช้ถึง EXP ผู้ผลิต ระบบกำหนดวันใช้ได้ถึงตามวันหมดอายุของ Lot นี้' : '';
     return result;
   };
   ['openLabelManufacturerExpiry','openLabelOpenedAt','openLabelPeriod','openLabelCustomUseUntil'].forEach(id => $(`#${id}`)?.addEventListener('input',calculate));
@@ -3484,7 +3494,7 @@ function openMaterialEditor(code) {
 }
 
 function renderHelp() {
-  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>สร้างบัญชีครั้งแรก</h3><ol class="help-steps"><li>ใช้เฉพาะอีเมลมหิดล @mahidol.ac.th ที่ Admin อนุญาตไว้</li><li>ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว</li><li>กด “สร้างบัญชีครั้งแรก” แล้วกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</li></ol></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>พิมพ์ชื่อวัสดุบางส่วนแล้วเลือกจากรายการ</li><li>ตรวจชื่อผู้นำเข้าปัจจุบัน ใส่ Lot วันหมดอายุ และจำนวน แล้วบันทึก</li></ol></div><div class="card help-card"><h3>นำออก</h3><ol class="help-steps"><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าและวิธีนำออก แล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>วัสดุที่ตั้งให้ใช้สติ๊กเกอร์วันเปิด จะไปอยู่ในเมนู “พิมพ์วันเปิดใช้” ให้เลือกพิมพ์เมื่อเปิดใช้จริง โดยรายการล่าสุดอยู่บนสุด</li></ol></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแล</h3><p>มี 3 เมนูย่อย: ภาพรวม, ต้องเบิก และตั้งค่าการเตือน เลือกเตือนตามจำนวนขั้นต่ำ เตือนรอบเบิกรายเดือน หรือไม่แจ้งเตือนได้ และกำหนดเกณฑ์ใกล้หมดอายุแยกต่อวัสดุเป็น 1 สัปดาห์ 2 สัปดาห์ 1 เดือน หรือ 8 เดือน รวมถึงเลือกเตือนเมื่อกำลังใช้ชิ้นสุดท้ายหรือเมื่อน้อยกว่าขั้นต่ำเท่านั้น การเตือนรายเดือนจะเริ่มตรวจรอบตั้งแต่เดือนถัดไปหลังบันทึก</p></div><div class="card help-card"><h3>ตรวจวันศุกร์</h3><p>กรอกจำนวนที่นับได้จริง หากไม่ตรงกับระบบ ให้เลือกเหตุผล สามารถฝากเพื่อนตรวจแทนเฉพาะรอบได้ ผู้รับต้องกดยืนยันก่อน ส่วน Admin เลือกชื่อเจ้าหน้าที่เพื่อทำแทนหรือมอบหมายให้คนอื่นได้ทันที ระบบเก็บผู้ดูแลหลัก ผู้ได้รับมอบหมาย และผู้ตรวจจริงแยกกัน</p></div><div class="card help-card"><h3>สแกนตรวจ Lot</h3><p>เปิดกล้องหรือพิมพ์รหัส QR เพื่อดูยอด Lot ยอดรวม ผู้ดูแล ขั้นต่ำ และยืนยันตรวจหรือปรับยอดได้ทันที</p></div><div class="card help-card"><h3>สถานะผู้ตรวจ</h3><p>เปิดเมนู “สถานะผู้ตรวจ” แล้วกำหนดช่วงวันที่ เพื่อดูว่าแต่ละวันศุกร์ใครตรวจครบหรือยังไม่ครบ</p></div><div class="card help-card"><h3>สติ๊กเกอร์เดิม</h3><p>สติ๊กเกอร์รหัสเดิมยังสแกนได้ ไม่ต้องเปลี่ยนใหม่ทั้งหมด</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบไม่ตัดยอดเอง เปิดตรวจวันศุกร์และกด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์ถัดไป</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมดูได้ในหน้าประวัติและรายงาน</p></div><div class="card help-card"><h3>พิมพ์ QR Sticker ภายหลัง</h3><p>หลังรับเข้าผ่านโทรศัพท์ ให้เปิดเมนู “พิมพ์ QR Sticker” บนคอมพิวเตอร์ที่ต่อเครื่องพิมพ์ รายการรับเข้าจะอยู่ในคิวอัตโนมัติ เลือกจำนวนดวงแล้วกดพิมพ์</p></div><div class="card help-card"><h3>พิมพ์วันเปิดใช้</h3><p>เปิดเมนู “พิมพ์วันเปิดใช้” เลือกรายการนำออก แล้วระบุวัน–เวลาเปิดและอายุหลังเปิด ระบบคำนวณวันใช้ได้ถึงให้อัตโนมัติและไม่ให้เกิน EXP ผู้ผลิต</p></div><div class="card help-card"><h3>สร้างสติ๊กเกอร์วันเปิดเอง</h3><p>เลือกวัสดุ กรอก Lot และ EXP ผู้ผลิต ระบุวัน–เวลาเปิดและอายุหลังเปิด ระบบคำนวณวันใช้ได้ถึงและสร้างสติ๊กเกอร์โดยไม่ตัดยอดสต๊อกเพิ่ม</p></div><div class="card help-card"><h3>ตั้งค่าผู้ดูแลระบบ</h3><p>หน้า Admin แยกเป็น 3 เมนูย่อย ได้แก่ ภาพรวม ผู้ใช้งาน และวัสดุและผู้ดูแล โดย Admin เพิ่มวัสดุใหม่พร้อมรหัส ชื่อ หน่วย Minimum เกณฑ์ EXP ผู้ดูแลหลัก ผู้ช่วย และอายุหลังเปิดเริ่มต้นได้</p></div><div class="card help-card"><h3>เครื่องพิมพ์สติ๊กเกอร์</h3><p>ฉลากจริง 25 × 20 mm ระบบใช้รูปแบบสติ๊กเกอร์มาตรฐานเดียวกันทุกเครื่อง พร้อม QR ขนาดใหญ่และขอบขาวมาตรฐาน ในหน้าพิมพ์ Chrome ให้เลือกเครื่องพิมพ์และตั้งกระดาษตามเครื่องที่ใช้งาน ใช้ Scale 100% หรือ Actual size ปิด Header/Footer และใช้ Margin None</p></div></div>`;
+  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>สร้างบัญชีครั้งแรก</h3><ol class="help-steps"><li>ใช้เฉพาะอีเมลมหิดล @mahidol.ac.th ที่ Admin อนุญาตไว้</li><li>ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว</li><li>กด “สร้างบัญชีครั้งแรก” แล้วกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</li></ol></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>พิมพ์ชื่อวัสดุบางส่วนแล้วเลือกจากรายการ</li><li>ตรวจชื่อผู้นำเข้าปัจจุบัน ใส่ Lot วันหมดอายุ และจำนวน แล้วบันทึก</li></ol></div><div class="card help-card"><h3>นำออก</h3><ol class="help-steps"><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าและวิธีนำออก แล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>วัสดุที่ตั้งให้ใช้สติ๊กเกอร์วันเปิด จะไปอยู่ในเมนู “พิมพ์วันเปิดใช้” ให้เลือกพิมพ์เมื่อเปิดใช้จริง โดยรายการล่าสุดอยู่บนสุด</li></ol></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแล</h3><p>มี 3 เมนูย่อย: ภาพรวม, ต้องเบิก และตั้งค่าการเตือน เลือกเตือนตามจำนวนขั้นต่ำ เตือนรอบเบิกรายเดือน หรือไม่แจ้งเตือนได้ และกำหนดเกณฑ์ใกล้หมดอายุแยกต่อวัสดุเป็น 1 สัปดาห์ 2 สัปดาห์ 1 เดือน หรือ 8 เดือน รวมถึงเลือกเตือนเมื่อกำลังใช้ชิ้นสุดท้ายหรือเมื่อน้อยกว่าขั้นต่ำเท่านั้น การเตือนรายเดือนจะเริ่มตรวจรอบตั้งแต่เดือนถัดไปหลังบันทึก</p></div><div class="card help-card"><h3>ตรวจวันศุกร์</h3><p>กรอกจำนวนที่นับได้จริง หากไม่ตรงกับระบบ ให้เลือกเหตุผล สามารถฝากเพื่อนตรวจแทนเฉพาะรอบได้ ผู้รับต้องกดยืนยันก่อน ส่วน Admin เลือกชื่อเจ้าหน้าที่เพื่อทำแทนหรือมอบหมายให้คนอื่นได้ทันที ระบบเก็บผู้ดูแลหลัก ผู้ได้รับมอบหมาย และผู้ตรวจจริงแยกกัน</p></div><div class="card help-card"><h3>สแกนตรวจ Lot</h3><p>เปิดกล้องหรือพิมพ์รหัส QR เพื่อดูยอด Lot ยอดรวม ผู้ดูแล ขั้นต่ำ และยืนยันตรวจหรือปรับยอดได้ทันที</p></div><div class="card help-card"><h3>สถานะผู้ตรวจ</h3><p>เปิดเมนู “สถานะผู้ตรวจ” แล้วกำหนดช่วงวันที่ เพื่อดูว่าแต่ละวันศุกร์ใครตรวจครบหรือยังไม่ครบ</p></div><div class="card help-card"><h3>สติ๊กเกอร์เดิม</h3><p>สติ๊กเกอร์รหัสเดิมยังสแกนได้ ไม่ต้องเปลี่ยนใหม่ทั้งหมด</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบไม่ตัดยอดเอง เปิดตรวจวันศุกร์และกด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์ถัดไป</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมดูได้ในหน้าประวัติและรายงาน</p></div><div class="card help-card"><h3>พิมพ์ QR Sticker ภายหลัง</h3><p>หลังรับเข้าผ่านโทรศัพท์ ให้เปิดเมนู “พิมพ์ QR Sticker” บนคอมพิวเตอร์ที่ต่อเครื่องพิมพ์ รายการรับเข้าจะอยู่ในคิวอัตโนมัติ เลือกจำนวนดวงแล้วกดพิมพ์</p></div><div class="card help-card"><h3>พิมพ์วันเปิดใช้</h3><p>เปิดเมนู “พิมพ์วันเปิดใช้” เลือกรายการนำออก แล้วระบุวัน–เวลาเปิดและอายุหลังเปิด โดยเลือกใช้ถึง EXP ผู้ผลิต, 24 ชั่วโมง, 28 วัน, 1 เดือน, 3 เดือน, 6 เดือน หรือกำหนดเองได้ ระบบคำนวณวันใช้ได้ถึงให้อัตโนมัติและไม่ให้เกิน EXP ผู้ผลิต</p></div><div class="card help-card"><h3>สร้างสติ๊กเกอร์วันเปิดเอง</h3><p>เลือกวัสดุ กรอก Lot และ EXP ผู้ผลิต ระบุวัน–เวลาเปิดและอายุหลังเปิด ระบบคำนวณวันใช้ได้ถึงและสร้างสติ๊กเกอร์โดยไม่ตัดยอดสต๊อกเพิ่ม</p></div><div class="card help-card"><h3>ตั้งค่าผู้ดูแลระบบ</h3><p>หน้า Admin แยกเป็น 3 เมนูย่อย ได้แก่ ภาพรวม ผู้ใช้งาน และวัสดุและผู้ดูแล โดย Admin เพิ่มวัสดุใหม่พร้อมรหัส ชื่อ หน่วย Minimum เกณฑ์ EXP ผู้ดูแลหลัก ผู้ช่วย และอายุหลังเปิดเริ่มต้นได้</p></div><div class="card help-card"><h3>เครื่องพิมพ์สติ๊กเกอร์</h3><p>ฉลากจริง 25 × 20 mm ระบบใช้รูปแบบสติ๊กเกอร์มาตรฐานเดียวกันทุกเครื่อง พร้อม QR ขนาดใหญ่และขอบขาวมาตรฐาน ในหน้าพิมพ์ Chrome ให้เลือกเครื่องพิมพ์และตั้งกระดาษตามเครื่องที่ใช้งาน ใช้ Scale 100% หรือ Actual size ปิด Header/Footer และใช้ Margin None</p></div></div>`;
   refreshInstallUI();
 }
 

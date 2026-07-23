@@ -714,3 +714,5 @@ input,select,textarea,button{min-width:0}
   .admin-material-actions{justify-content:stretch}
   .admin-material-actions .search-box,.admin-material-actions .primary{width:100%}
 }
+
+/* v1.4.39 — add “ใช้ถึง EXP ผู้ผลิต” as an opened-reagent period option */
