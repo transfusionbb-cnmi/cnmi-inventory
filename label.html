@@ -29,7 +29,7 @@ html,body{margin:0;padding:0;width:var(--paper-w);background:#eef2f3;font-family
 <body>
 <div id="printPages"></div>
 <div class="screen-status" id="screenStatus">กำลังสร้างสติ๊กเกอร์แบบคมชัด…</div>
-<script src="assets/qr-lite.js?v=1.4.26"></script>
+<script src="assets/qr-lite.js?v=1.4.35"></script>
 <script>
 'use strict';
 const p=new URLSearchParams(location.search);
@@ -237,7 +237,7 @@ async function startPrint(){
 }
 window.addEventListener('afterprint',()=>setTimeout(()=>window.close(),180));
 window.addEventListener('load',()=>{
-  statusEl.innerHTML=`โปรไฟล์ ${profileName}<small>v1.4.26: สแกนภาพเต็ม ย้ายรหัสใต้ชื่อ และขยาย Lot / EXP ใต้ QR</small>`;
+  statusEl.innerHTML=`โปรไฟล์ ${profileName}<small>สติ๊กเกอร์มาตรฐาน 25 × 20 mm · QR ขนาดใหญ่ · Lot / EXP ใต้ QR</small>`;
   if(p.get('auto')==='1')startPrint();else prepare();
 },{once:true});
 setTimeout(()=>{if(p.get('auto')==='1'&&!document.hidden)statusEl.innerHTML=`หากหน้าพิมพ์ยังไม่เปิด กรุณากด Ctrl + P<small>เลือก ${profileName} และ Scale 100% / Actual size</small>`;},6000);

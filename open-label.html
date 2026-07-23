@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>พิมพ์สติ๊กเกอร์วันเปิดใช้</title>
+<style>
+*{box-sizing:border-box}
+:root{--paper-w:25mm;--paper-h:20mm;--label-h:19.72mm}
+html,body{margin:0;padding:0;width:var(--paper-w);background:#eef2f3;font-family:Tahoma,"Leelawadee UI","Noto Sans Thai",Arial,sans-serif;color:#000;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+#printPages{width:var(--paper-w);margin:0;padding:0;line-height:0}
+.label-page{position:relative;display:block;width:var(--paper-w);height:var(--label-h);margin:0;padding:0;background:#fff;overflow:hidden;break-inside:avoid;page-break-inside:avoid}
+.label-vector{position:absolute;inset:0;display:block;width:var(--paper-w);height:var(--label-h);margin:0;padding:0;background:#fff;overflow:hidden;text-rendering:geometricPrecision}
+.screen-status{position:fixed;left:29mm;top:5mm;width:410px;padding:14px 16px;border-radius:12px;background:#fff;color:#087b6f;box-shadow:0 8px 28px rgba(0,0,0,.16);font-size:13px;font-weight:700;line-height:1.45}
+.screen-status small{display:block;margin-top:4px;color:#667a76;font-weight:500}
+@page{size:25mm 20mm;margin:0}
+@media print{
+  html,body{width:var(--paper-w)!important;height:auto!important;min-height:0!important;margin:0!important;padding:0!important;overflow:visible!important;background:#fff!important;line-height:0!important}
+  #printPages{width:var(--paper-w)!important;margin:0!important;padding:0!important;line-height:0!important}
+  .label-page,.label-vector{display:block!important;width:var(--paper-w)!important;height:var(--label-h)!important;margin:0!important;padding:0!important}
+  .screen-status{display:none!important}
+}
+</style>
+</head>
+<body>
+<div id="printPages"></div>
+<div class="screen-status" id="screenStatus">กำลังสร้างสติ๊กเกอร์วันเปิดใช้…</div>
+<script>
+'use strict';
+const p=new URLSearchParams(location.search);
+const safe=(v,f='-')=>v&&v!=='null'?v:f;
+const name=safe(p.get('name'));
+const lot=safe(p.get('lot'));
+const opened=safe(p.get('opened'));
+const exp=safe(p.get('exp'),'ไม่ระบุ');
+const user=safe(p.get('user'));
+const footer=safe(p.get('footer'),'FM-CNPL-034 Rev.00 วันบังคับใช้ 1 สิงหาคม 2562');
+const copies=Math.max(1,Math.min(20,Math.round(Number(p.get('copies'))||1)));
+const pages=document.getElementById('printPages');
+const statusEl=document.getElementById('screenStatus');
+const W=300,H=236;
+
+function svgNode(tag,attrs={}){
+  const node=document.createElementNS('http://www.w3.org/2000/svg',tag);
+  Object.entries(attrs).forEach(([k,v])=>node.setAttribute(k,String(v)));
+  return node;
+}
+function svgText(parent,text,x,y,{weight=500,size=18,anchor='start'}={}){
+  const node=svgNode('text',{
+    x,y,fill:'#000','font-family':'Tahoma, Leelawadee UI, Noto Sans Thai, Arial, sans-serif',
+    'font-size':size,'font-weight':weight,'text-anchor':anchor,'dominant-baseline':'alphabetic'
+  });
+  node.textContent=text;parent.appendChild(node);return node;
+}
+const measureCanvas=document.createElement('canvas');
+const measureCtx=measureCanvas.getContext('2d');
+function setMeasureFont(weight,size){measureCtx.font=`${weight} ${Math.max(1,size)}px Tahoma, "Leelawadee UI", Arial, sans-serif`;}
+function fitSingleLine(text,maxWidth,start,min,weight=600){
+  let size=start;
+  while(size>min){setMeasureFont(weight,size);if(measureCtx.measureText(String(text)).width<=maxWidth)return size;size-=.25;}
+  return min;
+}
+function splitToken(token,maxWidth){
+  const chars=Array.from(token),parts=[];let line='';
+  for(const ch of chars){const test=line+ch;if(line&&measureCtx.measureText(test).width>maxWidth){parts.push(line);line=ch;}else line=test;}
+  if(line)parts.push(line);return parts;
+}
+function wrapText(text,maxWidth){
+  const words=String(text||'-').trim().split(/\s+/).filter(Boolean);const lines=[];
+  for(const word of words){
+    const pieces=measureCtx.measureText(word).width>maxWidth?splitToken(word,maxWidth):[word];
+    for(const piece of pieces){
+      const current=lines[lines.length-1]||'';const test=current?`${current} ${piece}`:piece;
+      if(current&&measureCtx.measureText(test).width>maxWidth)lines.push(piece);
+      else if(lines.length)lines[lines.length-1]=test;else lines.push(test);
+    }
+  }
+  return lines;
+}
+function fitWrapped(text,maxWidth,start,min,maxLines){
+  for(let size=start;size>=min;size-=.25){
+    setMeasureFont(700,size);const lines=wrapText(text,maxWidth);
+    if(lines.length<=maxLines)return {size,lines,lineHeight:size*1.05};
+  }
+  setMeasureFont(700,min);return {size:min,lines:wrapText(text,maxWidth).slice(0,maxLines),lineHeight:min*1.05};
+}
+function makePage(){
+  const page=document.createElement('div');page.className='label-page';
+  page.setAttribute('aria-label',`สติ๊กเกอร์วันเปิดใช้ ${name} Lot ${lot}`);
+  const svg=svgNode('svg',{class:'label-vector',viewBox:`0 0 ${W} ${H}`,preserveAspectRatio:'none','aria-hidden':'true'});
+  svg.appendChild(svgNode('rect',{x:0,y:0,width:W,height:H,fill:'#fff'}));
+  page.appendChild(svg);pages.appendChild(page);
+  return svg;
+}
+function drawLabel(svg){
+  const x=8,right=292;
+  const labelW=78,valueX=84,valueW=right-valueX;
+  const nameFit=fitWrapped(name,valueW,24,14,2);
+  svgText(svg,'ชื่อ:',x,25,{weight:700,size:22});
+  let nameY=25;
+  nameFit.lines.forEach((line,index)=>svgText(svg,line,valueX,nameY+index*nameFit.lineHeight,{weight:700,size:nameFit.size}));
+
+  const rowSize=20;
+  const lotSize=fitSingleLine(lot,valueW,21,13,600);
+  svgText(svg,'Lot:',x,74,{weight:500,size:rowSize});
+  svgText(svg,lot,valueX,74,{weight:600,size:lotSize});
+
+  const openedSize=fitSingleLine(opened,valueW,21,13,600);
+  svgText(svg,'เปิด:',x,108,{weight:500,size:rowSize});
+  svgText(svg,opened,valueX,108,{weight:600,size:openedSize});
+
+  const expSize=fitSingleLine(exp,valueW,21,13,600);
+  svgText(svg,'Exp:',x,142,{weight:500,size:rowSize});
+  svgText(svg,exp,valueX,142,{weight:600,size:expSize});
+
+  const userLabel='ผู้เปิดใช้:';
+  const userLabelSize=27;
+  setMeasureFont(700,userLabelSize);
+  const userX=x+measureCtx.measureText(userLabel).width+8;
+  const userSize=fitSingleLine(user,right-userX,29,14,700);
+  svgText(svg,userLabel,x,187,{weight:700,size:userLabelSize});
+  svgText(svg,user,userX,187,{weight:700,size:userSize});
+
+  const footerSize=fitSingleLine(footer,W-14,12,8.5,500);
+  svgText(svg,footer,W/2,224,{weight:500,size:footerSize,anchor:'middle'});
+}
+async function prepare(){
+  if(document.fonts&&document.fonts.ready){try{await document.fonts.ready;}catch(_){}}
+  for(let i=0;i<copies;i++)drawLabel(makePage());
+  await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+}
+async function startPrint(){
+  try{
+    await prepare();
+    statusEl.innerHTML=`กำลังเปิดหน้าพิมพ์…<small>${copies} ดวง · ขนาด 25 × 20 mm · Scale 100% / Actual size</small>`;
+    await new Promise(resolve=>setTimeout(resolve,180));
+    window.focus();window.print();
+  }catch(e){statusEl.innerHTML='สร้างสติ๊กเกอร์ไม่สำเร็จ กรุณาปิดหน้านี้แล้วลองใหม่';console.error(e);}
+}
+window.addEventListener('afterprint',()=>setTimeout(()=>window.close(),180));
+window.addEventListener('load',()=>{if(p.get('auto')==='1')startPrint();else prepare();},{once:true});
+setTimeout(()=>{if(p.get('auto')==='1'&&!document.hidden)statusEl.innerHTML='หากหน้าพิมพ์ยังไม่เปิด กรุณากด Ctrl + P<small>เลือกกระดาษ 25 × 20 mm และ Scale 100% / Actual size</small>';},6000);
+</script>
+</body>
+</html>

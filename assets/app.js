@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.34';
+const APP_VERSION = '1.4.35';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const DEFAULT_EXPIRY_ALERT_DAYS = 30;
 const MAX_EXPIRY_ALERT_DAYS = 240;
@@ -1025,6 +1025,11 @@ function activityCard(a) {
     if (detail.reason) detailParts.push(detail.reason);
   }
   if (a.action === 'ISSUE') detailParts.push(`วิธีนำออก: ${issueMethodLabel(detail.issue_method)}`);
+  if (a.action === 'OPEN_LABEL_PRINT') {
+    if (detail.opened_on) detailParts.push(`เปิดใช้ ${d(detail.opened_on)}`);
+    if (detail.expiry_date) detailParts.push(`EXP ${d(detail.expiry_date)}`);
+    if (detail.opened_by) detailParts.push(`ผู้เปิดใช้ ${detail.opened_by}`);
+  }
   if (detail.before !== undefined && detail.after !== undefined) {
     detailParts.push(`คงเหลือ ${qty(detail.before)} → ${qty(detail.after)}${info.unit ? ' ' + info.unit : ''}`);
   } else if (detail.quantity !== undefined) {
@@ -1034,7 +1039,7 @@ function activityCard(a) {
   if (info.code) metaParts.push(`รหัส ${info.code}`);
   metaParts.push(`โดย ${a.actor_name || a.actor_email || 'SYSTEM'}`);
   metaParts.push(dt(a.created_at));
-  const iconName = a.action === 'RECEIVE' ? 'plus' : a.action === 'ISSUE' ? 'minus' : a.action === 'LABEL_PRINT' ? 'print' : 'check';
+  const iconName = a.action === 'RECEIVE' ? 'plus' : a.action === 'ISSUE' ? 'minus' : ['LABEL_PRINT','OPEN_LABEL_PRINT'].includes(a.action) ? 'print' : 'check';
   return `<div class="activity-row"><span class="activity-dot">${icon(iconName)}</span><div class="activity-copy"><strong class="activity-title">${esc(title)}</strong>${detailParts.length ? `<div class="activity-detail">${detailParts.map(esc).join(' · ')}</div>` : ''}<div class="activity-meta">${metaParts.map(esc).join(' · ')}</div></div></div>`;
 }
 
@@ -1487,6 +1492,51 @@ async function printLabel(lotId, defaultCopies = 1) {
   launchLabelPrint(lotId, defaultCopies);
 }
 
+
+function preparePrintPopup(title = 'กำลังเปิดหน้าพิมพ์', detail = '') {
+  const popup = window.open('about:blank', 'cnmi_inventory_open_label', 'width=520,height=430');
+  if (!popup) return null;
+  popup.document.write(`<!doctype html><meta charset="utf-8"><title>${esc(title)}</title><body style="font-family:system-ui;padding:24px"><b>${esc(title)}</b>${detail ? `<br>${esc(detail)}` : ''}</body>`);
+  popup.document.close();
+  return popup;
+}
+
+async function launchOpenLabelPrint(l, {popup = null, openedOn = '', openedBy = ''} = {}) {
+  if (!l) return false;
+  const printWindow = popup || preparePrintPopup('กำลังเตรียมสติ๊กเกอร์วันเปิดใช้', 'ขนาด 25 × 20 mm…');
+  if (!printWindow) {
+    toast('เบราว์เซอร์บล็อกหน้าพิมพ์ กรุณาอนุญาต Pop-up ของเว็บไซต์นี้', true);
+    return false;
+  }
+  const openDate = openedOn || dateInputValue(new Date());
+  const operator = openedBy || profile?.display_name || profile?.email || 'ผู้ใช้งานปัจจุบัน';
+  try {
+    const params = new URLSearchParams({
+      name:l.label_name || l.material_name || '-',
+      lot:l.lot_no || '-',
+      opened:d(openDate),
+      exp:l.expiry_date ? d(l.expiry_date) : 'ไม่ระบุ',
+      user:operator,
+      footer:'FM-CNPL-034 Rev.00 วันบังคับใช้ 1 สิงหาคม 2562',
+      copies:'1',
+      auto:'1'
+    });
+    const labelUrl = new URL('open-label.html', location.href);
+    labelUrl.search = params.toString();
+    printWindow.location.replace(labelUrl.toString());
+    (async () => {
+      try {
+        await sb.rpc('fn_log_open_label_print', {p_lot_id:l.lot_id,p_opened_on:openDate});
+      } catch (_) {}
+    })();
+    return true;
+  } catch (e) {
+    try { printWindow.close(); } catch (_) {}
+    toast(errMsg(e), true);
+    return false;
+  }
+}
+
 function printLogProfile(summary = {}) {
   const raw = String(summary?.printer_profile || '').toUpperCase();
   if (raw === 'UNIVERSAL') return {name:'สติ๊กเกอร์มาตรฐาน'};
@@ -1898,9 +1948,18 @@ function openIssueModal(l, source = 'manual') {
   if (!l || Number(l.balance) <= 0) return toast('Lot นี้ไม่มียอดคงเหลือ', true);
   if (isExpired(l)) return toast('Lot นี้หมดอายุแล้ว ให้ยืนยันนำออกจากพื้นที่ในเมนูตรวจวันศุกร์', true);
   const issueMethod = source === 'scan' ? 'QR_SCAN' : 'MANUAL_ENTRY';
-  openModal(`<h3>ยืนยันนำออก</h3><div class="selected-lot"><div><strong>${esc(l.material_name)}</strong><small>${esc(lotKey(l))} · EXP ${d(l.expiry_date)}</small></div><span class="badge info">เหลือ ${qty(l.balance)} ${esc(l.unit)}</span></div><div class="notice">วิธีนำออก: <b>${esc(issueMethodLabel(issueMethod))}</b><br>ระบบล็อกให้ตัดออกครั้งละ 1 หน่วยต่อ 1 ครั้ง</div><form id="quickIssueForm" class="form-grid" style="margin-top:15px"><label>หมายเหตุ<textarea id="quickIssueReason" rows="2" placeholder="ระบุเมื่อต้องการ"></textarea></label><button class="primary" type="submit">${icon('minus')} ยืนยันนำออก 1 หน่วย</button></form>`);
+  const openLabelEnabled = Boolean(l.open_label_required);
+  const openLabelOption = openLabelEnabled
+    ? `<label class="confirm-check open-label-confirm"><input id="printOpenLabel" type="checkbox" checked><span><strong>พิมพ์สติ๊กเกอร์วันเปิดใช้หลังนำออก</strong><small>ระบบใส่ชื่อวัสดุ Lot วันเปิดวันนี้ EXP และชื่อผู้เปิดใช้ตามแบบ FM-CNPL-034 ให้อัตโนมัติ</small></span></label>`
+    : '';
+  openModal(`<h3>ยืนยันนำออก</h3><div class="selected-lot"><div><strong>${esc(l.material_name)}</strong><small>${esc(lotKey(l))} · EXP ${d(l.expiry_date)}</small></div><span class="badge info">เหลือ ${qty(l.balance)} ${esc(l.unit)}</span></div><div class="notice">วิธีนำออก: <b>${esc(issueMethodLabel(issueMethod))}</b><br>ระบบล็อกให้ตัดออกครั้งละ 1 หน่วยต่อ 1 ครั้ง</div><form id="quickIssueForm" class="form-grid" style="margin-top:15px">${openLabelOption}<label>หมายเหตุ<textarea id="quickIssueReason" rows="2" placeholder="ระบุเมื่อต้องการ"></textarea></label><button class="primary" type="submit">${icon('minus')} ยืนยันนำออก 1 หน่วย</button></form>`);
   $('#quickIssueForm').addEventListener('submit', async e => {
     e.preventDefault();
+    const shouldPrintOpenLabel = openLabelEnabled && Boolean($('#printOpenLabel')?.checked);
+    const openedOn = dateInputValue(new Date());
+    const openedBy = profile?.display_name || profile?.email || 'ผู้ใช้งานปัจจุบัน';
+    const printPopup = shouldPrintOpenLabel ? preparePrintPopup('กำลังเตรียมสติ๊กเกอร์วันเปิดใช้', 'ระบบจะพิมพ์หลังบันทึกนำออกสำเร็จ…') : null;
+    const popupBlocked = shouldPrintOpenLabel && !printPopup;
     const btn = e.submitter;
     btn.disabled = true;
     const {error} = await sb.rpc('fn_issue_stock', {
@@ -1910,9 +1969,26 @@ function openIssueModal(l, source = 'manual') {
       p_issue_method:issueMethod
     });
     btn.disabled = false;
-    if (error) return toast(errMsg(error), true);
+    if (error) {
+      try { printPopup?.close(); } catch (_) {}
+      return toast(errMsg(error), true);
+    }
     closeModal();
     stockCache = []; scanLotsCache=[]; scanLotsLoadedAt=0;
+    if (shouldPrintOpenLabel && printPopup) {
+      const opened = await launchOpenLabelPrint(l, {popup:printPopup,openedOn,openedBy});
+      toast(opened ? 'บันทึกนำออก 1 หน่วยแล้ว และกำลังเปิดสติ๊กเกอร์วันเปิดใช้' : 'บันทึกนำออก 1 หน่วยแล้ว แต่เปิดหน้าพิมพ์ไม่สำเร็จ', !opened);
+      navigate(route === 'home' ? 'home' : 'stock');
+      return;
+    }
+    if (popupBlocked) {
+      openModal(`<h3>นำออกเรียบร้อย</h3><div class="notice">บันทึกนำออก 1 หน่วยแล้ว แต่เบราว์เซอร์บล็อกหน้าพิมพ์</div><p class="muted">กดปุ่มด้านล่างเพื่อพิมพ์สติ๊กเกอร์วันเปิดใช้ แล้วอนุญาต Pop-up เมื่อ Chrome ถาม</p><div class="actions"><button class="primary" id="retryOpenLabelPrint">${icon('print')} พิมพ์สติ๊กเกอร์วันเปิดใช้</button><button class="secondary modal-close">ปิด</button></div>`);
+      $('#retryOpenLabelPrint')?.addEventListener('click', async () => {
+        const ok = await launchOpenLabelPrint(l, {openedOn,openedBy});
+        if (ok) closeModal();
+      });
+      return;
+    }
     toast('บันทึกนำออก 1 หน่วยแล้ว');
     navigate(route === 'home' ? 'home' : 'stock');
   });
@@ -2615,7 +2691,7 @@ async function renderActivity() {
     let q=sb.from('v_audit_activity').select('*');
     if(type==='receive')q=q.eq('action','RECEIVE');
     else if(type==='issue')q=q.eq('action','ISSUE');
-    else if(type==='print')q=q.eq('action','LABEL_PRINT');
+    else if(type==='print')q=q.in('action',['LABEL_PRINT','OPEN_LABEL_PRINT']);
     else if(type==='expired')q=q.in('action',['EXPIRED_REMOVED','AUTO_EXPIRED']);
     else if(type==='check')q=q.in('action',['STOCK_CHECK_MATCHED','STOCK_CHECK_ADJUSTED','WEEKLY_CHECK_COMPLETED','WEEKLY_DELEGATION_REQUESTED','WEEKLY_DELEGATION_ADMIN_ASSIGNED','WEEKLY_DELEGATION_ACCEPTED','WEEKLY_DELEGATION_REJECTED','WEEKLY_DELEGATION_CANCELLED']);
     const {data,error}=await q.limit(300);
@@ -2864,11 +2940,11 @@ async function renderAdmin() {
   materialsCache = [];
   window._adminMaterials = m || [];
   window._adminStaff = s || [];
-  page.innerHTML = `<div class="page-head"><div><h2>ตั้งค่าผู้ดูแลระบบ</h2><p class="muted small">เปลี่ยนคนดูแลวัสดุได้ตลอด และกำหนดสิทธิ์ผู้ใช้</p></div><span class="badge info">โหมด Admin</span></div><section class="admin-note"><strong>การทำงาน 2 โหมด</strong><p>บัญชี Admin สามารถสลับเป็น “เจ้าหน้าที่” เพื่อทำงานเหมือนทุกคน หรือ “ผู้ดูแลระบบ” เมื่อต้องตั้งค่าและดูงานรวม</p></section><section class="card admin-workload-card"><div class="section-title compact"><div><h3>ภาระงานผู้ดูแล</h3><p class="muted small">นับจากวัสดุที่เป็นผู้ดูแลหลักและผู้ช่วยดูแล</p></div></div><div class="admin-workload-grid">${(s || []).map(person=>{const primary=(m||[]).filter(x=>normalizedEmail(x.responsible_email)===normalizedEmail(person.email)).length;const assistant=(m||[]).filter(x=>normalizedEmail(x.assistant_responsible_email)===normalizedEmail(person.email)).length;return `<button type="button" class="admin-workload-person" data-route="my-stock"><strong>${esc(person.display_name)}</strong><span>หลัก ${primary}</span><span>ผู้ช่วย ${assistant}</span><em>รวม ${primary+assistant}</em></button>`;}).join('')}</div></section><div class="section-title"><h3>ผู้ใช้งาน</h3></div><div class="table-wrap"><table class="data-table"><thead><tr><th>ชื่อ</th><th>อีเมล</th><th>สิทธิ์บัญชี</th></tr></thead><tbody>${(s || []).map(x => `<tr><td>${esc(x.display_name)}</td><td>${esc(x.email)}</td><td><select data-role-email="${esc(x.email)}"><option value="staff" ${x.role === 'staff' ? 'selected' : ''}>เจ้าหน้าที่</option><option value="admin" ${x.role === 'admin' ? 'selected' : ''}>Admin (สลับได้ 2 โหมด)</option></select></td></tr>`).join('')}</tbody></table></div><div class="section-title admin-owner-head"><div><h3>กำหนดผู้ดูแลหลักและผู้ช่วยดูแล</h3><p class="muted small">ทั้งสองคนเห็นรายการและช่วยตรวจวันศุกร์ได้</p></div><div class="search-box">${icon('search')}<input id="adminMaterialSearch" placeholder="ค้นหารหัส ชื่อ หรือผู้ดูแล"></div></div><div class="table-wrap"><table class="data-table"><thead><tr><th>รหัส</th><th>ชื่อวัสดุ</th><th>ขั้นต่ำ</th><th>เตือน EXP</th><th>ผู้ดูแลหลัก</th><th>ผู้ช่วยดูแล</th><th>จัดการ</th></tr></thead><tbody id="adminMaterialBody"></tbody></table></div>`;
+  page.innerHTML = `<div class="page-head"><div><h2>ตั้งค่าผู้ดูแลระบบ</h2><p class="muted small">เปลี่ยนคนดูแลวัสดุได้ตลอด และกำหนดสิทธิ์ผู้ใช้</p></div><span class="badge info">โหมด Admin</span></div><section class="admin-note"><strong>การทำงาน 2 โหมด</strong><p>บัญชี Admin สามารถสลับเป็น “เจ้าหน้าที่” เพื่อทำงานเหมือนทุกคน หรือ “ผู้ดูแลระบบ” เมื่อต้องตั้งค่าและดูงานรวม</p></section><section class="card admin-workload-card"><div class="section-title compact"><div><h3>ภาระงานผู้ดูแล</h3><p class="muted small">นับจากวัสดุที่เป็นผู้ดูแลหลักและผู้ช่วยดูแล</p></div></div><div class="admin-workload-grid">${(s || []).map(person=>{const primary=(m||[]).filter(x=>normalizedEmail(x.responsible_email)===normalizedEmail(person.email)).length;const assistant=(m||[]).filter(x=>normalizedEmail(x.assistant_responsible_email)===normalizedEmail(person.email)).length;return `<button type="button" class="admin-workload-person" data-route="my-stock"><strong>${esc(person.display_name)}</strong><span>หลัก ${primary}</span><span>ผู้ช่วย ${assistant}</span><em>รวม ${primary+assistant}</em></button>`;}).join('')}</div></section><div class="section-title"><h3>ผู้ใช้งาน</h3></div><div class="table-wrap"><table class="data-table"><thead><tr><th>ชื่อ</th><th>อีเมล</th><th>สิทธิ์บัญชี</th></tr></thead><tbody>${(s || []).map(x => `<tr><td>${esc(x.display_name)}</td><td>${esc(x.email)}</td><td><select data-role-email="${esc(x.email)}"><option value="staff" ${x.role === 'staff' ? 'selected' : ''}>เจ้าหน้าที่</option><option value="admin" ${x.role === 'admin' ? 'selected' : ''}>Admin (สลับได้ 2 โหมด)</option></select></td></tr>`).join('')}</tbody></table></div><div class="section-title admin-owner-head"><div><h3>กำหนดผู้ดูแลและการพิมพ์วันเปิดใช้</h3><p class="muted small">ทั้งสองคนเห็นรายการและช่วยตรวจวันศุกร์ได้ พร้อมเลือกวัสดุที่ต้องพิมพ์สติ๊กเกอร์วันเปิดใช้</p></div><div class="search-box">${icon('search')}<input id="adminMaterialSearch" placeholder="ค้นหารหัส ชื่อ หรือผู้ดูแล"></div></div><div class="table-wrap"><table class="data-table"><thead><tr><th>รหัส</th><th>ชื่อวัสดุ</th><th>ขั้นต่ำ</th><th>เตือน EXP</th><th>วันเปิดใช้</th><th>ผู้ดูแลหลัก</th><th>ผู้ช่วยดูแล</th><th>จัดการ</th></tr></thead><tbody id="adminMaterialBody"></tbody></table></div>`;
   const drawMaterials = () => {
     const q = $('#adminMaterialSearch').value.toLowerCase();
     const arr = (m || []).filter(x => !q || `${x.code} ${x.name} ${x.responsible_email} ${x.assistant_responsible_email || ''}`.toLowerCase().includes(q));
-    $('#adminMaterialBody').innerHTML = arr.map(x => `<tr><td>${esc(x.code)}</td><td><strong>${esc(x.name)}</strong><div class="muted tiny">ชื่อบนสติ๊กเกอร์: ${esc(x.label_name || x.name)}</div></td><td>${qty(x.min_qty)} ${esc(x.unit)}</td><td>${expiryAlertLabel(x)}</td><td><select data-owner-code="${esc(x.code)}">${ownerOptions(s, x.responsible_email || '')}</select></td><td><select data-assistant-owner-code="${esc(x.code)}">${ownerOptions(s, x.assistant_responsible_email || '')}</select></td><td><button class="mini" data-edit-material="${esc(x.code)}">แก้ไข</button></td></tr>`).join('');
+    $('#adminMaterialBody').innerHTML = arr.map(x => `<tr><td>${esc(x.code)}</td><td><strong>${esc(x.name)}</strong><div class="muted tiny">ชื่อบนสติ๊กเกอร์: ${esc(x.label_name || x.name)}</div></td><td>${qty(x.min_qty)} ${esc(x.unit)}</td><td>${expiryAlertLabel(x)}</td><td>${x.open_label_required?'<span class="badge ok">พิมพ์</span>':'<span class="badge">ไม่พิมพ์</span>'}</td><td><select data-owner-code="${esc(x.code)}">${ownerOptions(s, x.responsible_email || '')}</select></td><td><select data-assistant-owner-code="${esc(x.code)}">${ownerOptions(s, x.assistant_responsible_email || '')}</select></td><td><button class="mini" data-edit-material="${esc(x.code)}">แก้ไข</button></td></tr>`).join('');
     bindAdminOwnerEvents();
   };
   $('#adminMaterialSearch').addEventListener('input', drawMaterials);
@@ -2909,13 +2985,14 @@ function openMaterialEditor(code) {
   const x = (window._adminMaterials || []).find(m => m.code === code);
   const staff = window._adminStaff || [];
   if (!x) return;
-  openModal(`<h3>${esc(x.code)} · ${esc(x.name)}</h3><form id="matForm" class="form-grid"><label>ชื่อบนสติ๊กเกอร์<input id="matLabel" maxlength="80" value="${esc(x.label_name || x.name)}"></label><label>จำนวนขั้นต่ำ<input id="matMin" type="number" min="0" step="0.01" value="${Number(x.min_qty || 0)}"></label><label>แจ้งใกล้หมดอายุล่วงหน้า<select id="matExpiryAlert"><option value="7" ${expiryAlertDays(x)===7?'selected':''}>1 สัปดาห์</option><option value="14" ${expiryAlertDays(x)===14?'selected':''}>2 สัปดาห์</option><option value="30" ${expiryAlertDays(x)===30?'selected':''}>1 เดือน — รายการทั่วไป</option><option value="240" ${expiryAlertDays(x)===240?'selected':''}>8 เดือน — ต้องเคลมหรือจัดการล่วงหน้า</option></select></label><label>ผู้ดูแลหลัก<select id="matOwner">${ownerOptions(staff, x.responsible_email || '')}</select></label><label>ผู้ช่วยดูแล<select id="matAssistantOwner">${ownerOptions(staff, x.assistant_responsible_email || '')}</select></label><button class="primary" type="submit">บันทึก</button></form>`);
+  openModal(`<h3>${esc(x.code)} · ${esc(x.name)}</h3><form id="matForm" class="form-grid"><label>ชื่อบนสติ๊กเกอร์<input id="matLabel" maxlength="80" value="${esc(x.label_name || x.name)}"></label><label>จำนวนขั้นต่ำ<input id="matMin" type="number" min="0" step="0.01" value="${Number(x.min_qty || 0)}"></label><label>แจ้งใกล้หมดอายุล่วงหน้า<select id="matExpiryAlert"><option value="7" ${expiryAlertDays(x)===7?'selected':''}>1 สัปดาห์</option><option value="14" ${expiryAlertDays(x)===14?'selected':''}>2 สัปดาห์</option><option value="30" ${expiryAlertDays(x)===30?'selected':''}>1 เดือน — รายการทั่วไป</option><option value="240" ${expiryAlertDays(x)===240?'selected':''}>8 เดือน — ต้องเคลมหรือจัดการล่วงหน้า</option></select></label><label class="confirm-check open-label-setting"><input id="matOpenLabel" type="checkbox" ${x.open_label_required?'checked':''}><span><strong>พิมพ์สติ๊กเกอร์วันเปิดใช้เมื่อนำออก</strong><small>ใช้กับน้ำยาที่ต้องติดชื่อ Lot วันเปิด EXP และผู้เปิดใช้ ตามแบบ FM-CNPL-034</small></span></label><label>ผู้ดูแลหลัก<select id="matOwner">${ownerOptions(staff, x.responsible_email || '')}</select></label><label>ผู้ช่วยดูแล<select id="matAssistantOwner">${ownerOptions(staff, x.assistant_responsible_email || '')}</select></label><button class="primary" type="submit">บันทึก</button></form>`);
   $('#matForm').addEventListener('submit', async e => {
     e.preventDefault();
     const {error} = await sb.from('materials').update({
       label_name:$('#matLabel').value.trim(),
       min_qty:Number($('#matMin').value),
       expiry_alert_days:Number($('#matExpiryAlert').value || DEFAULT_EXPIRY_ALERT_DAYS),
+      open_label_required:Boolean($('#matOpenLabel')?.checked),
       responsible_email:$('#matOwner').value || null,
       assistant_responsible_email:$('#matAssistantOwner').value || null
     }).eq('code', code);
@@ -2929,7 +3006,7 @@ function openMaterialEditor(code) {
 }
 
 function renderHelp() {
-  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>สร้างบัญชีครั้งแรก</h3><ol class="help-steps"><li>ใช้เฉพาะอีเมลมหิดล @mahidol.ac.th ที่ Admin อนุญาตไว้</li><li>ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว</li><li>กด “สร้างบัญชีครั้งแรก” แล้วกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</li></ol></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>พิมพ์ชื่อวัสดุบางส่วนแล้วเลือกจากรายการ</li><li>ตรวจชื่อผู้นำเข้าปัจจุบัน ใส่ Lot วันหมดอายุ และจำนวน แล้วบันทึก</li></ol></div><div class="card help-card"><h3>นำออก</h3><ol class="help-steps"><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าและวิธีนำออก แล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>ระบบบันทึกแยกเป็น “สแกน QR” หรือ “พิมพ์รหัสเอง” ในประวัติและรายงาน</li></ol></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแล</h3><p>มี 3 เมนูย่อย: ภาพรวม, ต้องเบิก และตั้งค่าการเตือน เลือกเตือนตามจำนวนขั้นต่ำ เตือนรอบเบิกรายเดือน หรือไม่แจ้งเตือนได้ และกำหนดเกณฑ์ใกล้หมดอายุแยกต่อวัสดุเป็น 1 สัปดาห์ 2 สัปดาห์ 1 เดือน หรือ 8 เดือน รวมถึงเลือกเตือนเมื่อกำลังใช้ชิ้นสุดท้ายหรือเมื่อน้อยกว่าขั้นต่ำเท่านั้น การเตือนรายเดือนจะเริ่มตรวจรอบตั้งแต่เดือนถัดไปหลังบันทึก</p></div><div class="card help-card"><h3>ตรวจวันศุกร์</h3><p>กรอกจำนวนที่นับได้จริง หากไม่ตรงกับระบบ ให้เลือกเหตุผล สามารถฝากเพื่อนตรวจแทนเฉพาะรอบได้ ผู้รับต้องกดยืนยันก่อน ส่วน Admin เลือกชื่อเจ้าหน้าที่เพื่อทำแทนหรือมอบหมายให้คนอื่นได้ทันที ระบบเก็บผู้ดูแลหลัก ผู้ได้รับมอบหมาย และผู้ตรวจจริงแยกกัน</p></div><div class="card help-card"><h3>สแกนตรวจ Lot</h3><p>เปิดกล้องหรือพิมพ์รหัส QR เพื่อดูยอด Lot ยอดรวม ผู้ดูแล ขั้นต่ำ และยืนยันตรวจหรือปรับยอดได้ทันที</p></div><div class="card help-card"><h3>สถานะผู้ตรวจ</h3><p>เปิดเมนู “สถานะผู้ตรวจ” แล้วกำหนดช่วงวันที่ เพื่อดูว่าแต่ละวันศุกร์ใครตรวจครบหรือยังไม่ครบ</p></div><div class="card help-card"><h3>สติ๊กเกอร์เดิม</h3><p>สติ๊กเกอร์รหัสเดิมยังสแกนได้ ไม่ต้องเปลี่ยนใหม่ทั้งหมด</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบไม่ตัดยอดเอง เปิดตรวจวันศุกร์และกด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์ถัดไป</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมดูได้ในหน้าประวัติและรายงาน</p></div><div class="card help-card"><h3>พิมพ์สติ๊กเกอร์ภายหลัง</h3><p>หลังรับเข้าผ่านโทรศัพท์ ให้เปิดเมนู “พิมพ์สติ๊กเกอร์” บนคอมพิวเตอร์ที่ต่อเครื่องพิมพ์ รายการรับเข้าจะอยู่ในคิวอัตโนมัติ เลือกจำนวนดวงแล้วกด “พิมพ์สติ๊กเกอร์” จากนั้นเลือกเครื่องพิมพ์ใน Chrome</p></div><div class="card help-card"><h3>เครื่องพิมพ์สติ๊กเกอร์</h3><p>ฉลากจริง 25 × 20 mm ระบบใช้รูปแบบสติ๊กเกอร์มาตรฐานเดียวกันทุกเครื่อง พร้อม QR ขนาดใหญ่และขอบขาวมาตรฐาน ในหน้าพิมพ์ Chrome ให้เลือกเครื่องพิมพ์และตั้งกระดาษตามเครื่องที่ใช้งาน ใช้ Scale 100% หรือ Actual size ปิด Header/Footer และใช้ Margin None</p></div></div>`;
+  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>สร้างบัญชีครั้งแรก</h3><ol class="help-steps"><li>ใช้เฉพาะอีเมลมหิดล @mahidol.ac.th ที่ Admin อนุญาตไว้</li><li>ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว</li><li>กด “สร้างบัญชีครั้งแรก” แล้วกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</li></ol></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>พิมพ์ชื่อวัสดุบางส่วนแล้วเลือกจากรายการ</li><li>ตรวจชื่อผู้นำเข้าปัจจุบัน ใส่ Lot วันหมดอายุ และจำนวน แล้วบันทึก</li></ol></div><div class="card help-card"><h3>นำออก</h3><ol class="help-steps"><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าและวิธีนำออก แล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>วัสดุที่ Admin ตั้งให้พิมพ์วันเปิดใช้ ระบบจะใส่ชื่อ Lot วันเปิด EXP และผู้เปิดใช้ แล้วเปิดหน้าพิมพ์ให้อัตโนมัติ</li></ol></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแล</h3><p>มี 3 เมนูย่อย: ภาพรวม, ต้องเบิก และตั้งค่าการเตือน เลือกเตือนตามจำนวนขั้นต่ำ เตือนรอบเบิกรายเดือน หรือไม่แจ้งเตือนได้ และกำหนดเกณฑ์ใกล้หมดอายุแยกต่อวัสดุเป็น 1 สัปดาห์ 2 สัปดาห์ 1 เดือน หรือ 8 เดือน รวมถึงเลือกเตือนเมื่อกำลังใช้ชิ้นสุดท้ายหรือเมื่อน้อยกว่าขั้นต่ำเท่านั้น การเตือนรายเดือนจะเริ่มตรวจรอบตั้งแต่เดือนถัดไปหลังบันทึก</p></div><div class="card help-card"><h3>ตรวจวันศุกร์</h3><p>กรอกจำนวนที่นับได้จริง หากไม่ตรงกับระบบ ให้เลือกเหตุผล สามารถฝากเพื่อนตรวจแทนเฉพาะรอบได้ ผู้รับต้องกดยืนยันก่อน ส่วน Admin เลือกชื่อเจ้าหน้าที่เพื่อทำแทนหรือมอบหมายให้คนอื่นได้ทันที ระบบเก็บผู้ดูแลหลัก ผู้ได้รับมอบหมาย และผู้ตรวจจริงแยกกัน</p></div><div class="card help-card"><h3>สแกนตรวจ Lot</h3><p>เปิดกล้องหรือพิมพ์รหัส QR เพื่อดูยอด Lot ยอดรวม ผู้ดูแล ขั้นต่ำ และยืนยันตรวจหรือปรับยอดได้ทันที</p></div><div class="card help-card"><h3>สถานะผู้ตรวจ</h3><p>เปิดเมนู “สถานะผู้ตรวจ” แล้วกำหนดช่วงวันที่ เพื่อดูว่าแต่ละวันศุกร์ใครตรวจครบหรือยังไม่ครบ</p></div><div class="card help-card"><h3>สติ๊กเกอร์เดิม</h3><p>สติ๊กเกอร์รหัสเดิมยังสแกนได้ ไม่ต้องเปลี่ยนใหม่ทั้งหมด</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบไม่ตัดยอดเอง เปิดตรวจวันศุกร์และกด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์ถัดไป</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมดูได้ในหน้าประวัติและรายงาน</p></div><div class="card help-card"><h3>พิมพ์สติ๊กเกอร์ภายหลัง</h3><p>หลังรับเข้าผ่านโทรศัพท์ ให้เปิดเมนู “พิมพ์สติ๊กเกอร์” บนคอมพิวเตอร์ที่ต่อเครื่องพิมพ์ รายการรับเข้าจะอยู่ในคิวอัตโนมัติ เลือกจำนวนดวงแล้วกด “พิมพ์สติ๊กเกอร์” จากนั้นเลือกเครื่องพิมพ์ใน Chrome</p></div><div class="card help-card"><h3>เครื่องพิมพ์สติ๊กเกอร์</h3><p>ฉลากจริง 25 × 20 mm ระบบใช้รูปแบบสติ๊กเกอร์มาตรฐานเดียวกันทุกเครื่อง พร้อม QR ขนาดใหญ่และขอบขาวมาตรฐาน ในหน้าพิมพ์ Chrome ให้เลือกเครื่องพิมพ์และตั้งกระดาษตามเครื่องที่ใช้งาน ใช้ Scale 100% หรือ Actual size ปิด Header/Footer และใช้ Margin None</p></div></div>`;
   refreshInstallUI();
 }
 
