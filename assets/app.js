@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.49';
+const APP_VERSION = '1.4.50';
 const WEEKLY_CUTOVER_DATE = '2026-07-24';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const DEFAULT_EXPIRY_ALERT_DAYS = 30;
@@ -3318,7 +3318,8 @@ function openCheck(id) {
     reasonFields.classList.toggle('is-disabled', !changed);
     reasonCode.disabled=!changed;
     reasonDetail.disabled=!changed;
-    $('#reasonHint').textContent=changed?'กรุณาเลือกเหตุผล และระบุรายละเอียดเมื่อจำเป็น':'ใช้เมื่อจำนวนจริงไม่ตรงกับยอดระบบ';
+    reasonDetail.required=changed;
+    $('#reasonHint').textContent=changed?'กรุณาเลือกเหตุผลและระบุรายละเอียดให้ครบ':'ใช้เมื่อจำนวนจริงไม่ตรงกับยอดระบบ';
     if (!changed) {
       reasonCode.value='';
       reasonDetail.value='';
@@ -3339,6 +3340,7 @@ function openCheck(id) {
     const actual = Number($('#actualQty').value);
     const diff = Math.abs(actual - current) > 1e-9;
     if (diff && !$('#reasonCode').value) return toast('กรุณาเลือกเหตุผล', true);
+    if (diff && !$('#reasonDetail').value.trim()) return toast('กรุณาระบุรายละเอียดสิ่งที่ตรวจพบและการดำเนินการ', true);
     const btn=e.submitter; btn.disabled=true;
     const {error} = await sb.rpc('fn_save_stock_check', {
       p_item_id:id,
@@ -3655,11 +3657,53 @@ function indicatorValueText(row) {
 function indicatorCardMarkup(row) {
   const meta = indicatorStatusMeta(row.status);
   const isManual = ['OPENED_REAGENT_EXPIRED_USE','LABEL_COMPLAINT'].includes(row.indicator_code);
-  return `<article class="indicator-card ${meta.cls}">
+  return `<article class="indicator-card ${meta.cls}" data-indicator-card="${esc(row.indicator_code)}">
     <div class="indicator-card-head"><span class="indicator-order">${Number(row.sort_order || 0)}</span><div><h3>${esc(row.title)}</h3><p>${esc(row.detail || '')}</p></div><span class="indicator-status ${meta.cls}">${icon(meta.icon)} ${meta.label}</span></div>
     <div class="indicator-result"><div><small>ผลปัจจุบัน</small><strong>${indicatorValueText(row)}</strong></div><div><small>เป้าหมาย</small><strong>${esc(row.target_label || '-')}</strong></div>${row.denominator !== null && row.denominator !== undefined ? `<div><small>จำนวนที่ผ่าน</small><strong>${Number(row.numerator || 0).toLocaleString('th-TH')} / ${Number(row.denominator || 0).toLocaleString('th-TH')}</strong></div>` : `<div><small>แหล่งข้อมูล</small><strong>${isManual ? 'ทะเบียนเหตุการณ์' : 'ฐานข้อมูลปัจจุบัน'}</strong></div>`}</div>
+    <button type="button" class="indicator-open-details ${meta.cls}" data-indicator-details="${esc(row.indicator_code)}">${icon('search')} ดูรายละเอียดว่าอะไรผ่านหรือไม่ผ่าน</button>
     <details class="indicator-detail"><summary>วิธีติดตามและแหล่งข้อมูล</summary><p><b>วิธีติดตาม:</b> ${esc(row.method || '-')}</p><p><b>แหล่งข้อมูล:</b> ${esc(row.source || '-')}</p>${isManual ? '<p class="indicator-manual-note">รายการนี้ต้องกด “บันทึกเหตุการณ์” เมื่อเกิดเหตุจริง หากไม่พบเหตุการณ์ ระบบจะแสดง 0</p>' : ''}</details>
   </article>`;
+}
+
+function indicatorDetailRowMarkup(x) {
+  const passed=String(x.row_status||'').toUpperCase()==='PASS';
+  const statusLabel=passed?'ผ่าน':'ไม่ผ่าน';
+  const when=x.item_time?dt(x.item_time):(x.item_date?d(x.item_date):'-');
+  const material=x.material_name?`${x.material_code?`${esc(x.material_code)} · `:''}${esc(x.material_name)}`:esc(x.item_label||'-');
+  const lot=x.lot_no?`<span class="indicator-detail-chip">Lot ${esc(x.lot_no)}</span>`:'';
+  const people=[
+    x.responsible_name?`<span><small>ผู้ดูแลหลัก</small><strong>${esc(x.responsible_name)}</strong></span>`:'',
+    x.assistant_name?`<span><small>ผู้ช่วยดูแล</small><strong>${esc(x.assistant_name)}</strong></span>`:'',
+    (x.actor_name||x.actor_email)?`<span><small>ผู้ทำ/ผู้บันทึก</small><strong>${esc(x.actor_name||x.actor_email)}</strong></span>`:''
+  ].filter(Boolean).join('');
+  return `<article class="indicator-detail-row ${passed?'ok':'danger'}"><div class="indicator-detail-row-head"><span class="badge ${passed?'ok':'danger'}">${statusLabel}</span><time>${esc(when)}</time></div><div class="indicator-detail-row-title"><h4>${material}</h4>${lot}</div>${people?`<div class="indicator-detail-people">${people}</div>`:''}<div class="indicator-detail-reason"><p><b>ผล/สาเหตุ:</b> ${esc(x.issue||'-')}</p><p><b>รายละเอียด:</b> ${esc(x.detail||'-')}</p></div></article>`;
+}
+
+async function openIndicatorDetails(row, from, to) {
+  if(!row) return;
+  const meta=indicatorStatusMeta(row.status);
+  openModal(`<section class="indicator-details-modal"><div class="indicator-details-head"><div><p class="eyebrow">Indicator details</p><h3>${esc(row.title)}</h3><p>${d(from)} – ${d(to)}</p></div><span class="indicator-status ${meta.cls}">${icon(meta.icon)} ${meta.label}</span></div><div id="indicatorDetailsBody" class="usage-loading">กำลังโหลดรายละเอียด…</div></section>`);
+  const body=$('#indicatorDetailsBody');
+  const {data,error}=await sb.rpc('fn_inventory_indicator_details',{p_indicator_code:row.indicator_code,p_from:from,p_to:to});
+  if(error){body.className='notice';body.innerHTML=`${esc(errMsg(error))}<br><small>กรุณารัน SQL หมายเลข 28 ของ v1.4.50 ก่อนใช้งานรายละเอียดตัวชี้วัด</small>`;return;}
+  const rows=data||[];
+  const failCount=rows.filter(x=>String(x.row_status).toUpperCase()==='FAIL').length;
+  const passCount=rows.filter(x=>String(x.row_status).toUpperCase()==='PASS').length;
+  let activeFilter=failCount?'FAIL':'ALL';
+  let currentPage=1;
+  const pageSize=50;
+  const draw=()=>{
+    const filtered=activeFilter==='ALL'?rows:rows.filter(x=>String(x.row_status).toUpperCase()===activeFilter);
+    const pages=Math.max(1,Math.ceil(filtered.length/pageSize));
+    currentPage=Math.min(currentPage,pages);
+    const shown=filtered.slice((currentPage-1)*pageSize,currentPage*pageSize);
+    body.className='indicator-details-body';
+    body.innerHTML=`<div class="indicator-detail-summary"><div><small>ผ่าน</small><strong>${passCount.toLocaleString('th-TH')}</strong></div><div class="danger"><small>ไม่ผ่าน</small><strong>${failCount.toLocaleString('th-TH')}</strong></div><div><small>ทั้งหมด</small><strong>${rows.length.toLocaleString('th-TH')}</strong></div></div><div class="indicator-detail-toolbar"><div class="filters"><button type="button" class="chip ${activeFilter==='FAIL'?'active':''}" data-indicator-detail-filter="FAIL">ไม่ผ่าน (${failCount})</button><button type="button" class="chip ${activeFilter==='PASS'?'active':''}" data-indicator-detail-filter="PASS">ผ่าน (${passCount})</button><button type="button" class="chip ${activeFilter==='ALL'?'active':''}" data-indicator-detail-filter="ALL">ทั้งหมด (${rows.length})</button></div></div>${shown.length?`<div class="indicator-detail-list">${shown.map(indicatorDetailRowMarkup).join('')}</div>`:`<div class="empty indicator-detail-empty">${rows.length?'ไม่มีรายการตามตัวกรอง':'ไม่มีรายการรายละเอียดในช่วงวันที่นี้'}<p>${esc(row.detail||'')}</p></div>`}${filtered.length>pageSize?`<div class="indicator-detail-pagination"><button type="button" class="secondary" data-indicator-detail-prev ${currentPage<=1?'disabled':''}>ก่อนหน้า</button><span>หน้า ${currentPage} / ${pages}</span><button type="button" class="secondary" data-indicator-detail-next ${currentPage>=pages?'disabled':''}>ถัดไป</button></div>`:''}`;
+    $$('[data-indicator-detail-filter]',body).forEach(b=>b.addEventListener('click',()=>{activeFilter=b.dataset.indicatorDetailFilter;currentPage=1;draw();}));
+    $('[data-indicator-detail-prev]',body)?.addEventListener('click',()=>{currentPage--;draw();});
+    $('[data-indicator-detail-next]',body)?.addEventListener('click',()=>{currentPage++;draw();});
+  };
+  draw();
 }
 
 function indicatorEventTypeLabel(value) {
@@ -3720,6 +3764,7 @@ async function renderIndicators() {
     const nodata=indicatorRows.filter(x=>x.status==='NO_DATA').length;
     $('#indicatorSummary').innerHTML=`<div><span>ทั้งหมด</span><strong>${indicatorRows.length}</strong><small>ตัวชี้วัด</small></div><div class="ok"><span>ผ่านเป้าหมาย</span><strong>${pass}</strong><small>รายการ</small></div><div class="danger"><span>ไม่ผ่าน</span><strong>${fail}</strong><small>รายการ</small></div><div><span>ยังไม่มีข้อมูล</span><strong>${nodata}</strong><small>รายการ</small></div>`;
     $('#indicatorGrid').innerHTML=indicatorRows.map(indicatorCardMarkup).join('') || '<div class="card empty">ไม่พบตัวชี้วัด</div>';
+    $$('[data-indicator-details]').forEach(b=>b.addEventListener('click',()=>{const row=indicatorRows.find(x=>x.indicator_code===b.dataset.indicatorDetails);const {from,to}=readRange();openIndicatorDetails(row,from,to).catch(e=>toast(errMsg(e),true));}));
     $('#indicatorEventList').innerHTML=eventRows.length?`<div class="table-wrap"><table class="data-table"><thead><tr><th>วันที่</th><th>ประเภท</th><th>วัสดุ/Lot</th><th>รายละเอียด</th><th>สถานะ</th><th>จัดการ</th></tr></thead><tbody>${eventRows.map(x=>`<tr><td>${d(x.occurred_on)}</td><td>${esc(indicatorEventTypeLabel(x.event_type))}</td><td>${esc(x.materials?.name || x.material_code || '-')}<div class="muted tiny">${x.lot_no?`Lot ${esc(x.lot_no)}`:'ไม่ระบุ Lot'}</div></td><td>${esc(x.detail)}${x.corrective_action?`<div class="muted tiny">แก้ไข: ${esc(x.corrective_action)}</div>`:''}</td><td>${x.status==='CLOSED'?'<span class="badge ok">ปิดแล้ว</span>':'<span class="badge warn">กำลังดำเนินการ</span>'}</td><td><button class="mini" data-edit-indicator-event="${esc(x.id)}">แก้ไข</button></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty indicator-events-empty">ยังไม่มีเหตุการณ์ในช่วงวันที่นี้</div>';
     $$('[data-edit-indicator-event]').forEach(b=>b.addEventListener('click',()=>openIndicatorEventModal(eventRows.find(x=>x.id===b.dataset.editIndicatorEvent),load)));
     queueResponsiveTables(page);
@@ -3761,7 +3806,7 @@ async function renderIndicators() {
     saveCsv(`CNMI_Inventory_Indicators_${from}_${to}.csv`,[['ลำดับ','ตัวชี้วัด','เป้าหมาย','ผลปัจจุบัน','จำนวนผ่าน','จำนวนทั้งหมด','สถานะ','รายละเอียด','วิธีติดตาม','แหล่งข้อมูล'],...indicatorRows.map(x=>[x.sort_order,x.title,x.target_label,indicatorValueText(x),x.numerator??'',x.denominator??'',indicatorStatusMeta(x.status).label,x.detail,x.method,x.source])]);
     toast('ส่งออกตัวชี้วัด CSV แล้ว');
   });
-  try{await load();}catch(e){$('#indicatorGrid').innerHTML=`<div class="card notice">${esc(errMsg(e))}<br><small>หากเพิ่งอัปเดต กรุณารัน SQL หมายเลข 26 ใน Supabase ก่อน</small></div>`;$('#indicatorEventList').innerHTML='';}
+  try{await load();}catch(e){$('#indicatorGrid').innerHTML=`<div class="card notice">${esc(errMsg(e))}<br><small>หากเพิ่งอัปเดต กรุณารัน SQL หมายเลข 28 ของ v1.4.50 ใน Supabase ก่อน</small></div>`;$('#indicatorEventList').innerHTML='';}
 }
 
 
