@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.45';
+const APP_VERSION = '1.4.46';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const DEFAULT_EXPIRY_ALERT_DAYS = 30;
 const MAX_EXPIRY_ALERT_DAYS = 240;
@@ -25,6 +25,8 @@ let usageMaterialCode = '';
 let myStockTab = 'overview';
 let myStockScope = 'primary';
 let weeklyAdminActingForEmail = '';
+let weeklyActiveFilter = 'pending';
+let weeklyOwnerFilterValue = '';
 let adminTab = 'overview';
 let scannerStream = null;
 let scannerTimer = null;
@@ -1035,6 +1037,12 @@ async function globalClick(e) {
     e.preventDefault();
     closeModal();
     startCameraScanner('inspect');
+    return;
+  }
+  const viewCheck = e.target.closest('[data-view-check]');
+  if (viewCheck) {
+    e.preventDefault();
+    openWeeklyResult(viewCheck.dataset.viewCheck);
     return;
   }
   const c = e.target.closest('[data-check]');
@@ -2981,6 +2989,20 @@ function weeklyDelegationBadge(x) {
   return '';
 }
 
+function weeklyCheckedSystemQty(x) {
+  for (const value of [x?.balance_at_check, x?.system_qty, x?.current_balance]) {
+    if (value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value))) return Number(value);
+  }
+  return 0;
+}
+
+function weeklyCheckedActualQty(x) {
+  const value = x?.actual_qty;
+  return value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value))
+    ? Number(value)
+    : weeklyCheckedSystemQty(x);
+}
+
 function weeklyItemCard(x) {
   const expired = requiresExpiryConfirmation(x) && x.checked_at == null;
   const resultText = x.result === 'MATCHED' ? 'ตรง' : x.result === 'ADJUSTED' ? 'ปรับแล้ว' : x.result === 'EXPIRED_REMOVED' ? 'นำหมดอายุออกแล้ว' : '';
@@ -2991,8 +3013,11 @@ function weeklyItemCard(x) {
   const ownerNick = operatorNickname(x.responsible_name || x.responsible_email || 'ผู้ดูแล');
   const checkerNick = operatorNickname(x.checked_by_name || x.checked_by_email || '');
   const delegateBadge = weeklyDelegationBadge(x);
+  const checkedSystem = weeklyCheckedSystemQty(x);
+  const checkedActual = weeklyCheckedActualQty(x);
+  const checkedDiff = checkedActual - checkedSystem;
   let action = '';
-  if (x.checked_at) action = `<span class="badge ${resultClass}">${resultText}</span>`;
+  if (x.checked_at) action = `<div class="weekly-result-actions"><span class="badge ${resultClass}">${resultText}</span><button class="mini ghost" type="button" data-view-check="${esc(x.item_id)}">ดูผลตรวจ</button></div>`;
   else if (weeklyDelegationWaiting(x)) {
     action = delegatedToMe
       ? `<span class="badge warn">รอคุณตอบรับด้านบน</span>`
@@ -3002,13 +3027,16 @@ function weeklyItemCard(x) {
     else if (weeklyDelegationActive(x) && x.delegated_to_name) action = `<span class="badge">รอ ${esc(operatorNickname(x.delegated_to_name))} ตรวจแทน</span>`;
     else action = `<span class="badge">รอ ${esc(ownerNick)}</span>`;
   } else if (expired) action = `<button class="mini danger" data-expired-remove="${esc(x.item_id)}">ยืนยันนำออก</button>`;
-  else action = `<button class="mini" data-check="${esc(x.item_id)}">ตรวจ</button>`;
+  else action = `<button class="mini" data-check="${esc(x.item_id)}">เปิดหน้าต่างตรวจ Lot</button>`;
 
   const delegationLine = delegateBadge ? `<div class="weekly-delegation-line">${delegateBadge}${x.delegation_reason ? `<small>${esc(x.delegation_reason)}</small>` : ''}</div>` : '';
+  const checkedSummary = x.checked_at
+    ? `<div class="weekly-result-inline"><span><small>ยอดระบบตอนตรวจ</small><strong>${qty(checkedSystem)} ${esc(x.unit || '')}</strong></span><span><small>จำนวนจริง</small><strong>${qty(checkedActual)} ${esc(x.unit || '')}</strong></span><span><small>การเปลี่ยนยอด</small><strong>${Math.abs(checkedDiff) < 1e-9 ? 'ไม่เปลี่ยน' : `${checkedDiff > 0 ? '+' : '-'}${qty(Math.abs(checkedDiff))} ${esc(x.unit || '')}`}</strong></span></div>`
+    : '';
   const checkerLine = x.checked_at
     ? `<div class="lot-meta">${owner && String(x.checked_by_email || '').toLowerCase() !== owner ? `${esc(checkerNick)} ตรวจแทน ${esc(ownerNick)}` : `ดำเนินการโดย ${esc(x.checked_by_name || x.checked_by_email)}`} · ${dt(x.checked_at)}</div>`
     : '';
-  return `<div class="card check-card ${x.checked_at ? (x.result === 'ADJUSTED' ? 'mismatch' : x.result === 'EXPIRED_REMOVED' ? 'expired-done' : 'checked') : expired ? 'expired-card' : ''}"><div class="check-info"><div><strong>${esc(x.material_name)}</strong><div class="lot-meta">${esc(lotKey(x))} · ระบบ ${qty(x.current_balance)} ${esc(x.unit)} · EXP ${d(x.expiry_date)}</div><div class="lot-meta weekly-owner-line"><span><small>ผู้ดูแลหลัก</small>${esc(x.responsible_name || '-')}</span><span><small>ผู้ช่วยดูแล</small>${esc(x.assistant_responsible_name || '-')}</span></div>${delegationLine}${expired ? '<div class="expired-callout">หมดอายุแล้ว: ไม่ต้องนับ ให้ตรวจว่านำออกจากพื้นที่จริงแล้ว</div>' : ''}${checkerLine}</div>${action}</div></div>`;
+  return `<div class="card check-card ${x.checked_at ? (x.result === 'ADJUSTED' ? 'mismatch' : x.result === 'EXPIRED_REMOVED' ? 'expired-done' : 'checked') : expired ? 'expired-card' : ''}"><div class="check-info"><div><strong>${esc(x.material_name)}</strong><div class="lot-meta">${esc(lotKey(x))} · คงเหลือปัจจุบัน ${qty(x.current_balance)} ${esc(x.unit)} · EXP ${d(x.expiry_date)}</div><div class="lot-meta weekly-owner-line"><span><small>ผู้ดูแลหลัก</small>${esc(x.responsible_name || '-')}</span><span><small>ผู้ช่วยดูแล</small>${esc(x.assistant_responsible_name || '-')}</span></div>${delegationLine}${expired ? '<div class="expired-callout">หมดอายุแล้ว: ไม่ต้องนับ ให้ตรวจว่านำออกจากพื้นที่จริงแล้ว</div>' : ''}${checkedSummary}${checkerLine}</div>${action}</div></div>`;
 }
 
 function groupWeeklyDelegations(items, predicate) {
@@ -3107,17 +3135,20 @@ async function renderWeekly() {
   const primaryOwnerSet=new Set(primaryOwnerEntries.map(([email])=>email));
   if (isAdminMode() && weeklyAdminActingForEmail && !primaryOwnerSet.has(weeklyAdminActingForEmail)) weeklyAdminActingForEmail='';
   const ownerSelect = ['<option value="mine">ของฉัน</option>', '<option value="all">ทุกคน</option>'].concat(ownerEntries.map(([email, name]) => `<option value="${esc(email)}">${esc(name)}</option>`)).join('');
-  const transitionNote = String(check.week_friday || '') === '2026-07-24' ? `<section class="card weekly-transition-note">${icon('check')}<div><strong>เริ่มรอบใหม่วันที่ 24 กรกฎาคม 2569</strong><span>รายการที่นับและบันทึกไว้ในวันพฤหัสบดีที่ 23 กรกฎาคม จะถูกยกมานับว่าเสร็จแล้วในรอบนี้ ไม่ต้องนับซ้ำ</span></div></section>` : '';
+  const transitionNote = String(check.week_friday || '') === '2026-07-24' ? `<section class="card weekly-transition-note">${icon('check')}<div><strong>เริ่มรอบ 24 กรกฎาคม 2569</strong><span>ผลตรวจวันที่ 23 กรกฎาคมนับในรอบนี้แล้ว</span></div></section>` : '';
   const adminActingPanel = isAdminMode() ? `<section class="card admin-weekly-acting"><div class="admin-weekly-acting-copy"><span>${icon('user')}</span><div><p class="eyebrow">Admin acting</p><h3>ตรวจแทนเจ้าหน้าที่</h3><p>เลือกชื่อเจ้าของงานก่อนกดตรวจ ระบบจะเก็บชื่อ Admin เป็นผู้ตรวจจริง</p></div></div><label>กำลังทำแทน<select id="adminWeeklyActingFor"><option value="">เลือกชื่อเจ้าหน้าที่</option>${primaryOwnerEntries.map(([email,name])=>`<option value="${esc(email)}" ${email===weeklyAdminActingForEmail?'selected':''}>${esc(name)}</option>`).join('')}</select></label><button class="secondary" type="button" data-open-weekly-delegate>มอบหมายให้คนอื่น</button></section>` : '';
 
-  page.innerHTML = `<div class="page-head"><div><h2>ตรวจสต๊อกวันศุกร์</h2><p class="muted small">รอบวันที่ ${d(check.week_friday)} · จันทร์–พฤหัสบดีนับเข้ารอบวันศุกร์ถัดไป</p></div><div class="weekly-head-actions"><button class="mini ghost" data-route="weekly-status">${icon('user')} สถานะผู้ตรวจ</button><button class="mini" type="button" data-open-weekly-delegate>${isAdminMode()?'มอบหมายผู้ตรวจแทน':'ฝากเพื่อนตรวจแทน'}</button></div></div>${transitionNote}${adminActingPanel}
+  page.innerHTML = `<div class="page-head"><div><h2>ตรวจสต๊อกวันศุกร์</h2><p class="muted small">รอบวันที่ ${d(check.week_friday)}</p></div><div class="weekly-head-actions"><button class="mini ghost" data-route="weekly-status">${icon('user')} สถานะผู้ตรวจ</button><button class="mini" type="button" data-open-weekly-delegate>${isAdminMode()?'มอบหมายผู้ตรวจแทน':'ฝากเพื่อนตรวจแทน'}</button></div></div>${transitionNote}${adminActingPanel}
   <section class="card weekly-header"><div class="weekly-ring small-ring" style="--pct:${pct}"><div><strong>${pct}%</strong><span>${done}/${items.length}</span></div></div><div><h3>ความคืบหน้า</h3><p class="muted">ยังไม่ตรวจ ${items.length-done} Lot · หมดอายุรอยืนยัน ${expiredPending} Lot${delegatedToMe?` · ได้รับฝาก ${delegatedToMe} Lot`:''}${incomingRequests?` · รอตอบรับ ${incomingRequests} คำขอ`:''}</p></div></section>
   ${weeklyDelegationPanels(items)}
-  <div class="weekly-tools"><label>กรองเจ้าหน้าที่<select id="weeklyOwnerFilter">${ownerSelect}</select></label><div class="filters horizontal-scroller" style="margin-bottom:0"><button class="chip active" data-wf="pending">ยังไม่ตรวจ</button><button class="chip" data-wf="primary">ฉันดูแลหลัก</button><button class="chip" data-wf="assistant">ฉันช่วยดูแล</button><button class="chip" data-wf="received">งานที่ได้รับฝาก${delegatedToMe?` ${delegatedToMe}`:''}</button><button class="chip" data-wf="expired">หมดอายุ</button><button class="chip" data-wf="mismatch">ไม่ตรง</button><button class="chip" data-wf="done">ตรวจแล้ว</button><button class="chip" data-wf="all">ทั้งหมด</button></div></div><div id="checkList" class="list"></div>${check.status !== 'COMPLETED' && isAdminMode() ? '<button id="completeCheck" class="primary wide-action">เสร็จสิ้นและปิดรอบตรวจ</button>' : ''}`;
+  <div class="weekly-tools"><label>กรองเจ้าหน้าที่<select id="weeklyOwnerFilter">${ownerSelect}</select></label><div class="filters horizontal-scroller" style="margin-bottom:0"><button class="chip ${weeklyActiveFilter==='pending'?'active':''}" data-wf="pending">ยังไม่ตรวจ</button><button class="chip ${weeklyActiveFilter==='primary'?'active':''}" data-wf="primary">ฉันดูแลหลัก</button><button class="chip ${weeklyActiveFilter==='assistant'?'active':''}" data-wf="assistant">ฉันช่วยดูแล</button><button class="chip ${weeklyActiveFilter==='received'?'active':''}" data-wf="received">งานที่ได้รับฝาก${delegatedToMe?` ${delegatedToMe}`:''}</button><button class="chip ${weeklyActiveFilter==='expired'?'active':''}" data-wf="expired">หมดอายุ</button><button class="chip ${weeklyActiveFilter==='mismatch'?'active':''}" data-wf="mismatch">ไม่ตรง</button><button class="chip ${weeklyActiveFilter==='done'?'active':''}" data-wf="done">ตรวจแล้ว</button><button class="chip ${weeklyActiveFilter==='all'?'active':''}" data-wf="all">ทั้งหมด</button></div></div><div id="checkList" class="list"></div>${check.status !== 'COMPLETED' && isAdminMode() ? '<button id="completeCheck" class="primary wide-action">เสร็จสิ้นและปิดรอบตรวจ</button>' : ''}`;
 
-  let f = 'pending';
+  let f = weeklyActiveFilter || 'pending';
   const ownerFilter = $('#weeklyOwnerFilter');
-  ownerFilter.value = isAdminMode() ? (weeklyAdminActingForEmail || 'all') : 'mine';
+  const defaultOwnerFilter = isAdminMode() ? (weeklyAdminActingForEmail || 'all') : 'mine';
+  const validOwnerValues = new Set([...ownerFilter.options].map(o=>o.value));
+  ownerFilter.value = validOwnerValues.has(weeklyOwnerFilterValue) ? weeklyOwnerFilterValue : defaultOwnerFilter;
+  weeklyOwnerFilterValue = ownerFilter.value;
   const draw = () => {
     let arr = items;
     const owner = ownerFilter.value;
@@ -3126,19 +3157,27 @@ async function renderWeekly() {
     if (f === 'primary') arr = arr.filter(x => weeklyOwnerEmail(x) === String(profile.email || '').toLowerCase());
     if (f === 'assistant') arr = arr.filter(x => weeklyAssistantEmail(x) === String(profile.email || '').toLowerCase());
     if (f === 'received') arr = arr.filter(x => weeklyDelegatedEmail(x) === String(profile.email || '').toLowerCase() && ['PENDING','ACCEPTED','ADMIN_ASSIGNED','COMPLETED'].includes(String(x.delegation_status || '').toUpperCase()));
-    if (f === 'pending') arr = arr.filter(x => !x.checked_at);
+    if (f === 'pending') {
+      arr = arr.filter(x => !x.checked_at);
+      if (!isAdminMode()) {
+        const me = String(profile.email || '').toLowerCase();
+        arr = arr.filter(x => weeklyOwnerEmail(x) === me || (weeklyDelegatedEmail(x) === me && ['PENDING','ACCEPTED','ADMIN_ASSIGNED'].includes(String(x.delegation_status || '').toUpperCase())));
+      }
+    }
     if (f === 'expired') arr = arr.filter(x => requiresExpiryConfirmation(x) || x.result === 'EXPIRED_REMOVED');
     if (f === 'mismatch') arr = arr.filter(x => x.result === 'ADJUSTED');
     if (f === 'done') arr = arr.filter(x => x.checked_at);
     $('#checkList').innerHTML = arr.map(weeklyItemCard).join('') || '<div class="card empty">ไม่มีรายการตามตัวกรองนี้</div>';
   };
-  ownerFilter.addEventListener('change', draw);
-  $$('[data-wf]').forEach(b => b.addEventListener('click', () => { f=b.dataset.wf; $$('[data-wf]').forEach(x=>x.classList.toggle('active',x===b)); draw(); }));
+  ownerFilter.addEventListener('change', () => { weeklyOwnerFilterValue=ownerFilter.value; draw(); });
+  $$('[data-wf]').forEach(b => b.addEventListener('click', () => { f=b.dataset.wf; weeklyActiveFilter=f; $$('[data-wf]').forEach(x=>x.classList.toggle('active',x===b)); draw(); }));
   const adminSelect=$('#adminWeeklyActingFor');
   if(adminSelect) adminSelect.addEventListener('change',()=>{
     weeklyAdminActingForEmail=adminSelect.value;
     ownerFilter.value=weeklyAdminActingForEmail || 'all';
     f='pending';
+    weeklyActiveFilter='pending';
+    weeklyOwnerFilterValue=ownerFilter.value;
     $$('[data-wf]').forEach(x=>x.classList.toggle('active',x.dataset.wf==='pending'));
     draw();
     if(weeklyAdminActingForEmail) toast(`กำลังตรวจแทน ${adminSelect.options[adminSelect.selectedIndex].text}`);
@@ -3164,10 +3203,12 @@ async function renderWeekly() {
 
 async function renderWeeklyStatus() {
   const end=new Date();
-  const start=new Date(end); start.setDate(start.getDate()-84);
+  const start=new Date('2026-07-24T00:00:00+07:00');
   page.innerHTML=`<div class="page-head"><div><h2>สถานะผู้ตรวจวันศุกร์</h2></div><button class="mini ghost" data-route="weekly">กลับไปตรวจสต๊อก</button></div><form id="weeklyStatusForm" class="card weekly-status-filter"><label>ตั้งแต่วันที่<input id="weeklyStatusFrom" type="date" value="${dateInputValue(start)}"></label><label>ถึงวันที่<input id="weeklyStatusTo" type="date" value="${dateInputValue(end)}"></label><button class="primary" type="submit">แสดงผล</button></form><div id="weeklyStatusResult"></div>`;
   const load=async()=>{
-    const from=$('#weeklyStatusFrom').value,to=$('#weeklyStatusTo').value;
+    let from=$('#weeklyStatusFrom').value,to=$('#weeklyStatusTo').value;
+    const cutover='2026-07-24';
+    if(from<cutover){from=cutover;$('#weeklyStatusFrom').value=cutover;}
     if(!from||!to||from>to)return toast('ช่วงวันที่ไม่ถูกต้อง',true);
     $('#weeklyStatusResult').innerHTML='<div class="card usage-loading">กำลังโหลดสถานะผู้ตรวจ…</div>';
     const {data,error}=await sb.from('v_weekly_staff_status').select('*').gte('week_friday',from).lte('week_friday',to).order('week_friday',{ascending:false});
@@ -3202,27 +3243,68 @@ function weeklyActingContextMarkup(x) {
   return `<div class="weekly-acting-context"><span><small>ผู้ดูแลหลัก</small><strong>${esc(owner)}</strong></span><span><small>ผู้ช่วยดูแล</small><strong>${esc(assistant)}</strong></span>${delegated}<span><small>ผู้ตรวจจริง</small><strong>${esc(actual)}</strong></span></div>`;
 }
 
+function weeklyResultActorsMarkup(x) {
+  const owner = x?.responsible_name || x?.responsible_email || 'ยังไม่กำหนด';
+  const assistant = x?.assistant_responsible_name || x?.assistant_responsible_email || 'ยังไม่กำหนด';
+  const checker = x?.checked_by_name || x?.checked_by_email || '-';
+  const delegated = weeklyDelegationActive(x) && (x?.delegated_to_name || x?.delegated_to_email)
+    ? `<span><small>ผู้ได้รับมอบหมาย</small><strong>${esc(x.delegated_to_name || x.delegated_to_email)}</strong></span>` : '';
+  return `<div class="weekly-acting-context weekly-result-actors"><span><small>ผู้ดูแลหลัก</small><strong>${esc(owner)}</strong></span><span><small>ผู้ช่วยดูแล</small><strong>${esc(assistant)}</strong></span>${delegated}<span><small>ผู้ตรวจจริง</small><strong>${esc(checker)}</strong></span></div>`;
+}
+
+function openWeeklyResult(id) {
+  const x = (window._weeklyItems || []).find(i => i.item_id === id);
+  if (!x || !x.checked_at) return;
+  const systemQty = weeklyCheckedSystemQty(x);
+  const actualQty = weeklyCheckedActualQty(x);
+  const diff = actualQty - systemQty;
+  const matched = Math.abs(diff) < 1e-9;
+  const status = x.result === 'EXPIRED_REMOVED' ? 'นำ Lot หมดอายุออกแล้ว' : matched ? 'ยอดตรงกับระบบ' : 'ปรับยอดแล้ว';
+  const statusClass = x.result === 'EXPIRED_REMOVED' ? 'danger' : matched ? 'matched' : 'changed';
+  const changeText = x.result === 'EXPIRED_REMOVED'
+    ? `ระบบตัดยอดจาก ${qty(systemQty)} เป็น ${qty(actualQty)} ${x.unit || ''} หลังยืนยันนำของหมดอายุออกจากพื้นที่จริง`
+    : matched
+      ? `ยอดระบบและจำนวนจริงเท่ากันที่ ${qty(actualQty)} ${x.unit || ''} จึงไม่มีการเปลี่ยนยอด`
+      : `ระบบปรับยอดจาก ${qty(systemQty)} เป็น ${qty(actualQty)} ${x.unit || ''} (${diff > 0 ? 'เพิ่ม' : 'ลด'} ${qty(Math.abs(diff))} ${x.unit || ''})`;
+  const reason = x.reason_code || (matched ? 'ยอดตรงกับระบบ — ไม่ต้องระบุเหตุผล' : x.result === 'EXPIRED_REMOVED' ? 'ยืนยันนำ Lot หมดอายุออกจากพื้นที่' : '-');
+  const detail = x.reason_detail || '-';
+  openModal(`<section class="weekly-result-modal"><div class="weekly-check-modal-head"><div><p class="eyebrow">Weekly stock check</p><h3>ผลการตรวจ Lot</h3><p>${esc(x.material_name)} · ${esc(lotKey(x))} · EXP ${d(x.expiry_date)}</p></div><span class="badge ${x.result === 'EXPIRED_REMOVED' ? 'danger' : matched ? 'ok' : 'warn'}">${esc(status)}</span></div>${weeklyResultActorsMarkup(x)}<div class="weekly-result-grid"><div><small>ยอดระบบขณะตรวจ</small><strong>${qty(systemQty)}</strong><span>${esc(x.unit || '')}</span></div><div><small>จำนวนจริง</small><strong>${qty(actualQty)}</strong><span>${esc(x.unit || '')}</span></div><div><small>ผลต่าง</small><strong>${matched ? '0' : `${diff > 0 ? '+' : '-'}${qty(Math.abs(diff))}`}</strong><span>${esc(x.unit || '')}</span></div><div><small>ยอดหลังบันทึก</small><strong>${qty(actualQty)}</strong><span>${esc(x.unit || '')}</span></div></div><div class="adjustment-preview ${statusClass}">${esc(changeText)}</div><div class="weekly-result-reason"><div><small>เหตุผล</small><strong>${esc(reason)}</strong></div><div><small>รายละเอียด</small><p>${esc(detail)}</p></div></div><div class="weekly-result-time">บันทึกโดย ${esc(x.checked_by_name || x.checked_by_email || '-')} · ${dt(x.checked_at)}</div></section>`);
+}
+
 function openCheck(id) {
   const x = (window._weeklyItems || []).find(i => i.item_id === id);
   if (!x) return;
+  if (x.checked_at) return openWeeklyResult(id);
   if (!canHandleItem(x)) {
     if (isAdminMode() && route === 'weekly' && !weeklyAdminActingForEmail) return toast('กรุณาเลือกชื่อเจ้าหน้าที่ที่ต้องการทำแทนก่อน', true);
     return toast('รายการนี้ยังไม่ได้มอบหมายให้บัญชีของคุณ', true);
   }
   if (isExpired(x)) return openExpiredRemoval(id);
-  openModal(`<h3>${esc(x.material_name)}</h3><p class="muted">${esc(lotKey(x))} · ยอดในระบบ ${qty(x.current_balance)} ${esc(x.unit)}</p>${weeklyActingContextMarkup(x)}<div class="check-adjustment-guide">${icon('check')}<div><strong>กรอกจำนวนที่นับได้จริง</strong><span>หากไม่เท่ากับยอดในระบบ ระบบจะปรับยอดคงเหลือให้เท่ากับจำนวนที่กรอก พร้อมเก็บเจ้าของงาน ผู้ตรวจแทน และผู้ตรวจจริงแยกกัน</span></div></div><form id="checkForm" class="form-grid"><label>จำนวนที่นับได้จริง<input id="actualQty" type="number" min="0" step="0.01" value="${Number(x.current_balance)}" required inputmode="decimal"></label><div id="adjustmentPreview" class="adjustment-preview matched">ยอดตรงกับระบบ ยังไม่มีการปรับจำนวน</div><div id="reasonFields" class="form-grid hidden"><label>เหตุผล<select id="reasonCode"><option value="">เลือกเหตุผล</option><option>นำออกแล้วไม่ได้บันทึก</option><option>รับเข้าหรือนำออกผิดจำนวน</option><option>สูญหายหรือหาไม่พบ</option><option>ชำรุด</option><option>นับครั้งก่อนผิด</option><option>Lot หรือสติ๊กเกอร์ไม่ตรง</option><option>อื่น ๆ</option></select></label><label>รายละเอียด<textarea id="reasonDetail" rows="3"></textarea></label></div><button class="primary" type="submit">บันทึกผลตรวจ</button></form>`);
+  const current = Number(x.current_balance);
+  openModal(`<section class="weekly-check-modal"><div class="weekly-check-modal-head"><div><p class="eyebrow">Weekly stock check</p><h3>ตรวจ Lot</h3><p>${esc(x.material_name)} · ${esc(lotKey(x))} · EXP ${d(x.expiry_date)}</p></div></div>${weeklyActingContextMarkup(x)}<div class="weekly-check-summary"><div><small>ยอดระบบ</small><strong>${qty(current)}</strong><span>${esc(x.unit || '')}</span></div><div><small>จำนวนจริง</small><strong id="actualQtyPreview">${qty(current)}</strong><span>${esc(x.unit || '')}</span></div></div><div class="check-adjustment-guide">${icon('check')}<div><strong>กรอกจำนวนที่นับได้จริง</strong><span>หน้าต่างนี้จะแสดงยอดระบบ จำนวนจริง ตัวอย่างการเปลี่ยนยอด เหตุผล และรายละเอียดก่อนบันทึกทุกครั้ง</span></div></div><form id="checkForm" class="form-grid"><label>จำนวนที่นับได้จริง<input id="actualQty" type="number" min="0" step="0.01" value="${current}" required inputmode="decimal"></label><div id="adjustmentPreview" class="adjustment-preview matched">ยอดตรงกับระบบ ยังไม่มีการปรับจำนวน</div><div id="reasonFields" class="form-grid check-reason-fields is-disabled"><div class="check-reason-heading"><strong>เหตุผลและรายละเอียด</strong><span id="reasonHint">ใช้เมื่อจำนวนจริงไม่ตรงกับยอดระบบ</span></div><label>เหตุผล<select id="reasonCode" disabled><option value="">เลือกเหตุผล</option><option>นำออกแล้วไม่ได้บันทึก</option><option>รับเข้าหรือนำออกผิดจำนวน</option><option>สูญหายหรือหาไม่พบ</option><option>ชำรุด</option><option>นับครั้งก่อนผิด</option><option>Lot หรือสติ๊กเกอร์ไม่ตรง</option><option>อื่น ๆ</option></select></label><label>รายละเอียด<textarea id="reasonDetail" rows="3" disabled placeholder="ระบุสิ่งที่ตรวจพบและการดำเนินการ"></textarea></label></div><button class="primary" type="submit">ยืนยันผลตรวจ</button></form></section>`);
   const toggle = () => {
     const actual=Number($('#actualQty').value);
-    const current=Number(x.current_balance);
     const diff=actual-current;
-    $('#reasonFields').classList.toggle('hidden', diff===0);
+    const changed=Math.abs(diff)>1e-9;
+    const reasonFields=$('#reasonFields');
+    const reasonCode=$('#reasonCode');
+    const reasonDetail=$('#reasonDetail');
+    $('#actualQtyPreview').textContent=Number.isFinite(actual)?qty(actual):'-';
+    reasonFields.classList.toggle('is-disabled', !changed);
+    reasonCode.disabled=!changed;
+    reasonDetail.disabled=!changed;
+    $('#reasonHint').textContent=changed?'กรุณาเลือกเหตุผล และระบุรายละเอียดเมื่อจำเป็น':'ใช้เมื่อจำนวนจริงไม่ตรงกับยอดระบบ';
+    if (!changed) {
+      reasonCode.value='';
+      reasonDetail.value='';
+    }
     const preview=$('#adjustmentPreview');
-    if (diff===0) {
+    if (!changed) {
       preview.className='adjustment-preview matched';
       preview.textContent='ยอดตรงกับระบบ ยังไม่มีการปรับจำนวน';
     } else {
       preview.className='adjustment-preview changed';
-      preview.textContent=`ระบบจะปรับยอดจาก ${qty(current)} เป็น ${qty(actual)} ${x.unit || ''} (${diff>0?'เพิ่ม':'ลด'} ${qty(Math.abs(diff))})`;
+      preview.textContent=`ระบบจะปรับยอดจาก ${qty(current)} เป็น ${qty(actual)} ${x.unit || ''} (${diff>0?'เพิ่ม':'ลด'} ${qty(Math.abs(diff))} ${x.unit || ''})`;
     }
   };
   $('#actualQty').addEventListener('input', toggle);
@@ -3230,7 +3312,7 @@ function openCheck(id) {
   $('#checkForm').addEventListener('submit', async e => {
     e.preventDefault();
     const actual = Number($('#actualQty').value);
-    const diff = actual !== Number(x.current_balance);
+    const diff = Math.abs(actual - current) > 1e-9;
     if (diff && !$('#reasonCode').value) return toast('กรุณาเลือกเหตุผล', true);
     const btn=e.submitter; btn.disabled=true;
     const {error} = await sb.rpc('fn_save_stock_check', {
@@ -3844,7 +3926,7 @@ function openMaterialEditor(code) {
 }
 
 function renderHelp() {
-  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>สร้างบัญชีครั้งแรก</h3><ol class="help-steps"><li>ใช้เฉพาะอีเมลมหิดล @mahidol.ac.th ที่ Admin อนุญาตไว้</li><li>ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว</li><li>กด “สร้างบัญชีครั้งแรก” แล้วกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</li></ol></div><div class="card help-card"><h3>ลืมรหัสผ่าน</h3><ol class="help-steps"><li>หน้าเข้าสู่ระบบกด “ลืมรหัสผ่าน” แล้วกรอกอีเมลมหิดล</li><li>เปิดลิงก์จากอีเมลและตั้งรหัสผ่านใหม่ด้วยตนเอง</li><li>Admin สามารถกด “ส่งลิงก์รีเซ็ต” จากเมนูผู้ใช้งานได้ แต่จะไม่เห็นหรือกำหนดรหัสผ่านแทนเจ้าหน้าที่</li><li>หากระบบแจ้งว่าส่งอีเมลครบโควตา ให้หยุดกดซ้ำ รอประมาณ 1 ชั่วโมงแล้วลองใหม่ และตรวจทั้ง Inbox กับ Spam</li></ol></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>พิมพ์ชื่อวัสดุบางส่วนแล้วเลือกจากรายการ</li><li>ตรวจชื่อผู้นำเข้าปัจจุบัน ใส่ Lot วันหมดอายุ และจำนวน แล้วบันทึก</li></ol></div><div class="card help-card"><h3>นำออก</h3><ol class="help-steps"><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าและวิธีนำออก แล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>วัสดุที่ตั้งให้ใช้สติ๊กเกอร์วันเปิด จะไปอยู่ในเมนู “พิมพ์วันเปิดใช้” ให้เลือกพิมพ์เมื่อเปิดใช้จริง โดยรายการล่าสุดอยู่บนสุด</li></ol></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแล</h3><p>แสดงเฉพาะวัสดุที่คุณเป็นผู้ดูแลหลัก โดยมีแท็บภาพรวม ต้องเบิก และตั้งค่าการเตือน ผู้ดูแลหลักเป็นผู้รับผิดชอบวางแผนเบิกและกำหนด Minimum/เกณฑ์แจ้งเตือน</p></div><div class="card help-card"><h3>สต๊อกที่ฉันช่วยดูแล</h3><p>แสดงแยกจากงานหลัก ใช้ติดตามยอดและช่วยเตือนผู้ดูแลหลัก มีแท็บภาพรวมงานช่วยดูแลและช่วยเตือนต้องเบิก โดยไม่มีแท็บตั้งค่าการเตือน</p></div><div class="card help-card"><h3>ตรวจวันศุกร์</h3><p>รอบทางการเริ่มวันที่ 24 กรกฎาคม 2569 จันทร์–พฤหัสบดีจะนับเข้ารอบวันศุกร์ถัดไป ผู้ช่วยดูแลสามารถสแกนและบันทึกตรวจ Lot ได้ ระบบแยกผู้ดูแลหลัก ผู้ช่วย ผู้ได้รับมอบหมาย และผู้ตรวจจริงอย่างชัดเจน</p></div><div class="card help-card"><h3>สแกนตรวจ Lot</h3><p>เปิดกล้องหรือพิมพ์รหัส QR เพื่อดูยอด Lot ยอดรวม ผู้ดูแล ขั้นต่ำ และยืนยันตรวจหรือปรับยอดได้ทันที</p></div><div class="card help-card"><h3>สถานะผู้ตรวจ</h3><p>เปิดเมนู “สถานะผู้ตรวจ” แล้วกำหนดช่วงวันที่ เพื่อดูว่าแต่ละวันศุกร์ใครตรวจครบหรือยังไม่ครบ</p></div><div class="card help-card"><h3>สติ๊กเกอร์เดิม</h3><p>สติ๊กเกอร์รหัสเดิมยังสแกนได้ ไม่ต้องเปลี่ยนใหม่ทั้งหมด</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบไม่ตัดยอดเอง เปิดตรวจวันศุกร์และกด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์ถัดไป</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมดูได้ในหน้าประวัติและรายงาน</p></div><div class="card help-card"><h3>พิมพ์ QR Sticker ภายหลัง</h3><p>หลังรับเข้าผ่านโทรศัพท์ ให้เปิดเมนู “พิมพ์ QR Sticker” บนคอมพิวเตอร์ที่ต่อเครื่องพิมพ์ รายการรับเข้าจะอยู่ในคิวอัตโนมัติ เลือกจำนวนดวงแล้วกดพิมพ์</p></div><div class="card help-card"><h3>พิมพ์วันเปิดใช้</h3><p>เปิดเมนู “พิมพ์วันเปิดใช้” เลือกรายการนำออก แล้วระบุวัน–เวลาเปิดและอายุหลังเปิด โดยเลือกใช้ถึง EXP ผู้ผลิต, 24 ชั่วโมง, 7 วัน, 28 วัน, 1 เดือน, 3 เดือน, 6 เดือน หรือกำหนดเองได้ ระบบคำนวณวันใช้ได้ถึงให้อัตโนมัติและไม่ให้เกิน EXP ผู้ผลิต</p></div><div class="card help-card"><h3>สร้างสติ๊กเกอร์วันเปิดเอง</h3><p>เลือกวัสดุ กรอก Lot และ EXP ผู้ผลิต ระบุวัน–เวลาเปิดและอายุหลังเปิด ระบบคำนวณวันใช้ได้ถึงและสร้างสติ๊กเกอร์โดยไม่ตัดยอดสต๊อกเพิ่ม</p></div><div class="card help-card"><h3>ตัวชี้วัด</h3><p>Admin เปิดเมนู “ตัวชี้วัด” เลือกช่วงวันที่ ระบบคำนวณ 12 ตัวชี้วัดจากผู้ใช้ วัสดุ Transaction การตรวจวันศุกร์ สติ๊กเกอร์ และ Audit Log อัตโนมัติ ส่วนเหตุการณ์ใช้เกินวันหลังเปิดหรือข้อร้องเรียนฉลาก ให้กด “บันทึกเหตุการณ์” ในหน้าเดียวกัน และส่งออก CSV ได้</p></div><div class="card help-card"><h3>ตั้งค่าผู้ดูแลระบบ</h3><p>หน้า Admin แยกเป็น 3 เมนูย่อย ได้แก่ ภาพรวม ผู้ใช้งาน และวัสดุและผู้ดูแล โดย Admin เพิ่มวัสดุใหม่พร้อมรหัส ชื่อ หน่วย Minimum เกณฑ์ EXP ผู้ดูแลหลัก ผู้ช่วย และอายุหลังเปิดเริ่มต้นได้</p></div><div class="card help-card"><h3>เครื่องพิมพ์สติ๊กเกอร์</h3><p>ฉลากจริง 25 × 20 mm ระบบใช้รูปแบบสติ๊กเกอร์มาตรฐานเดียวกันทุกเครื่อง พร้อม QR ขนาดใหญ่และขอบขาวมาตรฐาน ในหน้าพิมพ์ Chrome ให้เลือกเครื่องพิมพ์และตั้งกระดาษตามเครื่องที่ใช้งาน ใช้ Scale 100% หรือ Actual size ปิด Header/Footer และใช้ Margin None</p></div></div>`;
+  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>สร้างบัญชีครั้งแรก</h3><ol class="help-steps"><li>ใช้เฉพาะอีเมลมหิดล @mahidol.ac.th ที่ Admin อนุญาตไว้</li><li>ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว</li><li>กด “สร้างบัญชีครั้งแรก” แล้วกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</li></ol></div><div class="card help-card"><h3>ลืมรหัสผ่าน</h3><ol class="help-steps"><li>หน้าเข้าสู่ระบบกด “ลืมรหัสผ่าน” แล้วกรอกอีเมลมหิดล</li><li>เปิดลิงก์จากอีเมลและตั้งรหัสผ่านใหม่ด้วยตนเอง</li><li>Admin สามารถกด “ส่งลิงก์รีเซ็ต” จากเมนูผู้ใช้งานได้ แต่จะไม่เห็นหรือกำหนดรหัสผ่านแทนเจ้าหน้าที่</li><li>หากระบบแจ้งว่าส่งอีเมลครบโควตา ให้หยุดกดซ้ำ รอประมาณ 1 ชั่วโมงแล้วลองใหม่ และตรวจทั้ง Inbox กับ Spam</li></ol></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>พิมพ์ชื่อวัสดุบางส่วนแล้วเลือกจากรายการ</li><li>ตรวจชื่อผู้นำเข้าปัจจุบัน ใส่ Lot วันหมดอายุ และจำนวน แล้วบันทึก</li></ol></div><div class="card help-card"><h3>นำออก</h3><ol class="help-steps"><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าและวิธีนำออก แล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>วัสดุที่ตั้งให้ใช้สติ๊กเกอร์วันเปิด จะไปอยู่ในเมนู “พิมพ์วันเปิดใช้” ให้เลือกพิมพ์เมื่อเปิดใช้จริง โดยรายการล่าสุดอยู่บนสุด</li></ol></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแล</h3><p>แสดงเฉพาะวัสดุที่คุณเป็นผู้ดูแลหลัก โดยมีแท็บภาพรวม ต้องเบิก และตั้งค่าการเตือน ผู้ดูแลหลักเป็นผู้รับผิดชอบวางแผนเบิกและกำหนด Minimum/เกณฑ์แจ้งเตือน</p></div><div class="card help-card"><h3>สต๊อกที่ฉันช่วยดูแล</h3><p>แสดงแยกจากงานหลัก ใช้ติดตามยอดและช่วยเตือนผู้ดูแลหลัก มีแท็บภาพรวมงานช่วยดูแลและช่วยเตือนต้องเบิก โดยไม่มีแท็บตั้งค่าการเตือน</p></div><div class="card help-card"><h3>ตรวจวันศุกร์</h3><p>กด “เปิดหน้าต่างตรวจ Lot” เพื่อกรอกจำนวนจริง หากยอดไม่ตรงให้เลือกเหตุผลและระบุรายละเอียด ผู้ช่วยดูแลตรวจได้จากแท็บ “ฉันช่วยดูแล” แต่ไม่ถูกนับเป็นงานหลักที่รอตรวจ</p></div><div class="card help-card"><h3>สแกนตรวจ Lot</h3><p>เปิดกล้องหรือพิมพ์รหัส QR เพื่อดูยอด Lot ยอดรวม ผู้ดูแล ขั้นต่ำ และยืนยันตรวจหรือปรับยอดได้ทันที</p></div><div class="card help-card"><h3>สถานะผู้ตรวจ</h3><p>เปิดเมนู “สถานะผู้ตรวจ” แล้วกำหนดช่วงวันที่ เพื่อดูว่าแต่ละวันศุกร์ใครตรวจครบหรือยังไม่ครบ</p></div><div class="card help-card"><h3>สติ๊กเกอร์เดิม</h3><p>สติ๊กเกอร์รหัสเดิมยังสแกนได้ ไม่ต้องเปลี่ยนใหม่ทั้งหมด</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบไม่ตัดยอดเอง เปิดตรวจวันศุกร์และกด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์ถัดไป</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมดูได้ในหน้าประวัติและรายงาน</p></div><div class="card help-card"><h3>พิมพ์ QR Sticker ภายหลัง</h3><p>หลังรับเข้าผ่านโทรศัพท์ ให้เปิดเมนู “พิมพ์ QR Sticker” บนคอมพิวเตอร์ที่ต่อเครื่องพิมพ์ รายการรับเข้าจะอยู่ในคิวอัตโนมัติ เลือกจำนวนดวงแล้วกดพิมพ์</p></div><div class="card help-card"><h3>พิมพ์วันเปิดใช้</h3><p>เปิดเมนู “พิมพ์วันเปิดใช้” เลือกรายการนำออก แล้วระบุวัน–เวลาเปิดและอายุหลังเปิด โดยเลือกใช้ถึง EXP ผู้ผลิต, 24 ชั่วโมง, 7 วัน, 28 วัน, 1 เดือน, 3 เดือน, 6 เดือน หรือกำหนดเองได้ ระบบคำนวณวันใช้ได้ถึงให้อัตโนมัติและไม่ให้เกิน EXP ผู้ผลิต</p></div><div class="card help-card"><h3>สร้างสติ๊กเกอร์วันเปิดเอง</h3><p>เลือกวัสดุ กรอก Lot และ EXP ผู้ผลิต ระบุวัน–เวลาเปิดและอายุหลังเปิด ระบบคำนวณวันใช้ได้ถึงและสร้างสติ๊กเกอร์โดยไม่ตัดยอดสต๊อกเพิ่ม</p></div><div class="card help-card"><h3>ตัวชี้วัด</h3><p>Admin เปิดเมนู “ตัวชี้วัด” เลือกช่วงวันที่ ระบบคำนวณ 12 ตัวชี้วัดจากผู้ใช้ วัสดุ Transaction การตรวจวันศุกร์ สติ๊กเกอร์ และ Audit Log อัตโนมัติ ส่วนเหตุการณ์ใช้เกินวันหลังเปิดหรือข้อร้องเรียนฉลาก ให้กด “บันทึกเหตุการณ์” ในหน้าเดียวกัน และส่งออก CSV ได้</p></div><div class="card help-card"><h3>ตั้งค่าผู้ดูแลระบบ</h3><p>หน้า Admin แยกเป็น 3 เมนูย่อย ได้แก่ ภาพรวม ผู้ใช้งาน และวัสดุและผู้ดูแล โดย Admin เพิ่มวัสดุใหม่พร้อมรหัส ชื่อ หน่วย Minimum เกณฑ์ EXP ผู้ดูแลหลัก ผู้ช่วย และอายุหลังเปิดเริ่มต้นได้</p></div><div class="card help-card"><h3>เครื่องพิมพ์สติ๊กเกอร์</h3><p>ฉลากจริง 25 × 20 mm ระบบใช้รูปแบบสติ๊กเกอร์มาตรฐานเดียวกันทุกเครื่อง พร้อม QR ขนาดใหญ่และขอบขาวมาตรฐาน ในหน้าพิมพ์ Chrome ให้เลือกเครื่องพิมพ์และตั้งกระดาษตามเครื่องที่ใช้งาน ใช้ Scale 100% หรือ Actual size ปิด Header/Footer และใช้ Margin None</p></div></div>`;
   refreshInstallUI();
 }
 

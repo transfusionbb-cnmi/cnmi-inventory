@@ -753,3 +753,44 @@ input,select,textarea,button{min-width:0}
 @media(max-width:699px){.my-stock-scope-note{padding:12px}.weekly-owner-line{display:grid!important;gap:3px}}
 
 .weekly-transition-note{display:flex;align-items:flex-start;gap:11px;margin-bottom:12px;border-left:4px solid #d7a338;background:#fffaf0}.weekly-transition-note>.icon{width:22px;height:22px;color:#b07a16;flex:0 0 auto}.weekly-transition-note strong,.weekly-transition-note span{display:block}.weekly-transition-note span{margin-top:3px;color:var(--muted);font-size:.77rem;line-height:1.5}
+
+
+/* v1.4.46 — หน้าต่างตรวจ Lot และดูผลตรวจย้อนหลัง */
+.weekly-result-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.weekly-result-inline{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px}
+.weekly-result-inline>span{display:grid;gap:1px;min-width:112px;padding:7px 9px;border:1px solid var(--line);border-radius:10px;background:#f7faf9}
+.weekly-result-inline small{font-size:.63rem;color:var(--muted);font-weight:800}
+.weekly-result-inline strong{font-size:.75rem;color:var(--text)}
+.weekly-check-modal,.weekly-result-modal{display:grid;gap:14px}
+.weekly-check-modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.weekly-check-modal-head h3{margin:0;padding:0}
+.weekly-check-modal-head p:not(.eyebrow){margin:4px 0 0;color:var(--muted);font-size:.8rem;line-height:1.45}
+.weekly-check-summary,.weekly-result-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.weekly-check-summary>div,.weekly-result-grid>div{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:2px 8px;padding:13px 14px;border:1px solid var(--line);border-radius:14px;background:#f7faf9}
+.weekly-check-summary small,.weekly-result-grid small{grid-column:1/-1;color:var(--muted);font-size:.7rem;font-weight:800}
+.weekly-check-summary strong,.weekly-result-grid strong{font-size:1.35rem;line-height:1.1;color:var(--brand-strong)}
+.weekly-check-summary span,.weekly-result-grid span{font-size:.72rem;color:var(--muted);font-weight:700}
+.check-reason-fields{padding:13px;border:1px solid #edc98d;border-radius:14px;background:#fffaf0;transition:.2s}
+.check-reason-fields.is-disabled{border-color:var(--line);background:#f7faf9}
+.check-reason-fields.is-disabled label{opacity:.62}
+.check-reason-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.check-reason-heading strong{font-size:.83rem}
+.check-reason-heading span{color:var(--muted);font-size:.7rem;text-align:right;line-height:1.4}
+.weekly-result-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+.weekly-result-reason{display:grid;gap:10px;padding:13px 14px;border:1px solid var(--line);border-radius:14px;background:#fff}
+.weekly-result-reason>div{display:grid;gap:4px}
+.weekly-result-reason small{color:var(--muted);font-size:.7rem;font-weight:800}
+.weekly-result-reason strong,.weekly-result-reason p{margin:0;font-size:.84rem;line-height:1.5;overflow-wrap:anywhere}
+.weekly-result-time{padding-top:2px;color:var(--muted);font-size:.74rem;text-align:right}
+.adjustment-preview.danger{background:#fff0ed;color:#b42318;border:1px solid #f2c3bb}
+.weekly-result-actors{margin-top:0}
+@media(max-width:700px){
+  .check-info{display:grid}.weekly-result-actions{justify-content:flex-start;margin-top:8px}
+  .weekly-result-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .weekly-result-inline{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .weekly-result-inline>span{min-width:0}
+}
+@media(max-width:420px){
+  .weekly-check-summary,.weekly-result-grid{grid-template-columns:1fr 1fr}
+  .check-reason-heading{display:grid}.check-reason-heading span{text-align:left}
+}
