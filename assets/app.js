@@ -1,7 +1,8 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.46';
+const APP_VERSION = '1.4.49';
+const WEEKLY_CUTOVER_DATE = '2026-07-24';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const DEFAULT_EXPIRY_ALERT_DAYS = 30;
 const MAX_EXPIRY_ALERT_DAYS = 240;
@@ -101,6 +102,10 @@ function ownerEntriesFromRows(rows = []) {
 }
 function ownerPairMarkup(row) {
   return `<span class="dual-owner-lines"><span><small>หลัก</small>${esc(row.responsible_name || 'ยังไม่กำหนด')}</span><span><small>ผู้ช่วย</small>${esc(row.assistant_responsible_name || 'ยังไม่กำหนด')}</span></span>`;
+}
+
+function atOrAfterCutover(dateStr) {
+  return String(dateStr || '') >= WEEKLY_CUTOVER_DATE;
 }
 
 
@@ -546,18 +551,28 @@ function expiryAlertLabel(x) {
 
 function reorderAlertLabel(x) {
   const mode = x?.alert_mode || 'MINIMUM';
-  if (mode === 'MONTHLY') return `ถึงรอบเบิก วันที่ ${Number(x?.reorder_day || 1)}`;
-  if (mode === 'LAST_ITEM') return 'กำลังใช้ชิ้นสุดท้าย';
-  if (mode === 'BELOW_MINIMUM') return 'น้อยกว่าขั้นต่ำ';
-  if (mode === 'NONE') return 'ไม่เปิดแจ้งเตือน';
-  return 'ถึงหรือต่ำกว่าขั้นต่ำ';
+  if (mode === 'MONTHLY') return `ถึงวันที่กำหนดของเดือน วันที่ ${Number(x?.reorder_day || 1)}`;
+  if (mode === 'LAST_ITEM') return 'ยอดเหลือ 1 ชิ้นหรือน้อยกว่า';
+  if (mode === 'BELOW_MINIMUM') return 'ยอดต่ำกว่าจำนวนขั้นต่ำ';
+  if (mode === 'NONE') return 'ปิดสถานะต้องเบิก';
+  return 'ยอดเท่ากับหรือต่ำกว่าจำนวนขั้นต่ำ';
+}
+
+function reorderAlertHelp(mode, minimum, reorderDay) {
+  const min = qty(Number(minimum || 0));
+  const day = Math.min(28, Math.max(1, Number(reorderDay || 1)));
+  if (mode === 'BELOW_MINIMUM') return `ตัวอย่าง: ขั้นต่ำ ${min} → ยอดต้องต่ำกว่า ${min} จึงขึ้น “ต้องเบิก”`;
+  if (mode === 'LAST_ITEM') return 'ขึ้น “ต้องเบิก” เมื่อยอดรวมเหลือ 1 หรือ 0 โดยไม่ใช้ค่า Minimum';
+  if (mode === 'MONTHLY') return `ขึ้น “ต้องเบิก” ตั้งแต่วันที่ ${day} ของเดือน โดยไม่อิงยอดคงเหลือ`;
+  if (mode === 'NONE') return 'ไม่ขึ้นสถานะ “ต้องเบิก” แต่ระบบยังแจ้งใกล้หมดอายุตามเกณฑ์ที่ตั้งไว้';
+  return `ตัวอย่าง: ขั้นต่ำ ${min} → ยอด ${min} หรือต่ำกว่าจะขึ้น “ต้องเบิก”`;
 }
 
 function reorderStatusLabel(x) {
   const mode = x?.alert_mode || 'MINIMUM';
   const balance = Number(x?.total_balance ?? x?.balance ?? 0);
   if (mode === 'MONTHLY') return 'ถึงรอบเบิก';
-  if (mode === 'LAST_ITEM') return balance <= 0 ? 'สินค้าหมด' : 'กำลังใช้ชิ้นสุดท้าย';
+  if (mode === 'LAST_ITEM') return balance <= 0 ? 'สินค้าหมด' : 'เหลือชิ้นสุดท้าย';
   if (balance <= 0) return 'สินค้าหมด';
   return mode === 'BELOW_MINIMUM' ? 'น้อยกว่าขั้นต่ำ' : 'ถึงหรือต่ำกว่าขั้นต่ำ';
 }
@@ -1407,7 +1422,7 @@ function materialGroupStatus(g) {
     if (g.total_balance <= 0) return {key:'notrack',label:'ไม่เปิดแจ้งเตือน',badge:'info'};
   } else if (g.alert_mode === 'LAST_ITEM') {
     if (g.total_balance <= 0) return {key:'out',label:'สินค้าหมด',badge:'danger'};
-    if (g.total_balance <= 1) return {key:'last-item',label:'กำลังใช้ชิ้นสุดท้าย',badge:'warn'};
+    if (g.total_balance <= 1) return {key:'last-item',label:'เหลือชิ้นสุดท้าย',badge:'warn'};
   } else {
     if (g.total_balance <= 0) return {key:'out',label:'สินค้าหมด',badge:'danger'};
     if (g.alert_mode === 'BELOW_MINIMUM' && g.total_balance < g.min_qty) return {key:'low',label:'น้อยกว่าขั้นต่ำ',badge:'warn'};
@@ -1509,9 +1524,9 @@ async function renderMyStock(tab = 'overview', selectedOwner = null, scope = 'pr
   const scopeNote = myStockScope === 'assistant'
     ? `<section class="card my-stock-scope-note assistant-scope">${icon('user')}<div><strong>บทบาทผู้ช่วยดูแล</strong><span>ใช้หน้านี้เพื่อติดตามและช่วยเตือนผู้ดูแลหลัก ผู้ช่วยสามารถสแกนตรวจ Lot ในรอบประจำสัปดาห์ได้ แต่การตั้งค่า Minimum/การแจ้งเตือนและการวางแผนเบิกเป็นหน้าที่หลักของผู้ดูแลหลัก</span></div></section>`
     : `<section class="card my-stock-scope-note primary-scope">${icon('check')}<div><strong>บทบาทผู้ดูแลหลัก</strong><span>รายการในหน้านี้เป็นความรับผิดชอบหลัก รวมการติดตามต้องเบิก การตั้งค่าแจ้งเตือน และการตรวจนับตามรอบ</span></div></section>`;
-  const overviewCards = groups.map(g=>{const st=materialGroupStatus(g);return `<article class="my-stock-card ${myStockScope==='assistant'?'assistant-card':''}"><div class="my-stock-title"><div><h3>${esc(g.material_name)}</h3><p>คงเหลือ ${qty(g.total_balance)} ${esc(g.unit)} · ${g.active_lots} Lot</p></div><div><em class="badge ${myStockScope==='assistant'?'info':'ok'}">${roleLabel}</em><em class="badge ${st.badge}">${st.label}</em></div></div><div class="my-stock-meta"><span>${ownerPairMarkup(g)}</span><span>${g.alert_mode==='MONTHLY' ? `เตือนวันที่ ${g.reorder_day} ของเดือน` : g.alert_mode==='LAST_ITEM' ? 'เตือนเมื่อเหลือ 1 ชิ้น' : g.alert_mode==='NONE' ? 'ไม่เปิดแจ้งเตือน' : `${g.alert_mode==='BELOW_MINIMUM'?'น้อยกว่า':'ถึงหรือต่ำกว่า'}ขั้นต่ำ ${qty(g.min_qty)} ${esc(g.unit)}`}</span><span>เตือนใกล้หมดอายุล่วงหน้า ${expiryAlertLabel(g)}</span></div><div class="my-stock-actions"><button type="button" class="mini ghost" data-material-detail="${esc(g.material_code)}">ดู Lot</button><button type="button" class="mini" data-material-usage="${esc(g.material_code)}">${icon('chart')} วิเคราะห์</button></div></article>`;}).join('');
+  const overviewCards = groups.map(g=>{const st=materialGroupStatus(g);return `<article class="my-stock-card ${myStockScope==='assistant'?'assistant-card':''}"><div class="my-stock-title"><div><h3>${esc(g.material_name)}</h3><p>คงเหลือ ${qty(g.total_balance)} ${esc(g.unit)} · ${g.active_lots} Lot</p></div><div><em class="badge ${myStockScope==='assistant'?'info':'ok'}">${roleLabel}</em><em class="badge ${st.badge}">${st.label}</em></div></div><div class="my-stock-meta"><span>${ownerPairMarkup(g)}</span><span>${g.alert_mode==='MONTHLY' ? `เตือนวันที่ ${g.reorder_day} ของเดือน` : g.alert_mode==='LAST_ITEM' ? 'ขึ้นต้องเบิกเมื่อยอดเหลือ 1 ชิ้นหรือน้อยกว่า' : g.alert_mode==='NONE' ? 'ไม่เปิดแจ้งเตือน' : `${g.alert_mode==='BELOW_MINIMUM'?'น้อยกว่า':'ถึงหรือต่ำกว่า'}ขั้นต่ำ ${qty(g.min_qty)} ${esc(g.unit)}`}</span><span>เตือนใกล้หมดอายุล่วงหน้า ${expiryAlertLabel(g)}</span></div><div class="my-stock-actions"><button type="button" class="mini ghost" data-material-detail="${esc(g.material_code)}">ดู Lot</button><button type="button" class="mini" data-material-usage="${esc(g.material_code)}">${icon('chart')} วิเคราะห์</button></div></article>`;}).join('');
   const reorderCards = reorder.map(g=>{const st=materialGroupStatus(g);return `<article class="my-stock-card needs-reorder ${myStockScope==='assistant'?'assistant-card':''}"><div class="my-stock-title"><div><h3>${esc(g.material_name)}</h3><p>คงเหลือ ${qty(g.total_balance)} ${esc(g.unit)}</p></div><em class="badge ${st.badge}">${st.label}</em></div><div class="my-stock-meta">${ownerPairMarkup(g)}${myStockScope==='assistant'?'<span class="assistant-reminder-text">ผู้ช่วย: ตรวจสอบข้อมูลและแจ้งผู้ดูแลหลัก ไม่ถือเป็นผู้รับผิดชอบการเบิกหลัก</span>':''}</div><div class="my-stock-actions">${myStockScope==='primary'?`<button type="button" class="primary" data-route="move" data-move-tab="receive">รับเข้า</button>`:''}<button type="button" class="mini ghost" data-material-detail="${esc(g.material_code)}">ดู Lot</button><button type="button" class="mini" data-material-usage="${esc(g.material_code)}">ดูการใช้</button></div></article>`;}).join('');
-  const settingsCards = myStockScope === 'primary' ? groups.map(g=>`<form class="my-stock-card my-stock-setting-card" data-my-settings-form data-material-code="${esc(g.material_code)}"><div class="my-stock-title"><div><h3>${esc(g.material_name)}</h3><p>คงเหลือ ${qty(g.total_balance)} ${esc(g.unit)}</p></div><em class="badge ok">ผู้ดูแลหลัก</em></div><div class="my-stock-meta">${ownerPairMarkup(g)}</div><div class="stock-setting-grid"><label>รูปแบบแจ้งเตือน<select name="alert_mode"><option value="MINIMUM" ${g.alert_mode==='MINIMUM'?'selected':''}>เมื่อคงเหลือเท่ากับหรือต่ำกว่าขั้นต่ำ</option><option value="BELOW_MINIMUM" ${g.alert_mode==='BELOW_MINIMUM'?'selected':''}>เมื่อน้อยกว่าขั้นต่ำเท่านั้น</option><option value="LAST_ITEM" ${g.alert_mode==='LAST_ITEM'?'selected':''}>กำลังใช้ชิ้นสุดท้าย</option><option value="MONTHLY" ${g.alert_mode==='MONTHLY'?'selected':''}>เตือนรอบเบิกรายเดือน</option><option value="NONE" ${g.alert_mode==='NONE'?'selected':''}>ไม่แจ้งเตือน</option></select></label><label data-minimum-field>จำนวนขั้นต่ำ<input name="minimum" type="number" min="0" step="0.01" value="${Number(g.min_qty || 0)}" inputmode="decimal"></label><label data-reorder-field>วันที่เตือนของเดือน (1–28)<input name="reorder_day" type="number" min="1" max="28" step="1" value="${Number(g.reorder_day || 1)}" inputmode="numeric"></label><label>แจ้งใกล้หมดอายุล่วงหน้า<select name="expiry_alert_days"><option value="7" ${expiryAlertDays(g)===7?'selected':''}>1 สัปดาห์</option><option value="14" ${expiryAlertDays(g)===14?'selected':''}>2 สัปดาห์</option><option value="30" ${expiryAlertDays(g)===30?'selected':''}>1 เดือน — รายการทั่วไป</option><option value="240" ${expiryAlertDays(g)===240?'selected':''}>8 เดือน — ต้องเคลมหรือจัดการล่วงหน้า</option></select></label></div><p class="field-hint">เฉพาะผู้ดูแลหลักหรือ Admin โหมดผู้ดูแลระบบเท่านั้นที่แก้การตั้งค่านี้ได้</p><button class="primary" type="submit">บันทึกการตั้งค่า</button></form>`).join('') : '';
+  const settingsCards = myStockScope === 'primary' ? groups.map(g=>`<form class="my-stock-card my-stock-setting-card" data-my-settings-form data-material-code="${esc(g.material_code)}"><div class="my-stock-title"><div><h3>${esc(g.material_name)}</h3><p>คงเหลือ ${qty(g.total_balance)} ${esc(g.unit)}</p></div><em class="badge ok">ผู้ดูแลหลัก</em></div><div class="my-stock-meta">${ownerPairMarkup(g)}</div><div class="stock-setting-grid"><label>ให้ขึ้นสถานะ “ต้องเบิก” เมื่อ<select name="alert_mode"><option value="MINIMUM" ${g.alert_mode==='MINIMUM'?'selected':''}>ยอดเท่ากับหรือต่ำกว่าขั้นต่ำ — แตะขั้นต่ำแล้วเตือน</option><option value="BELOW_MINIMUM" ${g.alert_mode==='BELOW_MINIMUM'?'selected':''}>ยอดต่ำกว่าขั้นต่ำ — ต้องต่ำกว่าก่อนจึงเตือน</option><option value="LAST_ITEM" ${g.alert_mode==='LAST_ITEM'?'selected':''}>ยอดเหลือ 1 ชิ้นหรือน้อยกว่า — ชิ้นสุดท้าย</option><option value="MONTHLY" ${g.alert_mode==='MONTHLY'?'selected':''}>ถึงวันที่กำหนดของเดือน — ไม่อิงยอด</option><option value="NONE" ${g.alert_mode==='NONE'?'selected':''}>ปิดสถานะต้องเบิก</option></select><small class="field-hint alert-rule-example" data-alert-mode-help>${esc(reorderAlertHelp(g.alert_mode || 'MINIMUM', g.min_qty, g.reorder_day))}</small></label><label data-minimum-field>จำนวนขั้นต่ำ<input name="minimum" type="number" min="0" step="0.01" value="${Number(g.min_qty || 0)}" inputmode="decimal"></label><label data-reorder-field>วันที่เริ่มขึ้น “ต้องเบิก” ของเดือน (1–28)<input name="reorder_day" type="number" min="1" max="28" step="1" value="${Number(g.reorder_day || 1)}" inputmode="numeric"></label><label>แจ้งใกล้หมดอายุล่วงหน้า<select name="expiry_alert_days"><option value="7" ${expiryAlertDays(g)===7?'selected':''}>1 สัปดาห์</option><option value="14" ${expiryAlertDays(g)===14?'selected':''}>2 สัปดาห์</option><option value="30" ${expiryAlertDays(g)===30?'selected':''}>1 เดือน — รายการทั่วไป</option><option value="240" ${expiryAlertDays(g)===240?'selected':''}>8 เดือน — ต้องเคลมหรือจัดการล่วงหน้า</option></select></label></div><p class="field-hint">เฉพาะผู้ดูแลหลักหรือ Admin โหมดผู้ดูแลระบบเท่านั้นที่แก้การตั้งค่านี้ได้</p><button class="primary" type="submit">บันทึกการตั้งค่า</button></form>`).join('') : '';
   const noSelection = adminMode && !ownerParam;
   const body = noSelection ? `<div class="card select-first-state">${icon('user')}<div><strong>กรุณาเลือกเจ้าหน้าที่ก่อน</strong><span>ระบบจะแสดงเฉพาะบทบาท ${roleLabel}</span></div></div>` : myStockTab==='settings' ? settingsCards : myStockTab==='reorder' ? (reorderCards || `<div class="card empty">${myStockScope==='assistant'?'ยังไม่มีรายการที่ต้องช่วยเตือน':'ยังไม่มีสินค้าที่ถึงรอบเบิก'}</div>`) : overviewCards;
   page.innerHTML = `<div class="page-head"><div><h2>${adminMode?adminScopeTitle:scopeTitle}</h2>${ownerName?`<p class="muted small">กำลังดู: ${esc(ownerName)} · ${roleLabel}</p>`:''}</div></div>${filterPanel}${noSelection?'':scopeNote}${noSelection?'':tabBar}${noSelection?'':summary}<div class="my-stock-list">${body || `<div class="card empty">${myStockScope==='assistant'?'ยังไม่มีวัสดุที่กำหนดให้ช่วยดูแล':'ยังไม่มีวัสดุที่กำหนดให้ดูแลหลัก'}</div>`}</div>`;
@@ -1519,8 +1534,18 @@ async function renderMyStock(tab = 'overview', selectedOwner = null, scope = 'pr
   $$('[data-my-stock-tab]').forEach(b=>b.addEventListener('click',()=>renderMyStock(b.dataset.myStockTab,ownerParam,myStockScope)));
   $$('[data-my-settings-form]').forEach(form=>{
     const mode=form.elements.alert_mode;
-    const toggle=()=>{form.querySelector('[data-minimum-field]').classList.toggle('hidden',!['MINIMUM','BELOW_MINIMUM'].includes(mode.value));form.querySelector('[data-reorder-field]').classList.toggle('hidden',mode.value!=='MONTHLY');};
-    mode.addEventListener('change',toggle); toggle();
+    const minimum=form.elements.minimum;
+    const reorderDay=form.elements.reorder_day;
+    const help=form.querySelector('[data-alert-mode-help]');
+    const toggle=()=>{
+      form.querySelector('[data-minimum-field]').classList.toggle('hidden',!['MINIMUM','BELOW_MINIMUM'].includes(mode.value));
+      form.querySelector('[data-reorder-field]').classList.toggle('hidden',mode.value!=='MONTHLY');
+      if (help) help.textContent=reorderAlertHelp(mode.value,minimum.value,reorderDay.value);
+    };
+    mode.addEventListener('change',toggle);
+    minimum.addEventListener('input',toggle);
+    reorderDay.addEventListener('input',toggle);
+    toggle();
     form.addEventListener('submit',async e=>{e.preventDefault();const fd=new FormData(form);const btn=e.submitter;btn.disabled=true;const {error}=await sb.rpc('fn_update_my_stock_settings_v3',{p_material_code:form.dataset.materialCode,p_min_qty:Number(fd.get('minimum')||0),p_alert_mode:String(fd.get('alert_mode')),p_reorder_day:Number(fd.get('reorder_day')||1),p_acting_mode:actingMode,p_expiry_alert_days:Number(fd.get('expiry_alert_days')||DEFAULT_EXPIRY_ALERT_DAYS)});btn.disabled=false;if(error)return toast(errMsg(error),true);inventorySummaryCache=[];toast('บันทึกการตั้งค่าแล้ว');renderMyStock('settings',ownerParam,'primary');});
   });
 }
@@ -2276,7 +2301,7 @@ function moveHistoryMarkup(txType, result) {
 }
 
 async function renderScanStock() {
-  page.innerHTML = `<div class="page-head"><div><h2>สแกนตรวจ Lot</h2><p class="muted small">สแกน QR แล้วดูยอดคงเหลือ ผู้ดูแล ขั้นต่ำ และบันทึกตรวจวันศุกร์ได้ทันที</p></div><button class="mini ghost" data-route="weekly">ดูรายการตรวจทั้งหมด</button></div><div class="scan-stock-layout"><section class="card scan-stock-hero"><div class="scan-stock-icon">${icon('camera')}</div><div><h3>เปิดกล้องตรวจสต๊อก</h3><p>รองรับ QR ใหม่ รหัสเดิม และการพิมพ์รหัสเมื่อกล้องมีปัญหา</p></div><button class="primary camera-primary" type="button" data-camera-scan data-scan-mode="inspect">${icon('camera')} เปิดกล้องสแกน</button></section><section class="card"><form id="manualStockScanForm" class="form-grid"><label>พิมพ์รหัส QR / รหัสล็อต<div class="toolbar issue-code-row" style="margin:0"><input id="stockScanCode" autocomplete="off" placeholder="เช่น BB319-09062026" required><button type="submit" class="secondary">ตรวจสอบ</button></div></label></form><div class="scan-stock-help"><strong>หลังสแกน ระบบจะแสดง</strong><span>ชื่อวัสดุ · Lot · วันหมดอายุ · ยอด Lot และยอดรวม · ผู้ดูแล · ขั้นต่ำ · สถานะ</span></div></section></div>`;
+  page.innerHTML = `<div class="page-head"><div><h2>สแกนตรวจ Lot</h2><p class="muted small">สแกน QR แล้วตรวจข้อมูล Lot และบันทึกผลตรวจได้ทันที</p></div><button class="mini ghost" data-route="weekly">ดูรายการตรวจทั้งหมด</button></div><div class="scan-stock-layout"><section class="card scan-stock-hero"><div class="scan-stock-icon">${icon('camera')}</div><div><h3>เปิดกล้องตรวจสต๊อก</h3><p>รองรับ QR ใหม่ รหัสเดิม และการพิมพ์รหัสเมื่อกล้องมีปัญหา</p></div><button class="primary camera-primary" type="button" data-camera-scan data-scan-mode="inspect">${icon('camera')} เปิดกล้องสแกน</button></section><section class="card"><form id="manualStockScanForm" class="form-grid"><label>พิมพ์รหัส QR / รหัสล็อต<div class="toolbar issue-code-row" style="margin:0"><input id="stockScanCode" autocomplete="off" placeholder="เช่น BB319-09062026" required><button type="submit" class="secondary">ตรวจสอบ</button></div></label></form><div class="scan-stock-help"><strong>หลังสแกน ระบบจะแสดง</strong><span>ชื่อวัสดุ · Lot · วันหมดอายุ · ยอด Lot และยอดรวม · ผู้ดูแล · ขั้นต่ำ · สถานะ</span></div></section></div>`;
   $('#manualStockScanForm').addEventListener('submit', e => { e.preventDefault(); const code=$('#stockScanCode').value.trim(); if(!code)return toast('กรุณาพิมพ์รหัส QR หรือรหัสล็อต',true); resolveStockCheckCode(code); });
 }
 
@@ -2333,7 +2358,7 @@ function openScannedLotResult(l, summary, item) {
   const checked = Boolean(item?.checked_at);
   let checkActions = '';
   if (item) {
-    if (checked) checkActions = `<span class="badge ok">ตรวจแล้ว ${dt(item.checked_at)}</span>`;
+    if (checked) checkActions = `<span class="badge ok">ตรวจแล้ว ${dt(item.checked_at)}</span><button class="mini ghost" type="button" data-view-check="${esc(item.item_id)}">ดูผลตรวจ</button>`;
     else if (!canAct) checkActions = `<span class="badge">รอผู้ดูแลหลักหรือผู้ช่วยที่ได้รับสิทธิ์</span>`;
     else if (isExpired(l)) checkActions = `<button class="danger" type="button" data-expired-remove="${esc(item.item_id)}">ยืนยันนำออก</button>`;
     else checkActions = `<button class="primary" type="button" data-scan-confirm-check="${esc(item.item_id)}">ยืนยันตรวจแล้ว</button><button class="secondary" type="button" data-check="${esc(item.item_id)}">ปรับยอด</button>`;
@@ -3018,7 +3043,9 @@ function weeklyItemCard(x) {
   const checkedDiff = checkedActual - checkedSystem;
   let action = '';
   if (x.checked_at) action = `<div class="weekly-result-actions"><span class="badge ${resultClass}">${resultText}</span><button class="mini ghost" type="button" data-view-check="${esc(x.item_id)}">ดูผลตรวจ</button></div>`;
-  else if (weeklyDelegationWaiting(x)) {
+  else if (canHandleItem(x)) {
+    action = expired ? `<button class="mini danger" data-expired-remove="${esc(x.item_id)}">ยืนยันนำออก</button>` : `<button class="mini" data-check="${esc(x.item_id)}">เปิดหน้าต่างตรวจ Lot</button>`;
+  } else if (weeklyDelegationWaiting(x)) {
     action = delegatedToMe
       ? `<span class="badge warn">รอคุณตอบรับด้านบน</span>`
       : `<span class="badge warn">รอ ${esc(operatorNickname(x.delegated_to_name || x.delegated_to_email))} ยืนยัน</span>`;
@@ -3026,8 +3053,7 @@ function weeklyItemCard(x) {
     if (isAdminMode() && !weeklyAdminActingForEmail) action = '<span class="badge">เลือกชื่อเจ้าหน้าที่ด้านบน</span>';
     else if (weeklyDelegationActive(x) && x.delegated_to_name) action = `<span class="badge">รอ ${esc(operatorNickname(x.delegated_to_name))} ตรวจแทน</span>`;
     else action = `<span class="badge">รอ ${esc(ownerNick)}</span>`;
-  } else if (expired) action = `<button class="mini danger" data-expired-remove="${esc(x.item_id)}">ยืนยันนำออก</button>`;
-  else action = `<button class="mini" data-check="${esc(x.item_id)}">เปิดหน้าต่างตรวจ Lot</button>`;
+  }
 
   const delegationLine = delegateBadge ? `<div class="weekly-delegation-line">${delegateBadge}${x.delegation_reason ? `<small>${esc(x.delegation_reason)}</small>` : ''}</div>` : '';
   const checkedSummary = x.checked_at
@@ -3135,7 +3161,7 @@ async function renderWeekly() {
   const primaryOwnerSet=new Set(primaryOwnerEntries.map(([email])=>email));
   if (isAdminMode() && weeklyAdminActingForEmail && !primaryOwnerSet.has(weeklyAdminActingForEmail)) weeklyAdminActingForEmail='';
   const ownerSelect = ['<option value="mine">ของฉัน</option>', '<option value="all">ทุกคน</option>'].concat(ownerEntries.map(([email, name]) => `<option value="${esc(email)}">${esc(name)}</option>`)).join('');
-  const transitionNote = String(check.week_friday || '') === '2026-07-24' ? `<section class="card weekly-transition-note">${icon('check')}<div><strong>เริ่มรอบ 24 กรกฎาคม 2569</strong><span>ผลตรวจวันที่ 23 กรกฎาคมนับในรอบนี้แล้ว</span></div></section>` : '';
+  const transitionNote = '';
   const adminActingPanel = isAdminMode() ? `<section class="card admin-weekly-acting"><div class="admin-weekly-acting-copy"><span>${icon('user')}</span><div><p class="eyebrow">Admin acting</p><h3>ตรวจแทนเจ้าหน้าที่</h3><p>เลือกชื่อเจ้าของงานก่อนกดตรวจ ระบบจะเก็บชื่อ Admin เป็นผู้ตรวจจริง</p></div></div><label>กำลังทำแทน<select id="adminWeeklyActingFor"><option value="">เลือกชื่อเจ้าหน้าที่</option>${primaryOwnerEntries.map(([email,name])=>`<option value="${esc(email)}" ${email===weeklyAdminActingForEmail?'selected':''}>${esc(name)}</option>`).join('')}</select></label><button class="secondary" type="button" data-open-weekly-delegate>มอบหมายให้คนอื่น</button></section>` : '';
 
   page.innerHTML = `<div class="page-head"><div><h2>ตรวจสต๊อกวันศุกร์</h2><p class="muted small">รอบวันที่ ${d(check.week_friday)}</p></div><div class="weekly-head-actions"><button class="mini ghost" data-route="weekly-status">${icon('user')} สถานะผู้ตรวจ</button><button class="mini" type="button" data-open-weekly-delegate>${isAdminMode()?'มอบหมายผู้ตรวจแทน':'ฝากเพื่อนตรวจแทน'}</button></div></div>${transitionNote}${adminActingPanel}
@@ -3203,17 +3229,16 @@ async function renderWeekly() {
 
 async function renderWeeklyStatus() {
   const end=new Date();
-  const start=new Date('2026-07-24T00:00:00+07:00');
-  page.innerHTML=`<div class="page-head"><div><h2>สถานะผู้ตรวจวันศุกร์</h2></div><button class="mini ghost" data-route="weekly">กลับไปตรวจสต๊อก</button></div><form id="weeklyStatusForm" class="card weekly-status-filter"><label>ตั้งแต่วันที่<input id="weeklyStatusFrom" type="date" value="${dateInputValue(start)}"></label><label>ถึงวันที่<input id="weeklyStatusTo" type="date" value="${dateInputValue(end)}"></label><button class="primary" type="submit">แสดงผล</button></form><div id="weeklyStatusResult"></div>`;
+  const start=new Date(`${WEEKLY_CUTOVER_DATE}T00:00:00+07:00`);
+  page.innerHTML=`<div class="page-head"><div><h2>สถานะผู้ตรวจวันศุกร์</h2><p class="muted small">แสดงเฉพาะรอบตั้งแต่ 24 กรกฎาคม 2569</p></div><button class="mini ghost" data-route="weekly">กลับไปตรวจสต๊อก</button></div><form id="weeklyStatusForm" class="card weekly-status-filter"><label>ตั้งแต่วันที่<input id="weeklyStatusFrom" type="date" min="${WEEKLY_CUTOVER_DATE}" value="${dateInputValue(start)}"></label><label>ถึงวันที่<input id="weeklyStatusTo" type="date" min="${WEEKLY_CUTOVER_DATE}" value="${dateInputValue(end)}"></label><button class="primary" type="submit">แสดงผล</button></form><div id="weeklyStatusResult"></div>`;
   const load=async()=>{
     let from=$('#weeklyStatusFrom').value,to=$('#weeklyStatusTo').value;
-    const cutover='2026-07-24';
-    if(from<cutover){from=cutover;$('#weeklyStatusFrom').value=cutover;}
+    if(from<WEEKLY_CUTOVER_DATE){from=WEEKLY_CUTOVER_DATE;$('#weeklyStatusFrom').value=WEEKLY_CUTOVER_DATE;}
     if(!from||!to||from>to)return toast('ช่วงวันที่ไม่ถูกต้อง',true);
     $('#weeklyStatusResult').innerHTML='<div class="card usage-loading">กำลังโหลดสถานะผู้ตรวจ…</div>';
     const {data,error}=await sb.from('v_weekly_staff_status').select('*').gte('week_friday',from).lte('week_friday',to).order('week_friday',{ascending:false});
     if(error){$('#weeklyStatusResult').innerHTML=`<div class="card notice">${esc(errMsg(error))}</div>`;return;}
-    const rows=data||[];
+    const rows=(data||[]).filter(r=>atOrAfterCutover(r.week_friday));
     const people=new Map(),weeks=new Map();
     rows.forEach(r=>{
       const email=r.assigned_email||'unassigned';
