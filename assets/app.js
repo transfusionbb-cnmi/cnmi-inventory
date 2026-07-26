@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.54';
+const APP_VERSION = '1.4.55';
 const WEEKLY_CUTOVER_DATE = '2026-07-24';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const DEFAULT_EXPIRY_ALERT_DAYS = 30;
