@@ -113,9 +113,9 @@ function makeLabel(row,payload){
 
   const name=safeText(row?.name); const barcode=safeText(row?.barcode);
   addText(svg,'ชื่อน้ำยา',left+6,32,{size:15.5,weight:700,maxWidth:74,minSize:13});
-  addText(svg,name,left+86,32,{size:18,weight:500,maxWidth:contentWidth-98,minSize:11.5});
+  addText(svg,name,left+86,32,{size:21,weight:700,maxWidth:contentWidth-98,minSize:13});
 
-  const barcodeX=left+10, barcodeWidth=contentWidth-38, barcodeY=44, barcodeHeight=83;
+  const barcodeX=left+10, barcodeWidth=contentWidth-38, barcodeY=44, barcodeHeight=93;
   addBarcode(svg,barcode,barcodeX,barcodeY,barcodeWidth,barcodeHeight);
   addText(svg,barcode,left+(contentWidth/2),147,{size:15.4,weight:500,anchor:'middle',maxWidth:barcodeWidth,minSize:12.6});
 
