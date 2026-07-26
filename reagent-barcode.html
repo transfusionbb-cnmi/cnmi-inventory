@@ -117,7 +117,7 @@ function makeLabel(row,payload){
 
   const barcodeX=left+10, barcodeWidth=contentWidth-38, barcodeY=44, barcodeHeight=93;
   addBarcode(svg,barcode,barcodeX,barcodeY,barcodeWidth,barcodeHeight);
-  addText(svg,barcode,left+(contentWidth/2),147,{size:15.4,weight:500,anchor:'middle',maxWidth:barcodeWidth,minSize:12.6});
+  addText(svg,barcode,left+(contentWidth/2),154,{size:15.4,weight:500,anchor:'middle',maxWidth:barcodeWidth,minSize:12.6});
 
   addText(svg,`วันที่เปิด ${payload.openedDate} เวลา ${payload.openedTime}`,left+6,182,{size:16.6,weight:700,maxWidth:contentWidth-12,minSize:13.4});
   addText(svg,`วันหมดอายุ ${payload.expiryDate} เวลา ${payload.expiryTime}`,left+6,211,{size:16.6,weight:700,maxWidth:contentWidth-12,minSize:13.4});
