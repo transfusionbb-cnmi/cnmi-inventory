@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.61';
+const APP_VERSION = '1.4.62';
 const WEEKLY_CUTOVER_DATE = '2026-07-24';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const DEFAULT_EXPIRY_ALERT_DAYS = 30;
@@ -4001,6 +4001,24 @@ function openMaterialEditor(code) {
 
 
 
+
+function normalizeReagentBarcodeByName(name, barcode) {
+  const reagentName=String(name || '').toUpperCase().replace(/\s+/g,' ').trim();
+  let value=String(barcode || '').trim().toUpperCase();
+  const orthoMatch=reagentName.match(/(?:^|)O([123])(?:|[^0-9A-Z])/);
+  if(reagentName.includes('ORTHO') && reagentName.includes('TRC') && orthoMatch){
+    const n=orthoMatch[1];
+    if(new RegExp(`^690${n}\.RT$`,'i').test(value)) value=`69O${n}.RT`;
+  }
+  return value;
+}
+
+function reagentBarcodeCorrectionInfo(name, barcode) {
+  const original=String(barcode || '').trim().toUpperCase();
+  const corrected=normalizeReagentBarcodeByName(name, original);
+  return {original,corrected,changed:Boolean(original && corrected !== original)};
+}
+
 function reagentEmptyRow() {
   return {name:'', barcode:'', copies:1};
 }
@@ -4014,11 +4032,14 @@ function reagentDefaultDraft() {
 
 function normalizeReagentDraft(parsed = {}) {
   const rows = Array.isArray(parsed?.rows)
-    ? parsed.rows.map(x => ({
-        name:String(x?.name || ''),
-        barcode:String(x?.barcode || ''),
-        copies:Math.max(1, Math.min(50, Math.round(Number(x?.copies) || 1)))
-      }))
+    ? parsed.rows.map(x => {
+        const name=String(x?.name || '');
+        return {
+          name,
+          barcode:normalizeReagentBarcodeByName(name,x?.barcode || ''),
+          copies:Math.max(1, Math.min(50, Math.round(Number(x?.copies) || 1)))
+        };
+      })
     : [];
   return {
     setName:String(parsed?.setName || ''),
@@ -4083,12 +4104,17 @@ function reagentLabelDateTimeParts(value) {
 async function loadReagentSetItems(setId) {
   const {data,error}=await sb.from('v_reagent_barcode_set_items').select('*').eq('set_id',setId).order('sort_order');
   if(error) throw error;
-  return (data || []).map(x => ({
-    id:x.id,
-    name:x.reagent_name,
-    barcode:x.barcode_value,
-    copies:Math.max(1,Number(x.default_copies || 1))
-  }));
+  return (data || []).map(x => {
+    const info=reagentBarcodeCorrectionInfo(x.reagent_name,x.barcode_value);
+    return {
+      id:x.id,
+      name:x.reagent_name,
+      barcode:info.corrected,
+      barcode_original:info.original,
+      barcode_corrected:info.changed,
+      copies:Math.max(1,Number(x.default_copies || 1))
+    };
+  });
 }
 
 async function launchReagentBarcodePrint({set,rows,openedByName,openedByEmail,openedAt,useUntilAt,setCount=1} = {}) {
@@ -4096,7 +4122,8 @@ async function launchReagentBarcodePrint({set,rows,openedByName,openedByEmail,op
   const labels=[];
   (rows || []).forEach(row => {
     const copies=Math.max(1,Math.min(50,Math.round(Number(row.copies)||1))) * multiplier;
-    for(let i=0;i<copies;i+=1) labels.push({name:row.name,barcode:row.barcode});
+    const barcode=normalizeReagentBarcodeByName(row.name,row.barcode);
+    for(let i=0;i<copies;i+=1) labels.push({name:row.name,barcode});
   });
   if(!set || !labels.length) return false;
   const openedParts=reagentLabelDateTimeParts(openedAt);
@@ -4150,7 +4177,8 @@ function reagentPrintSetOptions(sets = []) {
 
 function reagentPrintItemMarkup(row, setCount = 1) {
   const copies=Math.max(1,Number(row.copies || 1)) * Math.max(1,Number(setCount || 1));
-  return `<article class="reagent-print-item"><span class="reagent-print-item-index">${icon('print')}</span><div><strong>${esc(row.name)}</strong><small>Barcode / Lot: ${esc(row.barcode)}</small></div><b>${copies} ดวง</b></article>`;
+  const corrected=row.barcode_corrected ? `<em class="barcode-correction-badge">แก้เลข 0 เป็นตัว O ตามชื่อ O1/O2/O3</em>` : '';
+  return `<article class="reagent-print-item"><span class="reagent-print-item-index">${icon('print')}</span><div><strong>${esc(row.name)}</strong><small>Barcode / Lot: ${esc(row.barcode)} ${corrected}</small></div><b>${copies} ดวง</b></article>`;
 }
 
 async function renderReagentPrint() {
@@ -4250,7 +4278,10 @@ async function renderReagentPrint() {
 }
 
 function reagentAdminItemCard(row,index) {
-  return `<article class="reagent-admin-item" data-reagent-admin-row="${index}"><div class="reagent-admin-item-number">${index+1}</div><label>ชื่อน้ำยา<input type="text" data-reagent-admin-name value="${esc(row.name || '')}" placeholder="เช่น Iden_TRC_IH-500_P1" maxlength="160"></label><label>Barcode / Lot<input type="text" data-reagent-admin-barcode value="${esc(row.barcode || '')}" placeholder="เช่น 80016900280115" maxlength="160" autocomplete="off"></label><label class="reagent-admin-copy-field">จำนวนดวง<input type="number" data-reagent-admin-copies min="1" max="50" step="1" value="${Math.max(1,Number(row.copies || 1))}" inputmode="numeric"></label><button type="button" class="mini ghost" data-reagent-admin-remove="${index}">ลบ</button></article>`;
+  const orthoHint=/\bO[123]\b/i.test(String(row.name || '')) && /ORTHO/i.test(String(row.name || ''))
+    ? '<small class="field-hint barcode-character-hint">O1/O2/O3 ของ Ortho ใช้ตัวอักษร O เช่น 69O1.RT ไม่ใช่เลข 0</small>'
+    : '';
+  return `<article class="reagent-admin-item" data-reagent-admin-row="${index}"><div class="reagent-admin-item-number">${index+1}</div><label>ชื่อน้ำยา<input type="text" data-reagent-admin-name value="${esc(row.name || '')}" placeholder="เช่น Iden_TRC_IH-500_P1" maxlength="160"></label><label>Barcode / Lot<input type="text" data-reagent-admin-barcode value="${esc(normalizeReagentBarcodeByName(row.name,row.barcode || ''))}" placeholder="เช่น 80016900280115" maxlength="160" autocomplete="off">${orthoHint}</label><label class="reagent-admin-copy-field">จำนวนดวง<input type="number" data-reagent-admin-copies min="1" max="50" step="1" value="${Math.max(1,Number(row.copies || 1))}" inputmode="numeric"></label><button type="button" class="mini ghost" data-reagent-admin-remove="${index}">ลบ</button></article>`;
 }
 
 function reagentAdminSetCard(row) {
@@ -4347,7 +4378,7 @@ async function renderReagentSetAdmin() {
     if(!selectedSet){container.classList.add('hidden');container.innerHTML='';return;}
     const statusActive=String(selectedSet.status).toUpperCase()==='ACTIVE';
     container.classList.remove('hidden');
-    container.innerHTML=`<div class="reagent-admin-selected-head"><div><p class="eyebrow">ชุดที่เลือก</p><h3>${esc(selectedSet.set_name)}</h3><p>${esc([selectedSet.instrument_name,selectedSet.category].filter(Boolean).join(' · ') || 'ไม่ระบุเครื่อง/ประเภท')} · ${esc(reagentDateRange(selectedSet))}</p></div>${reagentStatusLabel(selectedSet)}</div><div class="reagent-admin-selected-info"><span>รูปแบบ <b>${selectedSet.reserve_right?'เว้นขวา 10 mm':'เต็มดวง'}</b></span><span>ผู้สร้าง <b>${esc(selectedSet.created_by_name||selectedSet.created_by_email||'-')}</b></span><span>บันทึกเมื่อ <b>${dt(selectedSet.created_at)}</b></span></div><div class="reagent-admin-selected-items">${selectedItems.map((row,index)=>`<div><b>${index+1}</b><span><strong>${esc(row.name)}</strong><small>${esc(row.barcode)}</small></span><em>${row.copies} ดวง</em></div>`).join('')}</div><div class="reagent-admin-selected-actions"><button type="button" class="secondary" id="reagentAdminCopySet">คัดลอกเป็นชุดใหม่</button><button type="button" class="secondary" id="reagentAdminEditSet">แก้ไข</button><button type="button" class="${statusActive?'danger':'secondary'}" id="reagentAdminToggleSet">${statusActive?'เลิกใช้ชุดนี้':'เปิดใช้อีกครั้ง'}</button></div>`;
+    container.innerHTML=`<div class="reagent-admin-selected-head"><div><p class="eyebrow">ชุดที่เลือก</p><h3>${esc(selectedSet.set_name)}</h3><p>${esc([selectedSet.instrument_name,selectedSet.category].filter(Boolean).join(' · ') || 'ไม่ระบุเครื่อง/ประเภท')} · ${esc(reagentDateRange(selectedSet))}</p></div>${reagentStatusLabel(selectedSet)}</div><div class="reagent-admin-selected-info"><span>รูปแบบ <b>${selectedSet.reserve_right?'เว้นขวา 10 mm':'เต็มดวง'}</b></span><span>ผู้สร้าง <b>${esc(selectedSet.created_by_name||selectedSet.created_by_email||'-')}</b></span><span>บันทึกเมื่อ <b>${dt(selectedSet.created_at)}</b></span></div><div class="reagent-admin-selected-items">${selectedItems.map((row,index)=>`<div><b>${index+1}</b><span><strong>${esc(row.name)}</strong><small>${esc(row.barcode)}${row.barcode_corrected ? ' · แก้ 0→O อัตโนมัติ' : ''}</small></span><em>${row.copies} ดวง</em></div>`).join('')}</div><div class="reagent-admin-selected-actions"><button type="button" class="secondary" id="reagentAdminCopySet">คัดลอกเป็นชุดใหม่</button><button type="button" class="secondary" id="reagentAdminEditSet">แก้ไข</button><button type="button" class="${statusActive?'danger':'secondary'}" id="reagentAdminToggleSet">${statusActive?'เลิกใช้ชุดนี้':'เปิดใช้อีกครั้ง'}</button></div>`;
     $('#reagentAdminCopySet').addEventListener('click',()=>openEditor({
       setName:`${selectedSet.set_name} - ชุดใหม่`,instrument:selectedSet.instrument_name||'',category:selectedSet.category||'',validFrom:dateInputValue(new Date()),validTo:'',notes:selectedSet.notes||'',reserveRight:selectedSet.reserve_right!==false,rows:selectedItems
     },{sourceId:selectedSet.id,title:'คัดลอกเป็นชุดใหม่',hint:'แก้เฉพาะข้อมูลที่เปลี่ยน ชุดเดิมจะยังอยู่ในประวัติ'}));

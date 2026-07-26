@@ -84,7 +84,7 @@ function encodeCode128(text){
   const digitRunLength=start=>{let n=0; while(start+n<value.length && /\d/.test(value[start+n])) n+=1; return n;};
   let i=0;
   const startRun=digitRunLength(0);
-  let currentSet=(startRun>=4 && startRun%2===0) ? 'C' : 'B';
+  let currentSet=(startRun>=2 && startRun%2===0) ? 'C' : 'B';
   const codes=[currentSet==='C' ? 105 : 104];
   while(i<value.length){
     if(currentSet==='C'){
