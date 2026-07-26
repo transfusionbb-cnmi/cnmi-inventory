@@ -107,9 +107,6 @@ function makeLabel(row,payload){
   svg.appendChild(svgNode('rect',{x:0,y:0,width:W,height:H,fill:'#fff'}));
 
   const reserve=Boolean(payload.reserveRight);
-  const outerLeft=2,outerTop=1,outerRight=W-2,outerBottom=H-1;
-  svg.appendChild(svgNode('rect',{x:outerLeft,y:outerTop,width:outerRight-outerLeft,height:outerBottom-outerTop,rx:10,ry:10,fill:'#fff',stroke:'#000','stroke-width':1}));
-
   const left=18, top=12, contentRight=reserve?388:478, contentWidth=(reserve?388:478)-18;
   const sepX=reserve?399:null;
   if(reserve)svg.appendChild(svgNode('line',{x1:sepX,y1:top,x2:sepX,y2:H-12,stroke:'#000','stroke-width':2}));
@@ -122,10 +119,10 @@ function makeLabel(row,payload){
   addBarcode(svg,barcode,barcodeX,barcodeY,barcodeWidth,barcodeHeight);
   addText(svg,barcode,left+(contentWidth/2),136,{size:14.8,weight:500,anchor:'middle',maxWidth:barcodeWidth,minSize:12});
 
-  addText(svg,`วันที่เปิด ${payload.openedDate} เวลา ${payload.openedTime}`,left+6,163,{size:13.5,weight:600,maxWidth:contentWidth-12,minSize:11.2});
-  addText(svg,`วันหมดอายุ ${payload.expiryDate} เวลา ${payload.expiryTime}`,left+6,189,{size:13.5,weight:600,maxWidth:contentWidth-12,minSize:11.2});
-  addText(svg,`ผู้เปิดใช้ ${payload.openedBy}`,left+6,215,{size:13.5,weight:600,maxWidth:contentWidth-12,minSize:11.2});
-  addText(svg,payload.footer,left+(contentWidth/2),254,{size:8.9,weight:500,anchor:'middle',maxWidth:contentWidth-8,minSize:7.8});
+  addText(svg,`วันที่เปิด ${payload.openedDate} เวลา ${payload.openedTime}`,left+6,173,{size:15.6,weight:700,maxWidth:contentWidth-12,minSize:12.8});
+  addText(svg,`วันหมดอายุ ${payload.expiryDate} เวลา ${payload.expiryTime}`,left+6,201,{size:15.6,weight:700,maxWidth:contentWidth-12,minSize:12.8});
+  addText(svg,`ผู้เปิดใช้ ${payload.openedBy}`,left+6,229,{size:15.6,weight:700,maxWidth:contentWidth-12,minSize:12.8});
+  addText(svg,payload.footer,left+(contentWidth/2),267,{size:10.3,weight:500,anchor:'middle',maxWidth:contentWidth-8,minSize:8.8});
 
   page.appendChild(svg); return page;
 }
