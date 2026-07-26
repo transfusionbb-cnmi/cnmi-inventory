@@ -80,46 +80,57 @@ function addText(svg,text,x,y,{size=18,weight=700,anchor='start',maxWidth=0,minS
 function encodeCode128(text){
   const value=String(text??'');
   if(!value)throw new Error('ไม่มีข้อมูลบาร์โค้ด');
-  const codeB=ch=>{const code=ch.charCodeAt(0)-32; if(code<0||code>94)throw new Error('Barcode รองรับอักขระมาตรฐานทั่วไปเท่านั้น'); return code;};
-  const digitRunLength=start=>{let n=0; while(start+n<value.length && /\d/.test(value[start+n])) n+=1; return n;};
+  const codeB=ch=>{
+    const code=ch.charCodeAt(0)-32;
+    if(code<0||code>94)throw new Error('Barcode รองรับอักขระมาตรฐานทั่วไปเท่านั้น');
+    return code;
+  };
+  const digitRunLength=start=>{
+    let n=0;
+    while(start+n<value.length && /\d/.test(value[start+n])) n+=1;
+    return n;
+  };
+
   let i=0;
-  const startRun=digitRunLength(0);
-  let currentSet=(startRun>=2 && startRun%2===0) ? 'C' : 'B';
+  const initialDigits=digitRunLength(0);
+  // BarTender-style Auto: when a value starts with at least 4 digits,
+  // pair digits from the LEFT in Code C. If one digit remains, switch to Code B.
+  let currentSet=(initialDigits>=4 || (/^\d+$/.test(value) && initialDigits>=2)) ? 'C' : 'B';
   const codes=[currentSet==='C' ? 105 : 104];
+
   while(i<value.length){
     if(currentSet==='C'){
-      let run=digitRunLength(i);
+      const run=digitRunLength(i);
       if(run>=2){
-        while(run>=2){
-          codes.push(Number(value.slice(i,i+2)));
-          i+=2; run-=2;
-        }
-        if(run===1){
-          codes.push(100); currentSet='B';
-        }
+        codes.push(Number(value.slice(i,i+2)));
+        i+=2;
         continue;
       }
-      codes.push(100); currentSet='B';
+      codes.push(100); // switch C -> B
+      currentSet='B';
       continue;
     }
-    let run=digitRunLength(i);
-    if(run>=4){
-      if(run%2===1){
-        codes.push(codeB(value[i]));
-        i+=1; run-=1;
-      }
-      if(run>=4 || (run>=2 && i===0)){
-        codes.push(99); currentSet='C';
-        continue;
-      }
+
+    const run=digitRunLength(i);
+    const reachesEnd=(i+run===value.length);
+    // In the middle, Code C is worthwhile for 6+ digits; at the end, 4+ digits.
+    if(run>=6 || (run>=4 && reachesEnd)){
+      codes.push(99); // switch B -> C
+      currentSet='C';
+      continue;
     }
+
     codes.push(codeB(value[i]));
     i+=1;
   }
+
   let checksum=codes[0];
-  for(let j=1;j<codes.length;j+=1)checksum += codes[j]*j;
-  checksum%=103; codes.push(checksum,106); return codes;
+  for(let j=1;j<codes.length;j+=1)checksum+=codes[j]*j;
+  checksum%=103;
+  codes.push(checksum,106);
+  return codes;
 }
+
 function addBarcode(svg,text,x,y,width,height){
   const codes=encodeCode128(text); const quiet=10; let cursor=quiet; const bars=[];
   codes.forEach(code=>{const pattern=CODE128_PATTERNS[code]; for(let i=0;i<pattern.length;i+=1){const module=Number(pattern[i]); if(i%2===0)bars.push({x:cursor,w:module}); cursor+=module;}});
