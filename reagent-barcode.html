@@ -6,7 +6,7 @@
 <title>พิมพ์บาร์โค้ดน้ำยาเข้าเครื่อง</title>
 <style>
 *{box-sizing:border-box}
-:root{--paper-w:50mm;--paper-h:28mm;--label-h:27.45mm}
+:root{--paper-w:50mm;--paper-h:28mm;--label-h:27.7mm}
 html,body{margin:0!important;padding:0!important;width:var(--paper-w);min-width:var(--paper-w);background:#eef2f3;font-family:Tahoma,"Leelawadee UI","Noto Sans Thai",Arial,sans-serif;color:#000;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 body{line-height:0}
 #printPages{display:block;width:var(--paper-w);margin:0!important;padding:0!important;line-height:0;font-size:0}
@@ -33,7 +33,7 @@ const batchKey=p.get('batch')||'';
 const pages=document.getElementById('printPages');
 const statusEl=document.getElementById('screenStatus');
 const SVG_NS='http://www.w3.org/2000/svg';
-const W=500,H=274.5;
+const W=500,H=277;
 const CODE128_PATTERNS=[
 '212222','222122','222221','121223','121322','131222','122213','122312','132212','221213','221312','231212','112232','122132','122231','113222','123122','123221','223211','221132','221231','213212','223112','312131','311222','321122','321221','312212','322112','322211','212123','212321','232121','111323','131123','131321','112313','132113','132311','211313','231113','231311','112133','112331','132131','113123','113321','133121','313121','211331','231131','213113','213311','213131','311123','311321','331121','312113','312311','332111','314111','221411','431111','111224','111422','121124','121421','141122','141221','112214','112412','122114','122411','142112','142211','241211','221114','413111','241112','134111','111242','121142','121241','114212','124112','124211','411212','421112','421211','212141','214121','412121','111143','111341','131141','114113','114311','411113','411311','113141','114131','311141','411131','211412','211214','211232','2331112'
 ];
@@ -62,29 +62,39 @@ function getBatch(){
   }finally{localStorage.removeItem(batchKey);}
 }
 function svgNode(tag,attrs={}){const node=document.createElementNS(SVG_NS,tag);Object.entries(attrs).forEach(([k,v])=>node.setAttribute(k,String(v)));return node;}
+function fitSize(text,maxWidth,{size=18,weight=700,minSize=11}={}){
+  const value=String(text??''); let fontSize=size;
+  while(maxWidth>0&&fontSize>minSize){
+    measureCtx.font=`${weight} ${fontSize}px Tahoma, "Leelawadee UI", Arial, sans-serif`;
+    if(measureCtx.measureText(value).width<=maxWidth)break;
+    fontSize-=0.25;
+  }
+  return fontSize;
+}
 function addText(svg,text,x,y,{size=18,weight=700,anchor='start',maxWidth=0,minSize=11}={}){
   const value=String(text??'');
-  let fontSize=size;
-  if(maxWidth>0){
-    while(fontSize>minSize){
-      measureCtx.font=`${weight} ${fontSize}px Tahoma, "Leelawadee UI", Arial, sans-serif`;
-      if(measureCtx.measureText(value).width<=maxWidth)break;
-      fontSize-=.25;
-    }
-  }
+  const fontSize=maxWidth>0?fitSize(value,maxWidth,{size,weight,minSize}):size;
   const node=svgNode('text',{x,y,fill:'#000','font-family':'Tahoma, Leelawadee UI, Noto Sans Thai, Arial, sans-serif','font-size':fontSize,'font-weight':weight,'text-anchor':anchor,'dominant-baseline':'alphabetic'});
-  node.textContent=value;svg.appendChild(node);return node;
+  node.textContent=value; svg.appendChild(node); return {node,fontSize};
 }
-function encodeCode128B(text){
+function encodeCode128(text){
   const value=String(text??'');
   if(!value)throw new Error('ไม่มีข้อมูลบาร์โค้ด');
+  if(/^\d+$/.test(value) && value.length % 2 === 0){
+    const codes=[105];
+    for(let i=0;i<value.length;i+=2)codes.push(Number(value.slice(i,i+2)));
+    let checksum=codes[0];
+    for(let i=1;i<codes.length;i+=1)checksum += codes[i]*i;
+    checksum%=103; codes.push(checksum,106); return codes;
+  }
   const codes=[104];
-  for(const ch of value){const code=ch.charCodeAt(0)-32;if(code<0||code>94)throw new Error('Barcode รองรับอักขระมาตรฐานทั่วไปเท่านั้น');codes.push(code);}
-  let checksum=codes[0];for(let i=1;i<codes.length;i+=1)checksum+=codes[i]*i;checksum%=103;codes.push(checksum,106);return codes;
+  for(const ch of value){const code=ch.charCodeAt(0)-32;if(code<0||code>94)throw new Error('Barcode รองรับอักขระมาตรฐานทั่วไปเท่านั้น');codes.push(code);}  
+  let checksum=codes[0]; for(let i=1;i<codes.length;i+=1)checksum += codes[i]*i;
+  checksum%=103; codes.push(checksum,106); return codes;
 }
 function addBarcode(svg,text,x,y,width,height){
-  const codes=encodeCode128B(text);const quiet=10;let cursor=quiet;const bars=[];
-  codes.forEach(code=>{const pattern=CODE128_PATTERNS[code];for(let i=0;i<pattern.length;i+=1){const module=Number(pattern[i]);if(i%2===0)bars.push({x:cursor,w:module});cursor+=module;}});
+  const codes=encodeCode128(text); const quiet=10; let cursor=quiet; const bars=[];
+  codes.forEach(code=>{const pattern=CODE128_PATTERNS[code]; for(let i=0;i<pattern.length;i+=1){const module=Number(pattern[i]); if(i%2===0)bars.push({x:cursor,w:module}); cursor+=module;}});
   const total=cursor+quiet;
   const group=svgNode('g',{'shape-rendering':'crispEdges',transform:`translate(${x} ${y}) scale(${width/total} ${height/72})`});
   group.appendChild(svgNode('rect',{x:0,y:0,width:total,height:72,fill:'#fff'}));
@@ -92,38 +102,37 @@ function addBarcode(svg,text,x,y,width,height){
   svg.appendChild(group);
 }
 function makeLabel(row,payload){
-  const page=document.createElement('div');page.className='label-page';
+  const page=document.createElement('div'); page.className='label-page';
   const svg=svgNode('svg',{class:'label-vector',viewBox:`0 0 ${W} ${H}`,preserveAspectRatio:'none','aria-hidden':'true'});
   svg.appendChild(svgNode('rect',{x:0,y:0,width:W,height:H,fill:'#fff'}));
 
   const reserve=Boolean(payload.reserveRight);
-  const left=20,right=480,top=10,bottom=264;
-  const separatorX=reserve?380:null;
-  const contentRight=reserve?368:right;
-  const contentWidth=contentRight-left;
+  const outerLeft=2,outerTop=1,outerRight=W-2,outerBottom=H-1;
+  svg.appendChild(svgNode('rect',{x:outerLeft,y:outerTop,width:outerRight-outerLeft,height:outerBottom-outerTop,rx:10,ry:10,fill:'#fff',stroke:'#000','stroke-width':1}));
 
-  if(reserve)svg.appendChild(svgNode('line',{x1:separatorX,y1:top,x2:separatorX,y2:bottom,stroke:'#000','stroke-width':3}));
+  const left=18, top=12, contentRight=reserve?388:478, contentWidth=(reserve?388:478)-18;
+  const sepX=reserve?399:null;
+  if(reserve)svg.appendChild(svgNode('line',{x1:sepX,y1:top,x2:sepX,y2:H-12,stroke:'#000','stroke-width':2}));
 
-  const name=safeText(row?.name);
-  const barcode=safeText(row?.barcode);
-  addText(svg,`ชื่อน้ำยา  ${name}`,left,31,{size:22,weight:700,maxWidth:contentWidth,minSize:15});
-  addBarcode(svg,barcode,left+2,40,contentWidth-4,72);
-  addText(svg,barcode,left+contentWidth/2,133,{size:20,weight:700,anchor:'middle',maxWidth:contentWidth-4,minSize:14});
+  const name=safeText(row?.name); const barcode=safeText(row?.barcode);
+  addText(svg,'ชื่อน้ำยา',left+6,32,{size:15.5,weight:700,maxWidth:74,minSize:13});
+  addText(svg,name,left+86,32,{size:18,weight:500,maxWidth:contentWidth-98,minSize:11.5});
 
-  const row1=`วันที่เปิด ${payload.openedDate}   เวลา ${payload.openedTime}`;
-  const row2=`วันหมดอายุ ${payload.expiryDate}   เวลา ${payload.expiryTime}`;
-  const row3=`ผู้เปิดใช้ ${payload.openedBy}`;
-  addText(svg,row1,left,157,{size:16,weight:700,maxWidth:contentWidth,minSize:11.5});
-  addText(svg,row2,left,181,{size:16,weight:700,maxWidth:contentWidth,minSize:11.5});
-  addText(svg,row3,left,205,{size:16,weight:700,maxWidth:contentWidth,minSize:11.5});
-  addText(svg,payload.footer,left+contentWidth/2,253,{size:12.5,weight:500,anchor:'middle',maxWidth:contentWidth-2,minSize:9.5});
+  const barcodeX=left+10, barcodeWidth=contentWidth-38, barcodeY=44, barcodeHeight=68;
+  addBarcode(svg,barcode,barcodeX,barcodeY,barcodeWidth,barcodeHeight);
+  addText(svg,barcode,left+(contentWidth/2),136,{size:14.8,weight:500,anchor:'middle',maxWidth:barcodeWidth,minSize:12});
 
-  page.appendChild(svg);return page;
+  addText(svg,`วันที่เปิด ${payload.openedDate} เวลา ${payload.openedTime}`,left+6,163,{size:13.5,weight:600,maxWidth:contentWidth-12,minSize:11.2});
+  addText(svg,`วันหมดอายุ ${payload.expiryDate} เวลา ${payload.expiryTime}`,left+6,189,{size:13.5,weight:600,maxWidth:contentWidth-12,minSize:11.2});
+  addText(svg,`ผู้เปิดใช้ ${payload.openedBy}`,left+6,215,{size:13.5,weight:600,maxWidth:contentWidth-12,minSize:11.2});
+  addText(svg,payload.footer,left+(contentWidth/2),254,{size:8.9,weight:500,anchor:'middle',maxWidth:contentWidth-8,minSize:7.8});
+
+  page.appendChild(svg); return page;
 }
 async function prepare(){
   const payload=getBatch();
   if(!payload.labels.length)throw new Error('ไม่มีรายการสำหรับพิมพ์');
-  if(document.fonts&&document.fonts.ready){try{await document.fonts.ready;}catch(_){}}
+  if(document.fonts&&document.fonts.ready){try{await document.fonts.ready;}catch(_){} }
   payload.labels.forEach(row=>pages.appendChild(makeLabel(row,payload)));
   await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
   return payload;
@@ -133,8 +142,8 @@ async function startPrint(){
     const payload=await prepare();
     statusEl.innerHTML=`กำลังเปิดหน้าพิมพ์…<small>${payload.labels.length} ดวง · ขนาด 50 × 28 mm · Scale 100% / Actual size · Margin None</small>`;
     await new Promise(resolve=>setTimeout(resolve,180));
-    window.focus();window.print();
-  }catch(e){statusEl.innerHTML=`${esc(e.message||'สร้างบาร์โค้ดไม่สำเร็จ')}<small>กรุณาปิดหน้านี้ แล้วกลับไปกดพิมพ์ใหม่</small>`;console.error(e);}
+    window.focus(); window.print();
+  }catch(e){statusEl.innerHTML=`${esc(e.message||'สร้างบาร์โค้ดไม่สำเร็จ')}<small>กรุณาปิดหน้านี้ แล้วกลับไปกดพิมพ์ใหม่</small>`; console.error(e);}
 }
 window.addEventListener('afterprint',()=>setTimeout(()=>window.close(),180));
 window.addEventListener('load',()=>{if(p.get('auto')==='1')startPrint();else prepare().catch(console.error);},{once:true});
