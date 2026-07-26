@@ -1,7 +1,7 @@
 {
   "name": "CNMI Inventory",
   "short_name": "Inventory",
-  "description": "ระบบบริหารจัดการสต๊อกและพิมพ์ QR Sticker ขนาดจริง 25 × 20 mm สำหรับ TSC 310 และ Zebra GC420t",
+  "description": "ระบบบริหารจัดการสต๊อก พิมพ์ QR Sticker และ Generate บาร์โค้ดน้ำยาเข้าเครื่องสำหรับหน่วยเวชศาสตร์บริการโลหิต CNMI",
   "id": "https://inventory.cnmiblood.com/",
   "start_url": "./index.html",
   "scope": "./",
@@ -137,7 +137,18 @@
           "sizes": "192x192"
         }
       ]
+    },
+    {
+      "name": "Generate น้ำยาเข้าเครื่อง",
+      "short_name": "Barcode น้ำยา",
+      "url": "./index.html#reagent-generator",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
     }
   ],
-  "version": "1.4.50"
+  "version": "1.4.51"
 }

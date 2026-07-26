@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.50';
+const APP_VERSION = '1.4.51';
 const WEEKLY_CUTOVER_DATE = '2026-07-24';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const DEFAULT_EXPIRY_ALERT_DAYS = 30;
@@ -37,6 +37,7 @@ let passwordRecoveryMode = new URLSearchParams(location.search).get('password_re
 let passwordRecoverySession = null;
 let pendingIssueCode = new URLSearchParams(location.search).get('issue') || new URLSearchParams(location.search).get('lot');
 let deferredInstallPrompt = null;
+const REAGENT_GENERATOR_DRAFT_KEY = 'cnmi-inventory-reagent-generator-draft-v1';
 const MOVE_HISTORY_PAGE_SIZE = 7;
 const REPORT_PAGE_SIZE = 10;
 const LABEL_QUEUE_PAGE_SIZE = 10;
@@ -467,7 +468,7 @@ function showIosInstallGuide() {
 
 function openMobileMenu() {
   const adminItem = isAdminMode() ? `<button type="button" data-route="indicators">${icon('chart')}<span><strong>ตัวชี้วัด</strong><small>คำนวณอัตโนมัติและบันทึกเหตุการณ์</small></span></button><button type="button" data-route="admin">${icon('settings')}<span><strong>ตั้งค่าระบบ</strong><small>ผู้ใช้ ผู้ดูแล และข้อมูลสินค้า</small></span></button>` : '';
-  openModal(`<div class="mobile-menu-sheet"><div class="mobile-menu-head"><span class="owner-avatar">${esc((profile?.display_name || '?').trim().charAt(0))}</span><div><h3>เมนูทั้งหมด</h3><p>${esc(profile?.display_name || '')}</p></div></div><div class="mobile-menu-grid"><button type="button" data-route="stock">${icon('box')}<span><strong>ค้นหาสต๊อกทั้งหมด</strong><small>ค้นหาสินค้าและ Lot</small></span></button><button type="button" data-route="my-stock">${icon('user')}<span><strong>สต๊อกที่ฉันดูแล</strong><small>งานหลัก: ต้องเบิกและตั้งค่าการเตือน</small></span></button><button type="button" data-route="assisted-stock">${icon('user')}<span><strong>สต๊อกที่ฉันช่วยดูแล</strong><small>ช่วยติดตามและเตือนผู้ดูแลหลัก</small></span></button><button type="button" data-route="usage">${icon('chart')}<span><strong>วิเคราะห์การใช้</strong><small>การใช้และแนวโน้มหมดอายุ</small></span></button><button type="button" data-route="labels">${icon('print')}<span><strong>พิมพ์ QR Sticker</strong><small>คิวสติ๊กเกอร์จากรายการรับเข้า</small></span></button><button type="button" data-route="open-labels">${icon('print')}<span><strong>พิมพ์วันเปิดใช้</strong><small>รายการนำออกวันนี้และย้อนหลัง</small></span></button><button type="button" data-route="open-label-create">${icon('plus')}<span><strong>สร้างสติ๊กเกอร์วันเปิด</strong><small>เลือกวัสดุและกำหนดวันที่เอง</small></span></button><button type="button" data-route="weekly">${icon('check')}<span><strong>ตรวจวันศุกร์</strong><small>ตรวจนับและปรับยอดจริง</small></span></button><button type="button" data-route="scan-stock">${icon('camera')}<span><strong>สแกนตรวจ Lot</strong><small>ดูยอดคงเหลือและตรวจด้วยกล้อง</small></span></button><button type="button" data-route="weekly-status">${icon('user')}<span><strong>สถานะผู้ตรวจ</strong><small>ดูย้อนหลังตามช่วงวันที่</small></span></button><button type="button" data-route="activity">${icon('history')}<span><strong>ประวัติ</strong><small>รายการที่ทำในระบบ</small></span></button><button type="button" data-route="reports">${icon('download')}<span><strong>รายงานและส่งออก</strong><small>CSV และข้อมูลย้อนหลัง</small></span></button>${adminItem}<button type="button" data-route="help">${icon('help')}<span><strong>คู่มือใช้งาน</strong><small>ขั้นตอนทำงาน</small></span></button><button type="button" data-open-install>${icon('smartphone')}<span><strong>ติดตั้งแอป</strong><small>Android และ iPhone/iPad</small></span></button></div></div>`);
+  openModal(`<div class="mobile-menu-sheet"><div class="mobile-menu-head"><span class="owner-avatar">${esc((profile?.display_name || '?').trim().charAt(0))}</span><div><h3>เมนูทั้งหมด</h3><p>${esc(profile?.display_name || '')}</p></div></div><div class="mobile-menu-grid"><button type="button" data-route="stock">${icon('box')}<span><strong>ค้นหาสต๊อกทั้งหมด</strong><small>ค้นหาสินค้าและ Lot</small></span></button><button type="button" data-route="my-stock">${icon('user')}<span><strong>สต๊อกที่ฉันดูแล</strong><small>งานหลัก: ต้องเบิกและตั้งค่าการเตือน</small></span></button><button type="button" data-route="assisted-stock">${icon('user')}<span><strong>สต๊อกที่ฉันช่วยดูแล</strong><small>ช่วยติดตามและเตือนผู้ดูแลหลัก</small></span></button><button type="button" data-route="usage">${icon('chart')}<span><strong>วิเคราะห์การใช้</strong><small>การใช้และแนวโน้มหมดอายุ</small></span></button><button type="button" data-route="labels">${icon('print')}<span><strong>พิมพ์ QR Sticker</strong><small>คิวสติ๊กเกอร์จากรายการรับเข้า</small></span></button><button type="button" data-route="open-labels">${icon('print')}<span><strong>พิมพ์วันเปิดใช้</strong><small>รายการนำออกวันนี้และย้อนหลัง</small></span></button><button type="button" data-route="open-label-create">${icon('plus')}<span><strong>สร้างสติ๊กเกอร์วันเปิด</strong><small>เลือกวัสดุและกำหนดวันที่เอง</small></span></button><button type="button" data-route="reagent-generator">${icon('print')}<span><strong>Generate น้ำยาเข้าเครื่อง</strong><small>สร้างบาร์โค้ดแปะขวดรอเข้าเครื่อง</small></span></button><button type="button" data-route="weekly">${icon('check')}<span><strong>ตรวจวันศุกร์</strong><small>ตรวจนับและปรับยอดจริง</small></span></button><button type="button" data-route="scan-stock">${icon('camera')}<span><strong>สแกนตรวจ Lot</strong><small>ดูยอดคงเหลือและตรวจด้วยกล้อง</small></span></button><button type="button" data-route="weekly-status">${icon('user')}<span><strong>สถานะผู้ตรวจ</strong><small>ดูย้อนหลังตามช่วงวันที่</small></span></button><button type="button" data-route="activity">${icon('history')}<span><strong>ประวัติ</strong><small>รายการที่ทำในระบบ</small></span></button><button type="button" data-route="reports">${icon('download')}<span><strong>รายงานและส่งออก</strong><small>CSV และข้อมูลย้อนหลัง</small></span></button>${adminItem}<button type="button" data-route="help">${icon('help')}<span><strong>คู่มือใช้งาน</strong><small>ขั้นตอนทำงาน</small></span></button><button type="button" data-open-install>${icon('smartphone')}<span><strong>ติดตั้งแอป</strong><small>Android และ iPhone/iPad</small></span></button></div></div>`);
 }
 
 function loading() {
@@ -914,7 +915,7 @@ async function enterApp() {
     appView.classList.remove('hidden');
     updateRoleUI();
     const hashRoute = location.hash.replace(/^#/, '');
-    const allowed = ['home','stock','my-stock','usage','urgent','move','labels','open-labels','open-label-create','weekly','scan-stock','weekly-status','activity','reports','indicators','help','admin'];
+    const allowed = ['home','stock','my-stock','usage','urgent','move','labels','open-labels','open-label-create','reagent-generator','weekly','scan-stock','weekly-status','activity','reports','indicators','help','admin'];
     const initialRoute = allowed.includes(hashRoute) ? hashRoute : 'home';
     await navigate(initialRoute);
     if (pendingIssueCode) setTimeout(openPendingIssue, 250);
@@ -1121,6 +1122,7 @@ async function navigate(r, options = {}) {
     else if (r === 'labels') await renderLabels();
     else if (r === 'open-labels') await renderOpenLabels();
     else if (r === 'open-label-create') await renderOpenLabelCreate();
+    else if (r === 'reagent-generator') renderReagentGenerator();
     else if (r === 'weekly') await renderWeekly();
     else if (r === 'scan-stock') await renderScanStock();
     else if (r === 'weekly-status') await renderWeeklyStatus();
@@ -3995,8 +3997,186 @@ function openMaterialEditor(code) {
   });
 }
 
+
+function reagentRowTemplate(row, index) {
+  return `<tr data-reagent-row="${index}"><td data-label="ลำดับ"><span class="reagent-row-no">${index + 1}</span></td><td data-label="ชื่อน้ำยา"><input type="text" data-reagent-name value="${esc(row.name || '')}" placeholder="เช่น Iden_TRC_IH-500_P1" maxlength="120"></td><td data-label="Barcode / Lot"><input type="text" data-reagent-barcode value="${esc(row.barcode || '')}" placeholder="เช่น 80016900280115" maxlength="120" autocomplete="off"></td><td data-label="จำนวนดวง"><input type="number" data-reagent-copies min="1" max="50" step="1" inputmode="numeric" value="${Math.max(1, Math.min(50, Math.round(Number(row.copies) || 1)))}"></td><td data-label="ลบ"><button type="button" class="mini ghost" data-reagent-remove="${index}">ลบ</button></td></tr>`;
+}
+
+function reagentEmptyRow() {
+  return {name:'', barcode:'', copies:1};
+}
+
+function reagentDefaultDraft() {
+  return {reserveRight:true, rows:Array.from({length:6}, () => reagentEmptyRow())};
+}
+
+function loadReagentGeneratorDraft() {
+  try {
+    const raw = localStorage.getItem(REAGENT_GENERATOR_DRAFT_KEY);
+    if (!raw) return reagentDefaultDraft();
+    const parsed = JSON.parse(raw);
+    const rows = Array.isArray(parsed?.rows) ? parsed.rows.map(x => ({name:String(x?.name || ''), barcode:String(x?.barcode || ''), copies:Math.max(1, Math.min(50, Math.round(Number(x?.copies) || 1)))})) : [];
+    return {
+      reserveRight: parsed?.reserveRight !== false,
+      rows: rows.length ? rows : reagentDefaultDraft().rows
+    };
+  } catch (_) {
+    return reagentDefaultDraft();
+  }
+}
+
+function collectReagentGeneratorState() {
+  return {
+    reserveRight: Boolean($('#reagentReserveRight')?.checked),
+    rows: $$('[data-reagent-row]', page).map(row => ({
+      name: $('[data-reagent-name]', row)?.value?.trim?.() || '',
+      barcode: $('[data-reagent-barcode]', row)?.value?.trim?.() || '',
+      copies: Math.max(1, Math.min(50, Math.round(Number($('[data-reagent-copies]', row)?.value || 1) || 1)))
+    }))
+  };
+}
+
+function saveReagentGeneratorDraft(state = null) {
+  const payload = state || collectReagentGeneratorState();
+  localStorage.setItem(REAGENT_GENERATOR_DRAFT_KEY, JSON.stringify(payload));
+  return payload;
+}
+
+function redrawReagentRows(rows) {
+  const body = $('#reagentRows');
+  if (!body) return;
+  body.innerHTML = rows.map(reagentRowTemplate).join('');
+  const countEl = $('#reagentSummaryCount');
+  if (countEl) {
+    const filled = rows.filter(row => row.name || row.barcode);
+    const labels = filled.reduce((sum, row) => sum + Math.max(1, Math.min(50, Math.round(Number(row.copies) || 1))), 0);
+    countEl.textContent = `${filled.length} รายการ · ${labels} ดวง`;
+  }
+}
+
+function parseReagentBulkRows(text) {
+  const rows = [];
+  String(text || '').split(/\r?\n/).forEach((line, lineIndex) => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    const cols = trimmed.includes('\t') ? trimmed.split('\t') : trimmed.split(/[,;|]/);
+    const clean = cols.map(x => String(x || '').trim()).filter((_, idx, arr) => idx < 3 || arr[idx] !== '');
+    if (!clean.length) return;
+    const first = String(clean[0] || '').toLowerCase();
+    const second = String(clean[1] || '').toLowerCase();
+    if (lineIndex === 0 && (first.includes('ชื่อ') || first.includes('name') || second.includes('lot') || second.includes('barcode'))) return;
+    const name = clean[0] || '';
+    const barcode = clean[1] || '';
+    const copies = Math.max(1, Math.min(50, Math.round(Number(clean[2] || 1) || 1)));
+    if (!name && !barcode) return;
+    rows.push({name, barcode, copies});
+  });
+  return rows;
+}
+
+function reagentValidation(rows) {
+  const filled = rows.filter(row => row.name || row.barcode);
+  if (!filled.length) return {error:'กรุณากรอกอย่างน้อย 1 รายการ'};
+  const incomplete = filled.find(row => !row.name || !row.barcode);
+  if (incomplete) return {error:'ทุกแถวที่ใช้งานต้องกรอกทั้งชื่อน้ำยาและ Barcode / Lot ให้ครบ'};
+  return {rows:filled};
+}
+
+async function launchReagentBarcodePrint({reserveRight = true, rows = []} = {}) {
+  const labels = [];
+  rows.forEach(row => {
+    const copies = Math.max(1, Math.min(50, Math.round(Number(row.copies) || 1)));
+    for (let i = 0; i < copies; i += 1) labels.push({name:row.name, barcode:row.barcode});
+  });
+  if (!labels.length) return false;
+  const popup = preparePrintPopup('กำลังเตรียมบาร์โค้ดน้ำยาเข้าเครื่อง', `${labels.length} ดวง · ขนาด 50 × 28 mm…`);
+  if (!popup) {
+    toast('เบราว์เซอร์บล็อกหน้าพิมพ์ กรุณาอนุญาต Pop-up ของเว็บไซต์นี้', true);
+    return false;
+  }
+  try {
+    const batchKey = `cnmi-reagent-barcode:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+    localStorage.setItem(batchKey, JSON.stringify({reserveRight, labels, footer:'FM-CNCPL-034 Rev.00 วันบังคับใช้ 1 สิงหาคม 2562'}));
+    const url = new URL('reagent-barcode.html', location.href);
+    url.search = new URLSearchParams({batch:batchKey, auto:'1'}).toString();
+    popup.location.replace(url.toString());
+    return true;
+  } catch (e) {
+    try { popup.close(); } catch (_) {}
+    toast(errMsg(e), true);
+    return false;
+  }
+}
+
+function renderReagentGenerator() {
+  const draft = loadReagentGeneratorDraft();
+  page.innerHTML = `<div class="page-head"><div><p class="eyebrow">Instrument reagent barcode</p><h2>Generate น้ำยาเข้าเครื่อง</h2><p class="muted small">สร้างบาร์โค้ดน้ำยาไว้แปะขวดรอเข้าเครื่อง ขนาดสติ๊กเกอร์ 50 × 28 mm ขอบบน–ล่าง 1 mm ซ้าย–ขวา 2 mm</p></div></div>
+  <section class="card reagent-generator-card">
+    <div class="reagent-generator-head"><span>${icon('print')}</span><div><h3>สร้างบาร์โค้ดหลายรายการจากหน้าจอเดียว</h3><p>วางข้อมูลจาก Excel ได้ และเลือกได้ว่าจะเว้นด้านขวา 10 mm พร้อมเส้นคั่น หรือใช้เต็มหน้าสติกเกอร์</p></div></div>
+    <div class="reagent-generator-options">
+      <label class="reagent-option-check"><input id="reagentReserveRight" type="checkbox" ${draft.reserveRight ? 'checked' : ''}> <span><strong>เว้นด้านขวา 10 mm และแสดงเส้นคั่น</strong><small>ใช้กับชุดที่ต้องเหลือพื้นที่ขวาตามแบบ Bartender เดิม</small></span></label>
+      <div class="reagent-generator-summary"><strong id="reagentSummaryCount">0 รายการ · 0 ดวง</strong><small>พิมพ์ 1 แถวได้หลายดวง โดยกำหนดจำนวนดวงต่อแถว</small></div>
+    </div>
+    <div class="reagent-generator-note">${icon('help')}<span><strong>รูปแบบข้อมูลที่รองรับ</strong><small>วางจาก Excel ได้ 2–3 คอลัมน์: คอลัมน์ที่ 1 = ชื่อน้ำยา, คอลัมน์ที่ 2 = Barcode / Lot, คอลัมน์ที่ 3 = จำนวนดวง (ถ้าไม่ใส่ ระบบใช้ 1 ดวง)</small></span></div>
+  </section>
+  <section class="card reagent-bulk-card">
+    <div class="section-title compact"><div><h3>วางข้อมูลจาก Excel</h3><p class="muted small">คัดลอกหลายแถวจาก Excel แล้ววางลงในช่องนี้ได้โดยตรง</p></div></div>
+    <textarea id="reagentBulkInput" rows="6" placeholder="ชื่อน้ำยา<TAB>Lot หรือ Barcode<TAB>จำนวนดวง\nIdent_TRC_IH-500_P1<TAB>80016900280115<TAB>1"></textarea>
+    <div class="toolbar reagent-bulk-actions"><button type="button" class="secondary" id="reagentBulkApply">แทนที่ด้วยข้อมูลที่วาง</button><button type="button" class="ghost" id="reagentBulkExample">ใส่ตัวอย่าง</button></div>
+  </section>
+  <section class="card reagent-table-card">
+    <div class="section-title compact"><div><h3>รายการที่จะพิมพ์</h3><p class="muted small">แก้ไขแต่ละแถวได้ก่อนพิมพ์</p></div><div class="toolbar"><button type="button" class="secondary" id="reagentAddRow">${icon('plus')} เพิ่มแถว</button><button type="button" class="ghost" id="reagentResetRows">ล้างรายการ</button></div></div>
+    <div class="table-wrap"><table class="data-table reagent-table"><thead><tr><th style="width:72px">ลำดับ</th><th>ชื่อน้ำยา</th><th style="width:30%">Barcode / Lot</th><th style="width:120px">จำนวนดวง</th><th style="width:80px"></th></tr></thead><tbody id="reagentRows"></tbody></table></div>
+    <div class="toolbar reagent-print-actions"><button type="button" class="primary" id="reagentPrintBtn">${icon('print')} พิมพ์บาร์โค้ดน้ำยา</button></div>
+  </section>`;
+
+  const applyState = state => {
+    $('#reagentReserveRight').checked = state.reserveRight !== false;
+    redrawReagentRows(state.rows && state.rows.length ? state.rows : reagentDefaultDraft().rows);
+    saveReagentGeneratorDraft({reserveRight:$('#reagentReserveRight').checked, rows:state.rows && state.rows.length ? state.rows : reagentDefaultDraft().rows});
+  };
+
+  applyState(draft);
+
+  $('#reagentReserveRight')?.addEventListener('change', () => saveReagentGeneratorDraft());
+  $('#reagentRows')?.addEventListener('input', () => saveReagentGeneratorDraft());
+  $('#reagentRows')?.addEventListener('click', e => {
+    const removeBtn = e.target.closest('[data-reagent-remove]');
+    if (!removeBtn) return;
+    const state = collectReagentGeneratorState();
+    state.rows.splice(Number(removeBtn.dataset.reagentRemove), 1);
+    if (!state.rows.length) state.rows.push(reagentEmptyRow());
+    applyState(state);
+  });
+  $('#reagentAddRow')?.addEventListener('click', () => {
+    const state = collectReagentGeneratorState();
+    state.rows.push(reagentEmptyRow());
+    applyState(state);
+  });
+  $('#reagentResetRows')?.addEventListener('click', () => {
+    applyState(reagentDefaultDraft());
+    $('#reagentBulkInput').value = '';
+  });
+  $('#reagentBulkExample')?.addEventListener('click', () => {
+    $('#reagentBulkInput').value = 'Ident_TRC_IH-500_P1\t80016900280115\t1\nIdent_TRC_IH-500_P2\t80026900280115\t1\nIdent_TRC_IH-500_P3\t80036900280115\t1';
+  });
+  $('#reagentBulkApply')?.addEventListener('click', () => {
+    const parsed = parseReagentBulkRows($('#reagentBulkInput').value);
+    if (!parsed.length) return toast('ไม่พบข้อมูลจากข้อความที่วาง กรุณาตรวจว่ามีอย่างน้อย 2 คอลัมน์', true);
+    applyState({reserveRight:$('#reagentReserveRight').checked, rows:parsed});
+    toast(`นำเข้ารายการ ${parsed.length} แถวแล้ว`);
+  });
+  $('#reagentPrintBtn')?.addEventListener('click', async () => {
+    const state = saveReagentGeneratorDraft();
+    const checked = reagentValidation(state.rows || []);
+    if (checked.error) return toast(checked.error, true);
+    const ok = await launchReagentBarcodePrint({reserveRight:state.reserveRight, rows:checked.rows});
+    if (ok) toast('กำลังเปิดหน้าพิมพ์บาร์โค้ดน้ำยาเข้าเครื่อง');
+  });
+}
+
 function renderHelp() {
-  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>สร้างบัญชีครั้งแรก</h3><ol class="help-steps"><li>ใช้เฉพาะอีเมลมหิดล @mahidol.ac.th ที่ Admin อนุญาตไว้</li><li>ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว</li><li>กด “สร้างบัญชีครั้งแรก” แล้วกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</li></ol></div><div class="card help-card"><h3>ลืมรหัสผ่าน</h3><ol class="help-steps"><li>หน้าเข้าสู่ระบบกด “ลืมรหัสผ่าน” แล้วกรอกอีเมลมหิดล</li><li>เปิดลิงก์จากอีเมลและตั้งรหัสผ่านใหม่ด้วยตนเอง</li><li>Admin สามารถกด “ส่งลิงก์รีเซ็ต” จากเมนูผู้ใช้งานได้ แต่จะไม่เห็นหรือกำหนดรหัสผ่านแทนเจ้าหน้าที่</li><li>หากระบบแจ้งว่าส่งอีเมลครบโควตา ให้หยุดกดซ้ำ รอประมาณ 1 ชั่วโมงแล้วลองใหม่ และตรวจทั้ง Inbox กับ Spam</li></ol></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>พิมพ์ชื่อวัสดุบางส่วนแล้วเลือกจากรายการ</li><li>ตรวจชื่อผู้นำเข้าปัจจุบัน ใส่ Lot วันหมดอายุ และจำนวน แล้วบันทึก</li></ol></div><div class="card help-card"><h3>นำออก</h3><ol class="help-steps"><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าและวิธีนำออก แล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>วัสดุที่ตั้งให้ใช้สติ๊กเกอร์วันเปิด จะไปอยู่ในเมนู “พิมพ์วันเปิดใช้” ให้เลือกพิมพ์เมื่อเปิดใช้จริง โดยรายการล่าสุดอยู่บนสุด</li></ol></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแล</h3><p>แสดงเฉพาะวัสดุที่คุณเป็นผู้ดูแลหลัก โดยมีแท็บภาพรวม ต้องเบิก และตั้งค่าการเตือน ผู้ดูแลหลักเป็นผู้รับผิดชอบวางแผนเบิกและกำหนด Minimum/เกณฑ์แจ้งเตือน</p></div><div class="card help-card"><h3>สต๊อกที่ฉันช่วยดูแล</h3><p>แสดงแยกจากงานหลัก ใช้ติดตามยอดและช่วยเตือนผู้ดูแลหลัก มีแท็บภาพรวมงานช่วยดูแลและช่วยเตือนต้องเบิก โดยไม่มีแท็บตั้งค่าการเตือน</p></div><div class="card help-card"><h3>ตรวจวันศุกร์</h3><p>กด “เปิดหน้าต่างตรวจ Lot” เพื่อกรอกจำนวนจริง หากยอดไม่ตรงให้เลือกเหตุผลและระบุรายละเอียด ผู้ช่วยดูแลตรวจได้จากแท็บ “ฉันช่วยดูแล” แต่ไม่ถูกนับเป็นงานหลักที่รอตรวจ</p></div><div class="card help-card"><h3>สแกนตรวจ Lot</h3><p>เปิดกล้องหรือพิมพ์รหัส QR เพื่อดูยอด Lot ยอดรวม ผู้ดูแล ขั้นต่ำ และยืนยันตรวจหรือปรับยอดได้ทันที</p></div><div class="card help-card"><h3>สถานะผู้ตรวจ</h3><p>เปิดเมนู “สถานะผู้ตรวจ” แล้วกำหนดช่วงวันที่ เพื่อดูว่าแต่ละวันศุกร์ใครตรวจครบหรือยังไม่ครบ</p></div><div class="card help-card"><h3>สติ๊กเกอร์เดิม</h3><p>สติ๊กเกอร์รหัสเดิมยังสแกนได้ ไม่ต้องเปลี่ยนใหม่ทั้งหมด</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบไม่ตัดยอดเอง เปิดตรวจวันศุกร์และกด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์ถัดไป</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมดูได้ในหน้าประวัติและรายงาน</p></div><div class="card help-card"><h3>พิมพ์ QR Sticker ภายหลัง</h3><p>หลังรับเข้าผ่านโทรศัพท์ ให้เปิดเมนู “พิมพ์ QR Sticker” บนคอมพิวเตอร์ที่ต่อเครื่องพิมพ์ รายการรับเข้าจะอยู่ในคิวอัตโนมัติ เลือกจำนวนดวงแล้วกดพิมพ์</p></div><div class="card help-card"><h3>พิมพ์วันเปิดใช้</h3><p>เปิดเมนู “พิมพ์วันเปิดใช้” เลือกรายการนำออก แล้วระบุวัน–เวลาเปิดและอายุหลังเปิด โดยเลือกใช้ถึง EXP ผู้ผลิต, 24 ชั่วโมง, 7 วัน, 28 วัน, 1 เดือน, 3 เดือน, 6 เดือน หรือกำหนดเองได้ ระบบคำนวณวันใช้ได้ถึงให้อัตโนมัติและไม่ให้เกิน EXP ผู้ผลิต</p></div><div class="card help-card"><h3>สร้างสติ๊กเกอร์วันเปิดเอง</h3><p>เลือกวัสดุ กรอก Lot และ EXP ผู้ผลิต ระบุวัน–เวลาเปิดและอายุหลังเปิด ระบบคำนวณวันใช้ได้ถึงและสร้างสติ๊กเกอร์โดยไม่ตัดยอดสต๊อกเพิ่ม</p></div><div class="card help-card"><h3>ตัวชี้วัด</h3><p>Admin เปิดเมนู “ตัวชี้วัด” เลือกช่วงวันที่ ระบบคำนวณ 12 ตัวชี้วัดจากผู้ใช้ วัสดุ Transaction การตรวจวันศุกร์ สติ๊กเกอร์ และ Audit Log อัตโนมัติ ส่วนเหตุการณ์ใช้เกินวันหลังเปิดหรือข้อร้องเรียนฉลาก ให้กด “บันทึกเหตุการณ์” ในหน้าเดียวกัน และส่งออก CSV ได้</p></div><div class="card help-card"><h3>ตั้งค่าผู้ดูแลระบบ</h3><p>หน้า Admin แยกเป็น 3 เมนูย่อย ได้แก่ ภาพรวม ผู้ใช้งาน และวัสดุและผู้ดูแล โดย Admin เพิ่มวัสดุใหม่พร้อมรหัส ชื่อ หน่วย Minimum เกณฑ์ EXP ผู้ดูแลหลัก ผู้ช่วย และอายุหลังเปิดเริ่มต้นได้</p></div><div class="card help-card"><h3>เครื่องพิมพ์สติ๊กเกอร์</h3><p>ฉลากจริง 25 × 20 mm ระบบใช้รูปแบบสติ๊กเกอร์มาตรฐานเดียวกันทุกเครื่อง พร้อม QR ขนาดใหญ่และขอบขาวมาตรฐาน ในหน้าพิมพ์ Chrome ให้เลือกเครื่องพิมพ์และตั้งกระดาษตามเครื่องที่ใช้งาน ใช้ Scale 100% หรือ Actual size ปิด Header/Footer และใช้ Margin None</p></div></div>`;
+  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>สร้างบัญชีครั้งแรก</h3><ol class="help-steps"><li>ใช้เฉพาะอีเมลมหิดล @mahidol.ac.th ที่ Admin อนุญาตไว้</li><li>ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว</li><li>กด “สร้างบัญชีครั้งแรก” แล้วกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</li></ol></div><div class="card help-card"><h3>ลืมรหัสผ่าน</h3><ol class="help-steps"><li>หน้าเข้าสู่ระบบกด “ลืมรหัสผ่าน” แล้วกรอกอีเมลมหิดล</li><li>เปิดลิงก์จากอีเมลและตั้งรหัสผ่านใหม่ด้วยตนเอง</li><li>Admin สามารถกด “ส่งลิงก์รีเซ็ต” จากเมนูผู้ใช้งานได้ แต่จะไม่เห็นหรือกำหนดรหัสผ่านแทนเจ้าหน้าที่</li><li>หากระบบแจ้งว่าส่งอีเมลครบโควตา ให้หยุดกดซ้ำ รอประมาณ 1 ชั่วโมงแล้วลองใหม่ และตรวจทั้ง Inbox กับ Spam</li></ol></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>พิมพ์ชื่อวัสดุบางส่วนแล้วเลือกจากรายการ</li><li>ตรวจชื่อผู้นำเข้าปัจจุบัน ใส่ Lot วันหมดอายุ และจำนวน แล้วบันทึก</li></ol></div><div class="card help-card"><h3>นำออก</h3><ol class="help-steps"><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าและวิธีนำออก แล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>วัสดุที่ตั้งให้ใช้สติ๊กเกอร์วันเปิด จะไปอยู่ในเมนู “พิมพ์วันเปิดใช้” ให้เลือกพิมพ์เมื่อเปิดใช้จริง โดยรายการล่าสุดอยู่บนสุด</li></ol></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแล</h3><p>แสดงเฉพาะวัสดุที่คุณเป็นผู้ดูแลหลัก โดยมีแท็บภาพรวม ต้องเบิก และตั้งค่าการเตือน ผู้ดูแลหลักเป็นผู้รับผิดชอบวางแผนเบิกและกำหนด Minimum/เกณฑ์แจ้งเตือน</p></div><div class="card help-card"><h3>สต๊อกที่ฉันช่วยดูแล</h3><p>แสดงแยกจากงานหลัก ใช้ติดตามยอดและช่วยเตือนผู้ดูแลหลัก มีแท็บภาพรวมงานช่วยดูแลและช่วยเตือนต้องเบิก โดยไม่มีแท็บตั้งค่าการเตือน</p></div><div class="card help-card"><h3>ตรวจวันศุกร์</h3><p>กด “เปิดหน้าต่างตรวจ Lot” เพื่อกรอกจำนวนจริง หากยอดไม่ตรงให้เลือกเหตุผลและระบุรายละเอียด ผู้ช่วยดูแลตรวจได้จากแท็บ “ฉันช่วยดูแล” แต่ไม่ถูกนับเป็นงานหลักที่รอตรวจ</p></div><div class="card help-card"><h3>สแกนตรวจ Lot</h3><p>เปิดกล้องหรือพิมพ์รหัส QR เพื่อดูยอด Lot ยอดรวม ผู้ดูแล ขั้นต่ำ และยืนยันตรวจหรือปรับยอดได้ทันที</p></div><div class="card help-card"><h3>สถานะผู้ตรวจ</h3><p>เปิดเมนู “สถานะผู้ตรวจ” แล้วกำหนดช่วงวันที่ เพื่อดูว่าแต่ละวันศุกร์ใครตรวจครบหรือยังไม่ครบ</p></div><div class="card help-card"><h3>สติ๊กเกอร์เดิม</h3><p>สติ๊กเกอร์รหัสเดิมยังสแกนได้ ไม่ต้องเปลี่ยนใหม่ทั้งหมด</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบไม่ตัดยอดเอง เปิดตรวจวันศุกร์และกด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์ถัดไป</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมดูได้ในหน้าประวัติและรายงาน</p></div><div class="card help-card"><h3>พิมพ์ QR Sticker ภายหลัง</h3><p>หลังรับเข้าผ่านโทรศัพท์ ให้เปิดเมนู “พิมพ์ QR Sticker” บนคอมพิวเตอร์ที่ต่อเครื่องพิมพ์ รายการรับเข้าจะอยู่ในคิวอัตโนมัติ เลือกจำนวนดวงแล้วกดพิมพ์</p></div><div class="card help-card"><h3>พิมพ์วันเปิดใช้</h3><p>เปิดเมนู “พิมพ์วันเปิดใช้” เลือกรายการนำออก แล้วระบุวัน–เวลาเปิดและอายุหลังเปิด โดยเลือกใช้ถึง EXP ผู้ผลิต, 24 ชั่วโมง, 7 วัน, 28 วัน, 1 เดือน, 3 เดือน, 6 เดือน หรือกำหนดเองได้ ระบบคำนวณวันใช้ได้ถึงให้อัตโนมัติและไม่ให้เกิน EXP ผู้ผลิต</p></div><div class="card help-card"><h3>สร้างสติ๊กเกอร์วันเปิดเอง</h3><p>เลือกวัสดุ กรอก Lot และ EXP ผู้ผลิต ระบุวัน–เวลาเปิดและอายุหลังเปิด ระบบคำนวณวันใช้ได้ถึงและสร้างสติ๊กเกอร์โดยไม่ตัดยอดสต๊อกเพิ่ม</p></div><div class="card help-card"><h3>Generate น้ำยาเข้าเครื่อง</h3><p>ใช้สร้างบาร์โค้ดน้ำยาเพื่อแปะขวดรอเข้าเครื่อง ขนาด 50 × 28 mm วางข้อมูลจาก Excel ได้ครั้งละหลายรายการ และเลือกได้ว่าจะเว้นด้านขวา 10 mm พร้อมเส้นคั่น หรือใช้เต็มหน้าฉลากโดยไม่เว้นขวา</p></div><div class="card help-card"><h3>ตัวชี้วัด</h3><p>Admin เปิดเมนู “ตัวชี้วัด” เลือกช่วงวันที่ ระบบคำนวณ 12 ตัวชี้วัดจากผู้ใช้ วัสดุ Transaction การตรวจวันศุกร์ สติ๊กเกอร์ และ Audit Log อัตโนมัติ ส่วนเหตุการณ์ใช้เกินวันหลังเปิดหรือข้อร้องเรียนฉลาก ให้กด “บันทึกเหตุการณ์” ในหน้าเดียวกัน และส่งออก CSV ได้</p></div><div class="card help-card"><h3>ตั้งค่าผู้ดูแลระบบ</h3><p>หน้า Admin แยกเป็น 3 เมนูย่อย ได้แก่ ภาพรวม ผู้ใช้งาน และวัสดุและผู้ดูแล โดย Admin เพิ่มวัสดุใหม่พร้อมรหัส ชื่อ หน่วย Minimum เกณฑ์ EXP ผู้ดูแลหลัก ผู้ช่วย และอายุหลังเปิดเริ่มต้นได้</p></div><div class="card help-card"><h3>เครื่องพิมพ์สติ๊กเกอร์</h3><p>ฉลากจริง 25 × 20 mm ระบบใช้รูปแบบสติ๊กเกอร์มาตรฐานเดียวกันทุกเครื่อง พร้อม QR ขนาดใหญ่และขอบขาวมาตรฐาน ในหน้าพิมพ์ Chrome ให้เลือกเครื่องพิมพ์และตั้งกระดาษตามเครื่องที่ใช้งาน ใช้ Scale 100% หรือ Actual size ปิด Header/Footer และใช้ Margin None</p></div></div>`;
   refreshInstallUI();
 }
 
