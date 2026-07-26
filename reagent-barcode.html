@@ -20,13 +20,9 @@ html,body{margin:0;padding:0;width:var(--paper-w);background:#eef2f3;font-family
 .barcode-wrap{height:7.25mm;display:flex;align-items:stretch;justify-content:center}
 .barcode-wrap svg{width:100%;height:100%;display:block}
 .barcode-text{margin-top:.15mm;text-align:center;font-size:2.05mm;font-weight:700;line-height:1.1;letter-spacing:.05mm;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.write-section{margin-top:.6mm;display:grid;gap:.45mm}
-.write-row{display:flex;align-items:flex-end;gap:.55mm;font-size:1.7mm;line-height:1.15}
-.write-row .label{font-weight:700;white-space:nowrap}
-.write-row .dots{flex:1;min-width:6mm;border-bottom:.28mm dotted #000;height:0;transform:translateY(-.55mm)}
-.write-row .time-label{min-width:auto}
-.write-row .dots.short{flex:0 0 9mm}
-.write-row.user .dots{flex:1}
+.write-section{margin-top:.55mm;display:grid;gap:.42mm}
+.write-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:baseline;gap:.45mm;font-size:1.48mm;line-height:1.18;white-space:nowrap}
+.write-row .label{font-weight:700}.write-row .value{min-width:0;font-weight:700;overflow:hidden;text-overflow:ellipsis}.write-row .time-label{font-weight:700}.write-row .time-value{font-weight:700}.write-row.user{grid-template-columns:auto minmax(0,1fr)}
 .footer{position:absolute;left:0;right:0;bottom:.15mm;text-align:center;font-size:1.35mm;line-height:1.05;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .screen-status{position:fixed;left:54mm;top:6mm;width:420px;padding:14px 16px;border-radius:12px;background:#fff;color:#087b6f;box-shadow:0 8px 28px rgba(0,0,0,.16);font-size:13px;font-weight:700;line-height:1.45}
 .screen-status small{display:block;margin-top:4px;color:#667a76;font-weight:500}
@@ -63,6 +59,12 @@ function getBatch(){
     return {
       reserveRight: parsed?.reserveRight !== false,
       labels: Array.isArray(parsed?.labels) ? parsed.labels : [],
+      setName: safeText(parsed?.setName, ''),
+      openedDate: safeText(parsed?.openedDate),
+      openedTime: safeText(parsed?.openedTime),
+      expiryDate: safeText(parsed?.expiryDate),
+      expiryTime: safeText(parsed?.expiryTime),
+      openedBy: safeText(parsed?.openedBy),
       footer: safeText(parsed?.footer, 'FM-CNCPL-034 Rev.00 วันบังคับใช้ 1 สิงหาคม 2562')
     };
   } finally {
@@ -100,19 +102,19 @@ function barcodeSvg(text){
   const totalWidth = x + quiet;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalWidth} 72" preserveAspectRatio="none" aria-hidden="true"><rect x="0" y="0" width="${totalWidth}" height="72" fill="#fff"/>${bars.join('')}</svg>`;
 }
-function makeLabel(row, reserveRight, footer){
+function makeLabel(row, payload){
   const page = document.createElement('div');
-  page.className = `label-page${reserveRight ? ' reserve' : ''}`;
+  page.className = `label-page${payload.reserveRight ? ' reserve' : ''}`;
   const name = safeText(row?.name);
   const barcodeValue = safeText(row?.barcode);
-  page.innerHTML = `<div class="label-inner"><div class="label-main"><div class="name-line"><span class="name-label">ชื่อน้ำยา</span><span class="name-value">${esc(name)}</span></div><div class="barcode-wrap">${barcodeSvg(barcodeValue)}</div><div class="barcode-text">${esc(barcodeValue)}</div><div class="write-section"><div class="write-row"><span class="label">วันที่เปิด</span><span class="dots"></span><span class="label time-label">เวลา</span><span class="dots short"></span></div><div class="write-row"><span class="label">วันหมดอายุ</span><span class="dots"></span><span class="label time-label">เวลา</span><span class="dots short"></span></div><div class="write-row user"><span class="label">ผู้เปิดใช้</span><span class="dots"></span></div></div><div class="footer">${esc(footer)}</div></div><div class="reserve-box" aria-hidden="true"></div></div>`;
+  page.innerHTML = `<div class="label-inner"><div class="label-main"><div class="name-line"><span class="name-label">ชื่อน้ำยา</span><span class="name-value">${esc(name)}</span></div><div class="barcode-wrap">${barcodeSvg(barcodeValue)}</div><div class="barcode-text">${esc(barcodeValue)}</div><div class="write-section"><div class="write-row"><span class="label">วันที่เปิด</span><span class="value">${esc(payload.openedDate)}</span><span class="time-label">เวลา</span><span class="time-value">${esc(payload.openedTime)}</span></div><div class="write-row"><span class="label">วันหมดอายุ</span><span class="value">${esc(payload.expiryDate)}</span><span class="time-label">เวลา</span><span class="time-value">${esc(payload.expiryTime)}</span></div><div class="write-row user"><span class="label">ผู้เปิดใช้</span><span class="value">${esc(payload.openedBy)}</span></div></div><div class="footer">${esc(payload.footer)}</div></div><div class="reserve-box" aria-hidden="true"></div></div>`;
   return page;
 }
 async function prepare(){
   const payload = getBatch();
   if (!payload.labels.length) throw new Error('ไม่มีรายการสำหรับพิมพ์');
   if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch (_) {} }
-  payload.labels.forEach(row => pages.appendChild(makeLabel(row, payload.reserveRight, payload.footer)));
+  payload.labels.forEach(row => pages.appendChild(makeLabel(row, payload)));
   await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   return payload;
 }

@@ -1,7 +1,7 @@
 {
   "name": "CNMI Inventory",
   "short_name": "Inventory",
-  "description": "ระบบบริหารจัดการสต๊อกและคลังชุดบาร์โค้ดน้ำยาเข้าเครื่อง หน่วยเวชศาสตร์บริการโลหิต CNMI",
+  "description": "ระบบบริหารจัดการสต๊อก พิมพ์ QR Sticker พิมพ์น้ำยาเข้าเครื่อง และจัดการชุดบาร์โค้ดน้ำยาสำหรับหน่วยเวชศาสตร์บริการโลหิต CNMI",
   "id": "https://inventory.cnmiblood.com/",
   "start_url": "./index.html",
   "scope": "./",
@@ -139,9 +139,9 @@
       ]
     },
     {
-      "name": "Generate น้ำยาเข้าเครื่อง",
-      "short_name": "Barcode น้ำยา",
-      "url": "./index.html#reagent-generator",
+      "name": "พิมพ์น้ำยาเข้าเครื่อง",
+      "short_name": "พิมพ์น้ำยา",
+      "url": "./index.html#reagent-print",
       "icons": [
         {
           "src": "icons/icon-192.png",
@@ -150,5 +150,5 @@
       ]
     }
   ],
-  "version": "1.4.52"
+  "version": "1.4.53"
 }

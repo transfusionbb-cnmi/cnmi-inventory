@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.52';
+const APP_VERSION = '1.4.53';
 const WEEKLY_CUTOVER_DATE = '2026-07-24';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const DEFAULT_EXPIRY_ALERT_DAYS = 30;
@@ -467,8 +467,8 @@ function showIosInstallGuide() {
 
 
 function openMobileMenu() {
-  const adminItem = isAdminMode() ? `<button type="button" data-route="indicators">${icon('chart')}<span><strong>ตัวชี้วัด</strong><small>คำนวณอัตโนมัติและบันทึกเหตุการณ์</small></span></button><button type="button" data-route="admin">${icon('settings')}<span><strong>ตั้งค่าระบบ</strong><small>ผู้ใช้ ผู้ดูแล และข้อมูลสินค้า</small></span></button>` : '';
-  openModal(`<div class="mobile-menu-sheet"><div class="mobile-menu-head"><span class="owner-avatar">${esc((profile?.display_name || '?').trim().charAt(0))}</span><div><h3>เมนูทั้งหมด</h3><p>${esc(profile?.display_name || '')}</p></div></div><div class="mobile-menu-grid"><button type="button" data-route="stock">${icon('box')}<span><strong>ค้นหาสต๊อกทั้งหมด</strong><small>ค้นหาสินค้าและ Lot</small></span></button><button type="button" data-route="my-stock">${icon('user')}<span><strong>สต๊อกที่ฉันดูแล</strong><small>งานหลัก: ต้องเบิกและตั้งค่าการเตือน</small></span></button><button type="button" data-route="assisted-stock">${icon('user')}<span><strong>สต๊อกที่ฉันช่วยดูแล</strong><small>ช่วยติดตามและเตือนผู้ดูแลหลัก</small></span></button><button type="button" data-route="usage">${icon('chart')}<span><strong>วิเคราะห์การใช้</strong><small>การใช้และแนวโน้มหมดอายุ</small></span></button><button type="button" data-route="labels">${icon('print')}<span><strong>พิมพ์ QR Sticker</strong><small>คิวสติ๊กเกอร์จากรายการรับเข้า</small></span></button><button type="button" data-route="open-labels">${icon('print')}<span><strong>พิมพ์วันเปิดใช้</strong><small>รายการนำออกวันนี้และย้อนหลัง</small></span></button><button type="button" data-route="open-label-create">${icon('plus')}<span><strong>สร้างสติ๊กเกอร์วันเปิด</strong><small>เลือกวัสดุและกำหนดวันที่เอง</small></span></button><button type="button" data-route="reagent-generator">${icon('print')}<span><strong>Generate น้ำยาเข้าเครื่อง</strong><small>สร้างบาร์โค้ดแปะขวดรอเข้าเครื่อง</small></span></button><button type="button" data-route="weekly">${icon('check')}<span><strong>ตรวจวันศุกร์</strong><small>ตรวจนับและปรับยอดจริง</small></span></button><button type="button" data-route="scan-stock">${icon('camera')}<span><strong>สแกนตรวจ Lot</strong><small>ดูยอดคงเหลือและตรวจด้วยกล้อง</small></span></button><button type="button" data-route="weekly-status">${icon('user')}<span><strong>สถานะผู้ตรวจ</strong><small>ดูย้อนหลังตามช่วงวันที่</small></span></button><button type="button" data-route="activity">${icon('history')}<span><strong>ประวัติ</strong><small>รายการที่ทำในระบบ</small></span></button><button type="button" data-route="reports">${icon('download')}<span><strong>รายงานและส่งออก</strong><small>CSV และข้อมูลย้อนหลัง</small></span></button>${adminItem}<button type="button" data-route="help">${icon('help')}<span><strong>คู่มือใช้งาน</strong><small>ขั้นตอนทำงาน</small></span></button><button type="button" data-open-install>${icon('smartphone')}<span><strong>ติดตั้งแอป</strong><small>Android และ iPhone/iPad</small></span></button></div></div>`);
+  const adminItem = isAdminMode() ? `<button type="button" data-route="reagent-set-admin">${icon('settings')}<span><strong>จัดการชุดน้ำยาเข้าเครื่อง</strong><small>สร้างชุด กำหนด Barcode และรูปแบบฉลาก</small></span></button><button type="button" data-route="indicators">${icon('chart')}<span><strong>ตัวชี้วัด</strong><small>คำนวณอัตโนมัติและบันทึกเหตุการณ์</small></span></button><button type="button" data-route="admin">${icon('settings')}<span><strong>ตั้งค่าระบบ</strong><small>ผู้ใช้ ผู้ดูแล และข้อมูลสินค้า</small></span></button>` : '';
+  openModal(`<div class="mobile-menu-sheet"><div class="mobile-menu-head"><span class="owner-avatar">${esc((profile?.display_name || '?').trim().charAt(0))}</span><div><h3>เมนูทั้งหมด</h3><p>${esc(profile?.display_name || '')}</p></div></div><div class="mobile-menu-grid"><button type="button" data-route="stock">${icon('box')}<span><strong>ค้นหาสต๊อกทั้งหมด</strong><small>ค้นหาสินค้าและ Lot</small></span></button><button type="button" data-route="my-stock">${icon('user')}<span><strong>สต๊อกที่ฉันดูแล</strong><small>งานหลัก: ต้องเบิกและตั้งค่าการเตือน</small></span></button><button type="button" data-route="assisted-stock">${icon('user')}<span><strong>สต๊อกที่ฉันช่วยดูแล</strong><small>ช่วยติดตามและเตือนผู้ดูแลหลัก</small></span></button><button type="button" data-route="usage">${icon('chart')}<span><strong>วิเคราะห์การใช้</strong><small>การใช้และแนวโน้มหมดอายุ</small></span></button><button type="button" data-route="labels">${icon('print')}<span><strong>พิมพ์ QR Sticker</strong><small>คิวสติ๊กเกอร์จากรายการรับเข้า</small></span></button><button type="button" data-route="open-labels">${icon('print')}<span><strong>พิมพ์วันเปิดใช้</strong><small>รายการนำออกวันนี้และย้อนหลัง</small></span></button><button type="button" data-route="open-label-create">${icon('plus')}<span><strong>สร้างสติ๊กเกอร์วันเปิด</strong><small>เลือกวัสดุและกำหนดวันที่เอง</small></span></button><button type="button" data-route="reagent-print">${icon('print')}<span><strong>พิมพ์น้ำยาเข้าเครื่อง</strong><small>เลือกชุด กรอกวันเปิดและวันหมดอายุ</small></span></button><button type="button" data-route="weekly">${icon('check')}<span><strong>ตรวจวันศุกร์</strong><small>ตรวจนับและปรับยอดจริง</small></span></button><button type="button" data-route="scan-stock">${icon('camera')}<span><strong>สแกนตรวจ Lot</strong><small>ดูยอดคงเหลือและตรวจด้วยกล้อง</small></span></button><button type="button" data-route="weekly-status">${icon('user')}<span><strong>สถานะผู้ตรวจ</strong><small>ดูย้อนหลังตามช่วงวันที่</small></span></button><button type="button" data-route="activity">${icon('history')}<span><strong>ประวัติ</strong><small>รายการที่ทำในระบบ</small></span></button><button type="button" data-route="reports">${icon('download')}<span><strong>รายงานและส่งออก</strong><small>CSV และข้อมูลย้อนหลัง</small></span></button>${adminItem}<button type="button" data-route="help">${icon('help')}<span><strong>คู่มือใช้งาน</strong><small>ขั้นตอนทำงาน</small></span></button><button type="button" data-open-install>${icon('smartphone')}<span><strong>ติดตั้งแอป</strong><small>Android และ iPhone/iPad</small></span></button></div></div>`);
 }
 
 function loading() {
@@ -647,7 +647,7 @@ async function switchActingMode(mode) {
   actingMode = mode === 'admin' ? 'admin' : 'staff';
   localStorage.setItem(`cnmi-inventory-mode:${profile.email}`, actingMode);
   updateRoleUI();
-  if (!isAdminMode() && ['admin','indicators'].includes(route)) await navigate('home');
+  if (!isAdminMode() && ['admin','indicators','reagent-set-admin'].includes(route)) await navigate('home');
   else await navigate(route);
 }
 
@@ -915,7 +915,7 @@ async function enterApp() {
     appView.classList.remove('hidden');
     updateRoleUI();
     const hashRoute = location.hash.replace(/^#/, '');
-    const allowed = ['home','stock','my-stock','usage','urgent','move','labels','open-labels','open-label-create','reagent-generator','weekly','scan-stock','weekly-status','activity','reports','indicators','help','admin'];
+    const allowed = ['home','stock','my-stock','usage','urgent','move','labels','open-labels','open-label-create','reagent-print','reagent-set-admin','reagent-generator','weekly','scan-stock','weekly-status','activity','reports','indicators','help','admin'];
     const initialRoute = allowed.includes(hashRoute) ? hashRoute : 'home';
     await navigate(initialRoute);
     if (pendingIssueCode) setTimeout(openPendingIssue, 250);
@@ -1099,7 +1099,7 @@ function navActive() {
 }
 
 async function navigate(r, options = {}) {
-  if (['admin','indicators'].includes(r) && !isAdminMode()) {
+  if (['admin','indicators','reagent-set-admin'].includes(r) && !isAdminMode()) {
     r = 'home';
     toast('สลับเป็นโหมดผู้ดูแลระบบก่อน', true);
   }
@@ -1122,6 +1122,8 @@ async function navigate(r, options = {}) {
     else if (r === 'labels') await renderLabels();
     else if (r === 'open-labels') await renderOpenLabels();
     else if (r === 'open-label-create') await renderOpenLabelCreate();
+    else if (r === 'reagent-print') await renderReagentPrint();
+    else if (r === 'reagent-set-admin') await renderReagentSetAdmin();
     else if (r === 'reagent-generator') await renderReagentGenerator();
     else if (r === 'weekly') await renderWeekly();
     else if (r === 'scan-stock') await renderScanStock();
@@ -3998,9 +4000,6 @@ function openMaterialEditor(code) {
 }
 
 
-function reagentRowTemplate(row, index, locked = false) {
-  return `<tr data-reagent-row="${index}"><td data-label="ลำดับ"><span class="reagent-row-no">${index + 1}</span></td><td data-label="ชื่อน้ำยา"><input type="text" data-reagent-name value="${esc(row.name || '')}" placeholder="เช่น Iden_TRC_IH-500_P1" maxlength="160" ${locked ? 'readonly' : ''}></td><td data-label="Barcode / Lot"><input type="text" data-reagent-barcode value="${esc(row.barcode || '')}" placeholder="เช่น 80016900280115" maxlength="160" autocomplete="off" ${locked ? 'readonly' : ''}></td><td data-label="จำนวนดวง"><input type="number" data-reagent-copies min="1" max="50" step="1" inputmode="numeric" value="${Math.max(1, Math.min(50, Math.round(Number(row.copies) || 1)))}"></td><td data-label="ลบ">${locked ? '<span class="muted small">ชุดบันทึก</span>' : `<button type="button" class="mini ghost" data-reagent-remove="${index}">ลบ</button>`}</td></tr>`;
-}
 
 function reagentEmptyRow() {
   return {name:'', barcode:'', copies:1};
@@ -4009,7 +4008,7 @@ function reagentEmptyRow() {
 function reagentDefaultDraft() {
   return {
     setName:'', instrument:'', category:'', validFrom:dateInputValue(new Date()), validTo:'', notes:'',
-    reserveRight:true, rows:Array.from({length:6}, () => reagentEmptyRow())
+    reserveRight:true, rows:[reagentEmptyRow()]
   };
 }
 
@@ -4029,7 +4028,7 @@ function normalizeReagentDraft(parsed = {}) {
     validTo:String(parsed?.validTo || ''),
     notes:String(parsed?.notes || ''),
     reserveRight:parsed?.reserveRight !== false,
-    rows:rows.length ? rows : reagentDefaultDraft().rows
+    rows:rows.length ? rows : [reagentEmptyRow()]
   };
 }
 
@@ -4042,89 +4041,26 @@ function loadReagentGeneratorDraft() {
   }
 }
 
-function collectReagentGeneratorState() {
-  return {
-    setName:$('#reagentSetName')?.value?.trim?.() || '',
-    instrument:$('#reagentInstrument')?.value?.trim?.() || '',
-    category:$('#reagentCategory')?.value?.trim?.() || '',
-    validFrom:$('#reagentValidFrom')?.value || dateInputValue(new Date()),
-    validTo:$('#reagentValidTo')?.value || '',
-    notes:$('#reagentNotes')?.value?.trim?.() || '',
-    reserveRight:Boolean($('#reagentReserveRight')?.checked),
-    rows:$$('[data-reagent-row]', page).map(row => ({
-      name:$('[data-reagent-name]', row)?.value?.trim?.() || '',
-      barcode:$('[data-reagent-barcode]', row)?.value?.trim?.() || '',
-      copies:Math.max(1, Math.min(50, Math.round(Number($('[data-reagent-copies]', row)?.value || 1) || 1)))
-    }))
-  };
-}
-
-function saveReagentGeneratorDraft(state = null) {
-  const payload = normalizeReagentDraft(state || collectReagentGeneratorState());
+function saveReagentGeneratorDraft(state) {
+  const payload = normalizeReagentDraft(state);
   localStorage.setItem(REAGENT_GENERATOR_DRAFT_KEY, JSON.stringify(payload));
   return payload;
 }
 
-function reagentStateFingerprint(state) {
+function reagentValidation(state, {requireSetName=false} = {}) {
   const normalized = normalizeReagentDraft(state);
-  return JSON.stringify({
-    setName:normalized.setName,
-    instrument:normalized.instrument,
-    category:normalized.category,
-    validFrom:normalized.validFrom,
-    validTo:normalized.validTo,
-    notes:normalized.notes,
-    reserveRight:normalized.reserveRight,
-    rows:normalized.rows.map(x => ({name:x.name,barcode:x.barcode,copies:x.copies}))
-  });
-}
-
-function redrawReagentRows(rows, locked = false) {
-  const body = $('#reagentRows');
-  if (!body) return;
-  body.innerHTML = rows.map((row,index) => reagentRowTemplate(row,index,locked)).join('');
-  const countEl = $('#reagentSummaryCount');
-  if (countEl) {
-    const filled = rows.filter(row => row.name || row.barcode);
-    const labels = filled.reduce((sum,row) => sum + Math.max(1,Math.min(50,Math.round(Number(row.copies)||1))),0);
-    countEl.textContent = `${filled.length} รายการ · ${labels} ดวง`;
-  }
-}
-
-function parseReagentBulkRows(text) {
-  const rows = [];
-  String(text || '').split(/\r?\n/).forEach((line,lineIndex) => {
-    const trimmed = line.trim();
-    if (!trimmed) return;
-    const cols = trimmed.includes('\t') ? trimmed.split('\t') : trimmed.split(/[,;|]/);
-    const clean = cols.map(x => String(x || '').trim());
-    const first = String(clean[0] || '').toLowerCase();
-    const second = String(clean[1] || '').toLowerCase();
-    if (lineIndex===0 && (first.includes('ชื่อ') || first.includes('name') || second.includes('lot') || second.includes('barcode'))) return;
-    const name = clean[0] || '';
-    const barcode = clean[1] || '';
-    const copies = Math.max(1,Math.min(50,Math.round(Number(clean[2] || 1) || 1)));
-    if (!name && !barcode) return;
-    rows.push({name,barcode,copies});
-  });
-  return rows;
-}
-
-function reagentValidation(state,{requireSetName=false}={}) {
-  const normalized = normalizeReagentDraft(state);
-  if (requireSetName && !normalized.setName) return {error:'กรุณาระบุชื่อชุดบาร์โค้ด'};
-  if (normalized.validTo && normalized.validFrom && normalized.validTo < normalized.validFrom) return {error:'วันที่เลิกใช้ต้องไม่ก่อนวันที่เริ่มใช้'};
-  const filled = normalized.rows.filter(row => row.name || row.barcode);
-  if (!filled.length) return {error:'กรุณากรอกอย่างน้อย 1 รายการ'};
-  const incomplete = filled.find(row => !row.name || !row.barcode);
-  if (incomplete) return {error:'ทุกแถวที่ใช้งานต้องกรอกทั้งชื่อน้ำยาและ Barcode / Lot ให้ครบ'};
-  const unsupported = filled.find(row => !/^[\x20-\x7E]+$/.test(row.barcode));
-  if (unsupported) return {error:'Barcode / Lot ต้องใช้ตัวเลข ภาษาอังกฤษ หรือสัญลักษณ์มาตรฐานเท่านั้น'};
-  return {...normalized,rows:filled};
+  if (requireSetName && !normalized.setName.trim()) return {error:'กรุณาระบุชื่อชุดน้ำยา'};
+  if (!normalized.validFrom) return {error:'กรุณาระบุวันที่เริ่มใช้'};
+  if (normalized.validTo && normalized.validTo < normalized.validFrom) return {error:'วันที่เลิกใช้ต้องไม่ก่อนวันที่เริ่มใช้'};
+  const filled = normalized.rows.filter(row => row.name.trim() || row.barcode.trim());
+  if (!filled.length) return {error:'กรุณาเพิ่มน้ำยาในชุดอย่างน้อย 1 รายการ'};
+  if (filled.some(row => !row.name.trim() || !row.barcode.trim())) return {error:'แต่ละรายการต้องมีทั้งชื่อน้ำยาและ Barcode / Lot'};
+  if (filled.some(row => !/^[\x20-\x7E]+$/.test(row.barcode.trim()))) return {error:'Barcode / Lot ต้องใช้ตัวเลข ภาษาอังกฤษ หรือสัญลักษณ์มาตรฐานเท่านั้น'};
+  return {...normalized, setName:normalized.setName.trim(), instrument:normalized.instrument.trim(), category:normalized.category.trim(), notes:normalized.notes.trim(), rows:filled.map(x => ({...x,name:x.name.trim(),barcode:x.barcode.trim()}))};
 }
 
 function reagentStatusLabel(row) {
-  return String(row?.status || '').toUpperCase()==='ACTIVE'
+  return String(row?.status || '').toUpperCase() === 'ACTIVE'
     ? '<span class="badge ok">กำลังใช้</span>'
     : '<span class="badge">เลิกใช้แล้ว</span>';
 }
@@ -4135,287 +4071,335 @@ function reagentDateRange(row) {
   return `${from} – ${to}`;
 }
 
-function reagentSetResultCard(row) {
-  const search = normalizeMaterialSearch([row.set_name,row.instrument_name,row.category,row.notes,row.created_by_name].join(' '));
-  return `<button type="button" class="reagent-set-result" data-reagent-set-id="${esc(row.id)}" data-reagent-status="${esc(row.status || '')}" data-search="${esc(search)}"><span class="reagent-set-result-main"><strong>${esc(row.set_name)}</strong><small>${esc([row.instrument_name,row.category].filter(Boolean).join(' · ') || 'ไม่ระบุเครื่อง/ประเภท')} · ${esc(reagentDateRange(row))}</small><small>${Number(row.item_count || 0)} รายการ · เริ่มต้น ${Number(row.default_label_count || 0)} ดวง</small></span><span class="reagent-set-result-side">${reagentStatusLabel(row)}<small>บันทึกโดย ${esc(row.created_by_name || row.created_by_email || '-')}</small></span></button>`;
+function reagentLabelDateTimeParts(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return {date:'-',time:'-'};
+  return {
+    date:date.toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}),
+    time:date.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',hour12:false})
+  };
 }
 
-function renderReagentSetResults(rows, query = '', filter = 'ACTIVE') {
-  const container = $('#reagentSetResults');
-  if (!container) return;
-  const q = normalizeMaterialSearch(query);
-  const filtered = (rows || []).filter(row => {
-    if (filter==='ACTIVE' && String(row.status || '').toUpperCase()!=='ACTIVE') return false;
-    if (!q) return true;
-    return normalizeMaterialSearch([row.set_name,row.instrument_name,row.category,row.notes,row.created_by_name].join(' ')).includes(q);
-  });
-  const exact = q && filtered.some(row => normalizeMaterialSearch(row.set_name)===q);
-  const createButton = q && !exact
-    ? `<button type="button" class="reagent-create-from-search" id="reagentCreateFromSearch">${icon('plus')} ไม่พบชื่อนี้ — ใช้ “${esc(query.trim())}” สร้างชุดใหม่</button>`
-    : '';
-  container.innerHTML = `${createButton}${filtered.length ? filtered.map(reagentSetResultCard).join('') : `<div class="empty reagent-set-empty">${q ? 'ไม่พบชุดที่ค้นหา' : 'ยังไม่มีชุดบาร์โค้ดในกลุ่มนี้'}</div>`}`;
-  $('#reagentSetCount').textContent = `${filtered.length} ชุด`;
+async function loadReagentSetItems(setId) {
+  const {data,error}=await sb.from('v_reagent_barcode_set_items').select('*').eq('set_id',setId).order('sort_order');
+  if(error) throw error;
+  return (data || []).map(x => ({
+    id:x.id,
+    name:x.reagent_name,
+    barcode:x.barcode_value,
+    copies:Math.max(1,Number(x.default_copies || 1))
+  }));
 }
 
-async function launchReagentBarcodePrint({reserveRight=true,rows=[],setId='',savedSet=false}={}) {
+async function launchReagentBarcodePrint({set,rows,openedByName,openedByEmail,openedAt,useUntilAt,setCount=1} = {}) {
+  const multiplier=Math.max(1,Math.min(20,Math.round(Number(setCount)||1)));
   const labels=[];
-  rows.forEach(row => {
-    const copies=Math.max(1,Math.min(50,Math.round(Number(row.copies)||1)));
+  (rows || []).forEach(row => {
+    const copies=Math.max(1,Math.min(50,Math.round(Number(row.copies)||1))) * multiplier;
     for(let i=0;i<copies;i+=1) labels.push({name:row.name,barcode:row.barcode});
   });
-  if(!labels.length) return false;
-  const popup=preparePrintPopup('กำลังเตรียมบาร์โค้ดน้ำยาเข้าเครื่อง',`${labels.length} ดวง · ขนาด 50 × 28 mm…`);
+  if(!set || !labels.length) return false;
+  const openedParts=reagentLabelDateTimeParts(openedAt);
+  const expiryParts=reagentLabelDateTimeParts(useUntilAt);
+  const popup=preparePrintPopup('กำลังเตรียมสติ๊กเกอร์น้ำยาเข้าเครื่อง',`${labels.length} ดวง · ขนาด 50 × 28 mm…`);
   if(!popup){toast('เบราว์เซอร์บล็อกหน้าพิมพ์ กรุณาอนุญาต Pop-up ของเว็บไซต์นี้',true);return false;}
   try{
     const batchKey=`cnmi-reagent-barcode:${Date.now()}:${Math.random().toString(36).slice(2)}`;
-    localStorage.setItem(batchKey,JSON.stringify({reserveRight,labels,footer:'FM-CNCPL-034 Rev.00 วันบังคับใช้ 1 สิงหาคม 2562'}));
+    localStorage.setItem(batchKey,JSON.stringify({
+      reserveRight:set.reserve_right !== false,
+      labels,
+      setName:set.set_name || '',
+      openedDate:openedParts.date,
+      openedTime:openedParts.time,
+      expiryDate:expiryParts.date,
+      expiryTime:expiryParts.time,
+      openedBy:openedByName || openedByEmail || '-',
+      footer:'FM-CNCPL-034 Rev.00 วันบังคับใช้ 1 สิงหาคม 2562'
+    }));
     const url=new URL('reagent-barcode.html',location.href);
     url.search=new URLSearchParams({batch:batchKey,auto:'1'}).toString();
     popup.location.replace(url.toString());
     (async()=>{
       try{
-        await sb.rpc('fn_log_reagent_barcode_print',{
-          p_set_id:setId || null,
-          p_copy_count:labels.length,
-          p_saved_set:Boolean(savedSet),
-          p_reserve_right:Boolean(reserveRight)
+        const result=await sb.rpc('fn_log_reagent_barcode_print_v2',{
+          p_set_id:set.id,
+          p_label_count:labels.length,
+          p_set_count:multiplier,
+          p_reserve_right:set.reserve_right !== false,
+          p_opened_by_email:openedByEmail || null,
+          p_opened_by_name:openedByName || null,
+          p_opened_at:new Date(openedAt).toISOString(),
+          p_use_until_at:new Date(useUntilAt).toISOString()
         });
-      }catch(_){}
+        if(result.error) throw result.error;
+      }catch(_){
+        try{
+          await sb.rpc('fn_log_reagent_barcode_print',{
+            p_set_id:set.id,p_copy_count:labels.length,p_saved_set:true,p_reserve_right:set.reserve_right !== false
+          });
+        }catch(_){}
+      }
     })();
     return true;
   }catch(e){try{popup.close();}catch(_){} toast(errMsg(e),true);return false;}
 }
 
-async function renderReagentGenerator() {
-  const draft=loadReagentGeneratorDraft();
-  let savedSets=[];
-  let libraryAvailable=true;
-  let libraryFilter='ACTIVE';
-  let currentSetId='';
-  let sourceSetId='';
-  let currentSet=null;
-  let locked=false;
-  let loadedFingerprint='';
+function reagentPrintSetOptions(sets = []) {
+  return `<option value="">เลือกชุดน้ำยา</option>${sets.map(row => `<option value="${esc(row.id)}">${esc(row.set_name)}${row.instrument_name ? ` · ${esc(row.instrument_name)}` : ''}</option>`).join('')}`;
+}
 
-  page.innerHTML=`<div class="page-head"><div><p class="eyebrow">Instrument reagent barcode</p><h2>Generate น้ำยาเข้าเครื่อง</h2><p class="muted small">ค้นหาชุดเดิม หรือสร้างชื่อใหม่เมื่อค้นหาไม่พบ ข้อมูลที่บันทึกไว้จะอยู่ใน Supabase และไม่หายเมื่อเปลี่ยนคอมพิวเตอร์</p></div></div>
-  <section class="card reagent-library-card">
-    <div class="section-title compact"><div><h3>เลือกชุดบาร์โค้ดที่เคยบันทึก</h3><p class="muted small">ค้นหาจากชื่อชุด เครื่อง ประเภท หรือหมายเหตุ</p></div><span id="reagentSetCount" class="badge">0 ชุด</span></div>
-    <div class="reagent-library-toolbar"><div class="search-box">${icon('search')}<input id="reagentSetSearch" type="search" placeholder="เช่น IH-500 Iden หรือ Ortho Erytra"></div><div class="label-filter-tabs"><button type="button" class="active" data-reagent-library-filter="ACTIVE">กำลังใช้</button><button type="button" data-reagent-library-filter="ALL">ประวัติทั้งหมด</button></div></div>
-    <div id="reagentLibraryNotice" class="hidden"></div>
-    <div id="reagentSetResults" class="reagent-set-results"><div class="usage-loading">กำลังโหลดชุดบาร์โค้ด…</div></div>
-  </section>
-  <section id="reagentSelectedSet" class="card reagent-selected-set hidden"></section>
-  <section class="card reagent-generator-card">
-    <div class="reagent-generator-head"><span>${icon('print')}</span><div><h3 id="reagentEditorTitle">สร้างชุดบาร์โค้ดใหม่</h3><p id="reagentEditorSubtitle">กรอกข้อมูลแล้วเลือกบันทึกไว้ หรือพิมพ์ครั้งเดียวโดยไม่บันทึกก็ได้</p></div></div>
-    <div class="form-grid two reagent-set-meta">
-      <label class="wide-field">ชื่อชุดบาร์โค้ด<input id="reagentSetName" value="${esc(draft.setName)}" placeholder="เช่น IH-500 Iden สิงหาคม 2569" maxlength="160"></label>
-      <label>เครื่องที่ใช้<input id="reagentInstrument" value="${esc(draft.instrument)}" placeholder="เช่น IH-500 หรือ Ortho Erytra" maxlength="120"></label>
-      <label>ประเภทชุด<input id="reagentCategory" value="${esc(draft.category)}" placeholder="เช่น Iden, Screen, TRC" maxlength="120"></label>
-      <label>วันที่เริ่มใช้<input id="reagentValidFrom" type="date" value="${esc(draft.validFrom)}"></label>
-      <label>วันที่เลิกใช้ (ถ้ามี)<input id="reagentValidTo" type="date" value="${esc(draft.validTo)}"><small class="field-hint">เว้นว่างเมื่อยังใช้งานอยู่</small></label>
-      <label class="wide-field">หมายเหตุ<textarea id="reagentNotes" rows="2" placeholder="เช่น ใช้กับเครื่อง IH-500 หรือเปลี่ยนตามน้ำยา Lot ใหม่">${esc(draft.notes)}</textarea></label>
+function reagentPrintItemMarkup(row, setCount = 1) {
+  const copies=Math.max(1,Number(row.copies || 1)) * Math.max(1,Number(setCount || 1));
+  return `<article class="reagent-print-item"><span class="reagent-print-item-index">${icon('print')}</span><div><strong>${esc(row.name)}</strong><small>Barcode / Lot: ${esc(row.barcode)}</small></div><b>${copies} ดวง</b></article>`;
+}
+
+async function renderReagentPrint() {
+  page.innerHTML=`<div class="page-head"><div><p class="eyebrow">Instrument reagent label</p><h2>พิมพ์น้ำยาเข้าเครื่อง</h2><p class="muted small">เลือกชุดน้ำยาที่ Admin เตรียมไว้ กรอกข้อมูลการเปิดใช้ แล้วพิมพ์ได้ทันที</p></div></div>
+  <section class="card reagent-staff-card">
+    <div class="reagent-staff-heading"><span>${icon('print')}</span><div><h3>ข้อมูลสำหรับพิมพ์</h3><p>ชื่อและ Barcode ถูกล็อกจากชุดที่ Admin บันทึกไว้</p></div></div>
+    <div id="reagentStaffNotice" class="hidden"></div>
+    <div class="form-grid two reagent-staff-form">
+      <label class="wide-field">ชุดน้ำยา<select id="reagentPrintSet" disabled><option>กำลังโหลดชุดน้ำยา…</option></select></label>
+      <label>ผู้เปิดใช้<select id="reagentOpenedBy" disabled><option>กำลังโหลดรายชื่อ…</option></select></label>
+      <label>จำนวนชุดที่พิมพ์<input id="reagentSetCount" type="number" min="1" max="20" step="1" value="1" inputmode="numeric"></label>
+      <label>วันที่และเวลาเปิดใช้<input id="reagentOpenedAt" type="datetime-local" value="${dateTimeLocalValue(new Date())}" required></label>
+      <label>วันที่และเวลาหมดอายุ / ใช้ได้ถึง<input id="reagentUseUntilAt" type="datetime-local" required></label>
     </div>
-    <div class="reagent-generator-options">
-      <label class="reagent-option-check"><input id="reagentReserveRight" type="checkbox" ${draft.reserveRight?'checked':''}><span><strong>เว้นด้านขวา 10 mm และแสดงเส้นคั่น</strong><small>ยกเลิกการติ๊กเมื่อต้องการใช้เต็มฉลากโดยไม่มีเส้นคั่น</small></span></label>
-      <div class="reagent-generator-summary"><strong id="reagentSummaryCount">0 รายการ · 0 ดวง</strong><small>ขนาด 50 × 28 mm · ขอบบน–ล่าง 1 mm ซ้าย–ขวา 2 mm</small></div>
-    </div>
-    <div id="reagentRecordedBy" class="reagent-recorded-by">ผู้บันทึกและวันเวลา: ระบบจะบันทึกจากบัญชีที่เข้าสู่ระบบเมื่อกดบันทึกชุดใหม่</div>
   </section>
-  <section class="card reagent-bulk-card" id="reagentBulkCard">
-    <div class="section-title compact"><div><h3>วางข้อมูลจาก Excel</h3><p class="muted small">คอลัมน์ 1 ชื่อน้ำยา · คอลัมน์ 2 Barcode / Lot · คอลัมน์ 3 จำนวนดวง (ถ้ามี)</p></div></div>
-    <textarea id="reagentBulkInput" rows="5" placeholder="ชื่อน้ำยา<TAB>Lot หรือ Barcode<TAB>จำนวนดวง\nIdent_TRC_IH-500_P1<TAB>80016900280115<TAB>1"></textarea>
-    <div class="toolbar reagent-bulk-actions"><button type="button" class="secondary" id="reagentBulkApply">แทนที่ด้วยข้อมูลที่วาง</button><button type="button" class="ghost" id="reagentBulkExample">ใส่ตัวอย่าง</button></div>
-  </section>
-  <section class="card reagent-table-card">
-    <div class="section-title compact"><div><h3>รายการที่จะพิมพ์</h3><p class="muted small" id="reagentRowsHint">แก้ไขชื่อและเลขได้ก่อนบันทึก</p></div><div class="toolbar" id="reagentRowTools"><button type="button" class="secondary" id="reagentAddRow">${icon('plus')} เพิ่มแถว</button><button type="button" class="ghost" id="reagentResetRows">ล้างรายการ</button></div></div>
-    <div class="table-wrap"><table class="data-table reagent-table"><thead><tr><th style="width:72px">ลำดับ</th><th>ชื่อน้ำยา</th><th style="width:30%">Barcode / Lot</th><th style="width:120px">จำนวนดวง</th><th style="width:90px"></th></tr></thead><tbody id="reagentRows"></tbody></table></div>
-    <div class="reagent-editor-actions"><button type="button" class="secondary" id="reagentPrintBtn">${icon('print')} พิมพ์โดยไม่บันทึก</button><button type="button" class="primary" id="reagentSaveBtn">${icon('plus')} บันทึกเป็นชุดใหม่</button><button type="button" class="secondary hidden" id="reagentCopyBtn">คัดลอกเป็นชุดใหม่</button></div>
+  <section id="reagentPrintPreview" class="card reagent-print-preview hidden"></section>
+  <section class="card reagent-print-confirm">
+    <div><small>สรุปการพิมพ์</small><strong id="reagentPrintSummary">กรุณาเลือกชุดน้ำยา</strong><span id="reagentPrintFormat">ระบบจะใช้รูปแบบฉลากที่ Admin กำหนด</span></div>
+    <button type="button" class="primary" id="reagentConfirmPrint" disabled>${icon('print')} ยืนยันและพิมพ์ชุดน้ำยา</button>
   </section>`;
 
-  const applyState=(state,{isLocked=false}={})=>{
-    const normalized=normalizeReagentDraft(state);
-    $('#reagentSetName').value=normalized.setName;
-    $('#reagentInstrument').value=normalized.instrument;
-    $('#reagentCategory').value=normalized.category;
-    $('#reagentValidFrom').value=normalized.validFrom;
-    $('#reagentValidTo').value=normalized.validTo;
-    $('#reagentNotes').value=normalized.notes;
-    $('#reagentReserveRight').checked=normalized.reserveRight;
-    locked=isLocked;
-    ['reagentSetName','reagentInstrument','reagentCategory','reagentValidFrom','reagentValidTo','reagentNotes','reagentReserveRight'].forEach(id=>{
-      const element=$(`#${id}`);if(element) element.disabled=locked;
-    });
-    redrawReagentRows(normalized.rows,locked);
-    $('#reagentBulkCard').classList.toggle('hidden',locked);
-    $('#reagentRowTools').classList.toggle('hidden',locked);
-    $('#reagentSaveBtn').classList.toggle('hidden',locked);
-    $('#reagentCopyBtn').classList.toggle('hidden',!locked);
-    $('#reagentPrintBtn').innerHTML=locked?`${icon('print')} พิมพ์ชุดนี้`:`${icon('print')} พิมพ์โดยไม่บันทึก`;
-    $('#reagentRowsHint').textContent=locked?'ชื่อและ Barcode ถูกล็อกเพื่อรักษาประวัติ แก้ได้เฉพาะจำนวนดวงก่อนพิมพ์':'แก้ไขชื่อและเลขได้ก่อนบันทึก';
-    saveReagentGeneratorDraft(normalized);
-  };
-
-  const showSelectedSet=set=>{
-    const container=$('#reagentSelectedSet');
-    if(!set){container.classList.add('hidden');container.innerHTML='';return;}
-    const adminActions=isAdminMode()
-      ? (String(set.status).toUpperCase()==='ACTIVE'
-          ? `<button type="button" class="mini danger" id="reagentDeactivateSet">เลิกใช้ชุดนี้</button>`
-          : `<button type="button" class="mini secondary" id="reagentReactivateSet">เปิดใช้อีกครั้ง</button>`)
-      : '';
-    container.classList.remove('hidden');
-    container.innerHTML=`<div class="reagent-selected-head"><div><p class="eyebrow">ชุดที่เลือก</p><h3>${esc(set.set_name)}</h3><p>${esc([set.instrument_name,set.category].filter(Boolean).join(' · ')||'ไม่ระบุเครื่อง/ประเภท')} · ${esc(reagentDateRange(set))}</p></div>${reagentStatusLabel(set)}</div><div class="reagent-selected-meta"><span>รายการ <b>${Number(set.item_count||0)}</b></span><span>ผู้บันทึก <b>${esc(set.created_by_name||set.created_by_email||'-')}</b></span><span>บันทึกเมื่อ <b>${dt(set.created_at)}</b></span><span>รูปแบบ <b>${set.reserve_right?'เว้นขวา 10 mm + เส้นคั่น':'ไม่เว้นขวา'}</b></span></div><div class="toolbar reagent-selected-actions">${adminActions}</div>`;
-    $('#reagentDeactivateSet')?.addEventListener('click',()=>changeSetStatus('INACTIVE'));
-    $('#reagentReactivateSet')?.addEventListener('click',()=>changeSetStatus('ACTIVE'));
-  };
-
-  const setEditorNew=(name='',fromSet=null)=>{
-    currentSetId='';
-    sourceSetId=fromSet?.id||'';
-    currentSet=null;
-    const base=fromSet?{
-      setName:name||`${fromSet.set_name} - ชุดใหม่`,
-      instrument:fromSet.instrument_name||'',category:fromSet.category||'',
-      validFrom:dateInputValue(new Date()),validTo:'',notes:fromSet.notes||'',
-      reserveRight:fromSet.reserve_right!==false,rows:collectReagentGeneratorState().rows
-    }:{...reagentDefaultDraft(),setName:name||''};
-    applyState(base,{isLocked:false});
-    showSelectedSet(null);
-    $('#reagentEditorTitle').textContent=fromSet?'สร้างชุดใหม่จากชุดเดิม':'สร้างชุดบาร์โค้ดใหม่';
-    $('#reagentEditorSubtitle').textContent=fromSet?'ระบบจะบันทึกเป็นชุดใหม่และเก็บชุดเดิมไว้ในประวัติ':'กรอกข้อมูลแล้วบันทึกไว้ หรือพิมพ์ครั้งเดียวโดยไม่บันทึกก็ได้';
-    $('#reagentSetName').focus();
-  };
-
-  const selectSavedSet=async id=>{
-    const set=savedSets.find(x=>String(x.id)===String(id));
-    if(!set)return;
-    const {data,error}=await sb.from('v_reagent_barcode_set_items').select('*').eq('set_id',id).order('sort_order');
-    if(error) return toast(errMsg(error),true);
-    const state={
-      setName:set.set_name,instrument:set.instrument_name||'',category:set.category||'',
-      validFrom:set.valid_from||dateInputValue(new Date()),validTo:set.valid_to||'',notes:set.notes||'',
-      reserveRight:set.reserve_right!==false,
-      rows:(data||[]).map(x=>({name:x.reagent_name,barcode:x.barcode_value,copies:x.default_copies}))
-    };
-    currentSetId=set.id;sourceSetId=set.id;currentSet=set;
-    applyState(state,{isLocked:true});
-    loadedFingerprint=reagentStateFingerprint(state);
-    showSelectedSet(set);
-    $('#reagentEditorTitle').textContent='ใช้ชุดบาร์โค้ดที่บันทึกไว้';
-    $('#reagentEditorSubtitle').textContent='ปรับจำนวนดวงได้ก่อนพิมพ์ หากเลขเปลี่ยนให้กด “คัดลอกเป็นชุดใหม่”';
-    $('#reagentRecordedBy').textContent=`บันทึกโดย ${set.created_by_name||set.created_by_email||'-'} · ${dt(set.created_at)}`;
-    window.scrollTo({top:$('#reagentSelectedSet').offsetTop-90,behavior:'smooth'});
-  };
-
-  const reloadLibrary=async(selectId='')=>{
-    const {data,error}=await sb.from('v_reagent_barcode_sets').select('*').order('status',{ascending:true}).order('valid_from',{ascending:false}).order('created_at',{ascending:false}).limit(1000);
-    if(error)throw error;
-    savedSets=data||[];
-    renderReagentSetResults(savedSets,$('#reagentSetSearch').value,libraryFilter);
-    if(selectId)await selectSavedSet(selectId);
-  };
-
-  const changeSetStatus=async status=>{
-    if(!currentSetId)return;
-    const message=status==='INACTIVE'?'ยืนยันเลิกใช้ชุดนี้หรือไม่? ชุดเดิมจะยังอยู่ในประวัติ':'ยืนยันเปิดใช้ชุดนี้อีกครั้งหรือไม่?';
-    if(!confirm(message))return;
-    const {error}=await sb.rpc('fn_set_reagent_barcode_set_status',{p_set_id:currentSetId,p_status:status,p_valid_to:status==='INACTIVE'?dateInputValue(new Date()):null});
-    if(error)return toast(errMsg(error),true);
-    toast(status==='INACTIVE'?'เลิกใช้ชุดนี้แล้ว':'เปิดใช้ชุดนี้อีกครั้งแล้ว');
-    await reloadLibrary(currentSetId);
-  };
-
-  applyState(draft,{isLocked:false});
-
-  try{
-    await reloadLibrary();
-  }catch(error){
-    libraryAvailable=false;
-    $('#reagentLibraryNotice').classList.remove('hidden');
-    $('#reagentLibraryNotice').className='notice';
-    $('#reagentLibraryNotice').innerHTML=`ยังใช้พิมพ์แบบไม่บันทึกได้ แต่ยังค้นหา/บันทึกชุดไม่ได้<br><small>กรุณารัน SQL หมายเลข 29 ของ v1.4.52 ก่อนใช้งานคลังชุดบาร์โค้ด</small>`;
-    $('#reagentSetResults').innerHTML='';
-    $('#reagentSetCount').textContent='ยังไม่พร้อม';
-    $('#reagentSaveBtn').disabled=true;
+  const [setsRes,staffRes]=await Promise.all([
+    sb.from('v_reagent_barcode_sets').select('*').eq('status','ACTIVE').order('set_name'),
+    sb.from('staff_directory').select('email,display_name').eq('active',true).order('display_name')
+  ]);
+  const notice=$('#reagentStaffNotice');
+  if(setsRes.error){
+    notice.className='notice';notice.textContent='ยังไม่สามารถโหลดชุดน้ำยาได้ กรุณาให้ Admin ตรวจว่ารัน SQL หมายเลข 29 แล้ว';
+    $('#reagentPrintSet').innerHTML='<option value="">ยังไม่มีข้อมูลชุดน้ำยา</option>';
+    return;
+  }
+  if(staffRes.error) throw staffRes.error;
+  const sets=setsRes.data || [];
+  let selectedSet=null;
+  let selectedRows=[];
+  const setSelect=$('#reagentPrintSet');
+  setSelect.innerHTML=reagentPrintSetOptions(sets);
+  setSelect.disabled=!sets.length;
+  const staff=[...(staffRes.data || [])];
+  if(profile?.email && !staff.some(x=>normalizedEmail(x.email)===normalizedEmail(profile.email))){
+    staff.unshift({email:profile.email,display_name:profile.display_name || profile.email});
+  }
+  const staffSelect=$('#reagentOpenedBy');
+  staffSelect.innerHTML=staff.map(x=>`<option value="${esc(x.email)}" ${normalizedEmail(x.email)===normalizedEmail(profile?.email)?'selected':''}>${esc(x.display_name || x.email)}</option>`).join('');
+  staffSelect.disabled=!staff.length;
+  if(!sets.length){
+    notice.className='notice';notice.textContent='ยังไม่มีชุดน้ำยาที่เปิดใช้งาน กรุณาแจ้ง Admin ให้สร้างชุดน้ำยาก่อนพิมพ์';
   }
 
-  $('#reagentSetSearch')?.addEventListener('input',e=>renderReagentSetResults(savedSets,e.target.value,libraryFilter));
-  $$('[data-reagent-library-filter]').forEach(button=>button.addEventListener('click',()=>{
-    libraryFilter=button.dataset.reagentLibraryFilter;
-    $$('[data-reagent-library-filter]').forEach(x=>x.classList.toggle('active',x===button));
-    renderReagentSetResults(savedSets,$('#reagentSetSearch').value,libraryFilter);
-  }));
-  $('#reagentSetResults')?.addEventListener('click',e=>{
-    const result=e.target.closest('[data-reagent-set-id]');
-    if(result){selectSavedSet(result.dataset.reagentSetId);return;}
-    if(e.target.closest('#reagentCreateFromSearch'))setEditorNew($('#reagentSetSearch').value.trim());
-  });
+  const refreshPreview=()=>{
+    const preview=$('#reagentPrintPreview');
+    const multiplier=Math.max(1,Math.min(20,Math.round(Number($('#reagentSetCount').value)||1)));
+    if(!selectedSet){
+      preview.classList.add('hidden');
+      $('#reagentPrintSummary').textContent='กรุณาเลือกชุดน้ำยา';
+      $('#reagentPrintFormat').textContent='ระบบจะใช้รูปแบบฉลากที่ Admin กำหนด';
+      $('#reagentConfirmPrint').disabled=true;
+      return;
+    }
+    const total=selectedRows.reduce((sum,row)=>sum+Math.max(1,Number(row.copies||1))*multiplier,0);
+    preview.classList.remove('hidden');
+    preview.innerHTML=`<div class="reagent-print-preview-head"><div><p class="eyebrow">ชุดที่เลือก</p><h3>${esc(selectedSet.set_name)}</h3><p>${esc([selectedSet.instrument_name,selectedSet.category].filter(Boolean).join(' · ') || 'ไม่ระบุเครื่อง/ประเภท')}</p></div><span class="badge ok">${selectedRows.length} รายการ</span></div><div class="reagent-print-items">${selectedRows.map(row=>reagentPrintItemMarkup(row,multiplier)).join('')}</div>`;
+    $('#reagentPrintSummary').textContent=`${selectedSet.set_name} · ${selectedRows.length} รายการ · รวม ${total} ดวง`;
+    $('#reagentPrintFormat').textContent=selectedSet.reserve_right ? 'รูปแบบ: เว้นขวา 10 mm พร้อมเส้นคั่น' : 'รูปแบบ: เต็มดวง ไม่มีเส้นคั่น';
+    $('#reagentConfirmPrint').disabled=false;
+  };
 
-  const saveDraftInput=()=>{if(!locked)saveReagentGeneratorDraft();else saveReagentGeneratorDraft(collectReagentGeneratorState());};
-  ['reagentSetName','reagentInstrument','reagentCategory','reagentValidFrom','reagentValidTo','reagentNotes','reagentReserveRight'].forEach(id=>$(`#${id}`)?.addEventListener('input',saveDraftInput));
-  $('#reagentRows')?.addEventListener('input',saveDraftInput);
-  $('#reagentRows')?.addEventListener('click',e=>{
-    const remove=e.target.closest('[data-reagent-remove]');if(!remove||locked)return;
-    const state=collectReagentGeneratorState();state.rows.splice(Number(remove.dataset.reagentRemove),1);if(!state.rows.length)state.rows.push(reagentEmptyRow());applyState(state,{isLocked:false});
+  setSelect.addEventListener('change',async()=>{
+    const id=setSelect.value;
+    selectedSet=sets.find(x=>String(x.id)===String(id)) || null;
+    selectedRows=[];
+    $('#reagentConfirmPrint').disabled=true;
+    if(!selectedSet){refreshPreview();return;}
+    $('#reagentPrintPreview').classList.remove('hidden');
+    $('#reagentPrintPreview').innerHTML='<div class="usage-loading">กำลังโหลดรายการน้ำยา…</div>';
+    try{selectedRows=await loadReagentSetItems(id);refreshPreview();}catch(e){toast(errMsg(e),true);selectedSet=null;refreshPreview();}
   });
-  $('#reagentAddRow')?.addEventListener('click',()=>{if(locked)return;const state=collectReagentGeneratorState();state.rows.push(reagentEmptyRow());applyState(state,{isLocked:false});});
-  $('#reagentResetRows')?.addEventListener('click',()=>{if(locked)return;applyState({...collectReagentGeneratorState(),rows:reagentDefaultDraft().rows},{isLocked:false});$('#reagentBulkInput').value='';});
-  $('#reagentBulkExample')?.addEventListener('click',()=>{$('#reagentBulkInput').value='Ident_TRC_IH-500_P1\t80016900280115\t1\nIdent_TRC_IH-500_P2\t80026900280115\t1\nIdent_TRC_IH-500_P3\t80036900280115\t1';});
-  $('#reagentBulkApply')?.addEventListener('click',()=>{if(locked)return;const parsed=parseReagentBulkRows($('#reagentBulkInput').value);if(!parsed.length)return toast('ไม่พบข้อมูลจากข้อความที่วาง กรุณาตรวจว่ามีอย่างน้อย 2 คอลัมน์',true);applyState({...collectReagentGeneratorState(),rows:parsed},{isLocked:false});toast(`นำเข้ารายการ ${parsed.length} แถวแล้ว`);});
-
-  $('#reagentCopyBtn')?.addEventListener('click',()=>{
-    const rows=collectReagentGeneratorState().rows;
-    const from=currentSet;
-    if(!from)return;
-    currentSetId='';sourceSetId=from.id;currentSet=null;
-    applyState({setName:`${from.set_name} - ชุดใหม่`,instrument:from.instrument_name||'',category:from.category||'',validFrom:dateInputValue(new Date()),validTo:'',notes:from.notes||'',reserveRight:from.reserve_right!==false,rows},{isLocked:false});
-    showSelectedSet(null);
-    $('#reagentEditorTitle').textContent='สร้างชุดใหม่จากชุดเดิม';
-    $('#reagentEditorSubtitle').textContent='แก้เฉพาะเลขที่เปลี่ยน แล้วบันทึกเป็นชุดใหม่ ชุดเดิมจะยังอยู่ในประวัติ';
-    $('#reagentRecordedBy').textContent=`คัดลอกจาก “${from.set_name}” · ผู้บันทึกชุดใหม่จะเป็นบัญชีปัจจุบัน`;
-    $('#reagentSetName').focus();
-  });
-
-  $('#reagentSaveBtn')?.addEventListener('click',async()=>{
-    if(!libraryAvailable)return toast('กรุณารัน SQL หมายเลข 29 ก่อนบันทึกชุด',true);
-    const checked=reagentValidation(collectReagentGeneratorState(),{requireSetName:true});
-    if(checked.error)return toast(checked.error,true);
-    const button=$('#reagentSaveBtn');button.disabled=true;
-    const {data,error}=await sb.rpc('fn_save_reagent_barcode_set',{
-      p_set_name:checked.setName,
-      p_instrument_name:checked.instrument||null,
-      p_category:checked.category||null,
-      p_valid_from:checked.validFrom||dateInputValue(new Date()),
-      p_valid_to:checked.validTo||null,
-      p_notes:checked.notes||null,
-      p_reserve_right:checked.reserveRight,
-      p_items:checked.rows,
-      p_source_set_id:sourceSetId||null
+  $('#reagentSetCount').addEventListener('input',refreshPreview);
+  $('#reagentConfirmPrint').addEventListener('click',async()=>{
+    if(!selectedSet || !selectedRows.length) return toast('กรุณาเลือกชุดน้ำยา',true);
+    const openedAt=$('#reagentOpenedAt').value;
+    const useUntilAt=$('#reagentUseUntilAt').value;
+    if(!openedAt || !useUntilAt) return toast('กรุณาระบุวันเวลาเปิดใช้และวันเวลาหมดอายุให้ครบ',true);
+    const openedDate=new Date(openedAt);const expiryDate=new Date(useUntilAt);
+    if(Number.isNaN(openedDate.getTime()) || Number.isNaN(expiryDate.getTime())) return toast('วันเวลาที่ระบุไม่ถูกต้อง',true);
+    if(expiryDate <= openedDate) return toast('วันหมดอายุต้องอยู่หลังวันและเวลาเปิดใช้',true);
+    const selectedOption=$('#reagentOpenedBy').selectedOptions[0];
+    const openedByEmail=$('#reagentOpenedBy').value;
+    const openedByName=selectedOption?.textContent?.trim() || openedByEmail;
+    const button=$('#reagentConfirmPrint');button.disabled=true;
+    const ok=await launchReagentBarcodePrint({
+      set:selectedSet,rows:selectedRows,openedByName,openedByEmail,openedAt,useUntilAt,setCount:$('#reagentSetCount').value
     });
     button.disabled=false;
-    if(error)return toast(errMsg(error),true);
-    toast('บันทึกชุดบาร์โค้ดใหม่แล้ว');
-    await reloadLibrary(data);
-  });
-
-  $('#reagentPrintBtn')?.addEventListener('click',async()=>{
-    const state=collectReagentGeneratorState();
-    const checked=reagentValidation(state);
-    if(checked.error)return toast(checked.error,true);
-    const unchangedSaved=Boolean(currentSetId && locked && reagentStateFingerprint({...state,rows:state.rows.map(x=>({...x,copies:1}))}));
-    const ok=await launchReagentBarcodePrint({
-      reserveRight:checked.reserveRight,
-      rows:checked.rows,
-      setId:currentSetId||'',
-      savedSet:Boolean(currentSetId && locked)
-    });
-    if(ok)toast(currentSetId&&locked?'กำลังพิมพ์ชุดที่บันทึกไว้':'กำลังพิมพ์โดยไม่บันทึกชุด');
+    if(ok) toast('กำลังเปิดหน้าพิมพ์ชุดน้ำยา');
   });
 }
 
+function reagentAdminItemCard(row,index) {
+  return `<article class="reagent-admin-item" data-reagent-admin-row="${index}"><div class="reagent-admin-item-number">${index+1}</div><label>ชื่อน้ำยา<input type="text" data-reagent-admin-name value="${esc(row.name || '')}" placeholder="เช่น Iden_TRC_IH-500_P1" maxlength="160"></label><label>Barcode / Lot<input type="text" data-reagent-admin-barcode value="${esc(row.barcode || '')}" placeholder="เช่น 80016900280115" maxlength="160" autocomplete="off"></label><label class="reagent-admin-copy-field">จำนวนดวง<input type="number" data-reagent-admin-copies min="1" max="50" step="1" value="${Math.max(1,Number(row.copies || 1))}" inputmode="numeric"></label><button type="button" class="mini ghost" data-reagent-admin-remove="${index}">ลบ</button></article>`;
+}
+
+function reagentAdminSetCard(row) {
+  return `<button type="button" class="reagent-admin-set-card" data-reagent-admin-set="${esc(row.id)}"><span><strong>${esc(row.set_name)}</strong><small>${esc([row.instrument_name,row.category].filter(Boolean).join(' · ') || 'ไม่ระบุเครื่อง/ประเภท')}</small><small>${Number(row.item_count || 0)} รายการ · ${esc(reagentDateRange(row))}</small></span><span>${reagentStatusLabel(row)}<small>${row.reserve_right ? 'เว้นขวา 10 mm' : 'เต็มดวง'}</small></span></button>`;
+}
+
+async function renderReagentSetAdmin() {
+  if(!isAdminMode()) return navigate('reagent-print');
+  let sets=[];
+  let filter='ACTIVE';
+  let selectedSet=null;
+  let selectedItems=[];
+  let editorRows=[];
+  let sourceSetId='';
+  const draft=loadReagentGeneratorDraft();
+
+  page.innerHTML=`<div class="page-head"><div><p class="eyebrow">Reagent set management</p><h2>จัดการชุดน้ำยาเข้าเครื่อง</h2><p class="muted small">Admin สร้างชุดและกำหนด Barcode ไว้ล่วงหน้า ส่วน Staff เลือกชุดแล้วพิมพ์โดยไม่ต้องแก้เลข</p></div><button type="button" class="primary" id="reagentAdminNew">${icon('plus')} สร้างชุดใหม่</button></div>
+  <section class="card reagent-admin-library">
+    <div class="reagent-admin-library-toolbar"><div class="search-box">${icon('search')}<input id="reagentAdminSearch" type="search" placeholder="ค้นหาชื่อชุด เครื่อง หรือประเภท"></div><div class="label-filter-tabs"><button type="button" class="active" data-reagent-admin-filter="ACTIVE">กำลังใช้</button><button type="button" data-reagent-admin-filter="ALL">ประวัติทั้งหมด</button></div></div>
+    <div id="reagentAdminSetList"><div class="usage-loading">กำลังโหลดชุดน้ำยา…</div></div>
+  </section>
+  <section id="reagentAdminSelected" class="card reagent-admin-selected hidden"></section>
+  <section id="reagentAdminEditor" class="card reagent-admin-editor hidden">
+    <div class="reagent-admin-editor-head"><div><p class="eyebrow">Admin only</p><h3 id="reagentAdminEditorTitle">สร้างชุดน้ำยาใหม่</h3><p id="reagentAdminEditorHint">กรอกข้อมูลชุดและรายการน้ำยา แล้วบันทึกให้ Staff เลือกใช้</p></div><button type="button" class="icon-button" id="reagentAdminEditorClose" aria-label="ปิด">×</button></div>
+    <div class="form-grid two reagent-admin-meta">
+      <label class="wide-field">ชื่อชุดน้ำยา<input id="reagentAdminSetName" placeholder="เช่น IH-500 Iden สิงหาคม 2569" maxlength="160"></label>
+      <label>เครื่องที่ใช้<input id="reagentAdminInstrument" placeholder="เช่น IH-500 หรือ Ortho Erytra" maxlength="120"></label>
+      <label>ประเภทชุด<input id="reagentAdminCategory" placeholder="เช่น Iden, Screen, TRC" maxlength="120"></label>
+      <label>วันที่เริ่มใช้<input id="reagentAdminValidFrom" type="date"></label>
+      <label>วันที่เลิกใช้ (ถ้ามี)<input id="reagentAdminValidTo" type="date"><small class="field-hint">เว้นว่างเมื่อยังใช้งานอยู่</small></label>
+      <label class="wide-field">หมายเหตุ<textarea id="reagentAdminNotes" rows="2" placeholder="ระบุเฉพาะข้อมูลที่ช่วยแยกชุดหรือการเปลี่ยน Lot"></textarea></label>
+    </div>
+    <div class="reagent-admin-format-row"><span><strong>รูปแบบสติ๊กเกอร์</strong><small>ขนาด 50 × 28 mm</small></span><div class="reagent-format-switch" role="radiogroup" aria-label="รูปแบบสติ๊กเกอร์"><label><input type="radio" name="reagentAdminFormat" value="FULL"><span>เต็มดวง</span></label><label><input type="radio" name="reagentAdminFormat" value="RESERVE" checked><span>เว้นขวา 10 mm <i></i></span></label></div></div>
+    <div class="reagent-admin-items-head"><div><h3>รายการน้ำยาในชุด</h3><p>เพิ่มเฉพาะรายการที่ต้องพิมพ์พร้อมกัน</p></div><button type="button" class="secondary" id="reagentAdminAddItem">${icon('plus')} เพิ่มน้ำยา</button></div>
+    <div id="reagentAdminItems" class="reagent-admin-items"></div>
+    <div class="reagent-admin-savebar"><button type="button" class="ghost" id="reagentAdminCancel">ยกเลิก</button><button type="button" class="primary" id="reagentAdminSave">บันทึกชุดน้ำยา</button></div>
+  </section>`;
+
+  const renderList=()=>{
+    const q=normalizeMaterialSearch($('#reagentAdminSearch')?.value || '');
+    const filtered=sets.filter(row=>{
+      if(filter==='ACTIVE' && String(row.status).toUpperCase()!=='ACTIVE') return false;
+      if(!q) return true;
+      return normalizeMaterialSearch([row.set_name,row.instrument_name,row.category,row.notes].join(' ')).includes(q);
+    });
+    $('#reagentAdminSetList').innerHTML=filtered.length?`<div class="reagent-admin-set-grid">${filtered.map(reagentAdminSetCard).join('')}</div>`:'<div class="empty">ยังไม่มีชุดน้ำยาในกลุ่มนี้</div>';
+  };
+
+  const reloadSets=async(selectId='')=>{
+    const {data,error}=await sb.from('v_reagent_barcode_sets').select('*').order('status',{ascending:true}).order('valid_from',{ascending:false}).order('created_at',{ascending:false}).limit(1000);
+    if(error){$('#reagentAdminSetList').innerHTML=`<div class="notice">${esc(errMsg(error))}<br><small>กรุณารัน SQL หมายเลข 29 และ 30 ตามลำดับ</small></div>`;return;}
+    sets=data || [];renderList();
+    if(selectId) await selectSet(selectId);
+  };
+
+  const collectEditor=()=>normalizeReagentDraft({
+    setName:$('#reagentAdminSetName').value,
+    instrument:$('#reagentAdminInstrument').value,
+    category:$('#reagentAdminCategory').value,
+    validFrom:$('#reagentAdminValidFrom').value,
+    validTo:$('#reagentAdminValidTo').value,
+    notes:$('#reagentAdminNotes').value,
+    reserveRight:$('input[name="reagentAdminFormat"]:checked')?.value==='RESERVE',
+    rows:editorRows
+  });
+
+  const syncRowsFromDom=()=>{
+    editorRows=$$('[data-reagent-admin-row]',page).map(row=>({
+      name:$('[data-reagent-admin-name]',row)?.value || '',
+      barcode:$('[data-reagent-admin-barcode]',row)?.value || '',
+      copies:Math.max(1,Math.min(50,Math.round(Number($('[data-reagent-admin-copies]',row)?.value)||1)))
+    }));
+    return editorRows;
+  };
+
+  const drawEditorRows=()=>{$('#reagentAdminItems').innerHTML=editorRows.map(reagentAdminItemCard).join('');};
+
+  const openEditor=(state=reagentDefaultDraft(),{sourceId='',title='สร้างชุดน้ำยาใหม่',hint='กรอกข้อมูลชุดและรายการน้ำยา แล้วบันทึกให้ Staff เลือกใช้'}={})=>{
+    const normalized=normalizeReagentDraft(state);sourceSetId=sourceId;editorRows=normalized.rows.length?normalized.rows:[reagentEmptyRow()];
+    $('#reagentAdminSetName').value=normalized.setName;$('#reagentAdminInstrument').value=normalized.instrument;$('#reagentAdminCategory').value=normalized.category;
+    $('#reagentAdminValidFrom').value=normalized.validFrom || dateInputValue(new Date());$('#reagentAdminValidTo').value=normalized.validTo;$('#reagentAdminNotes').value=normalized.notes;
+    const format=normalized.reserveRight?'RESERVE':'FULL';const radio=$(`input[name="reagentAdminFormat"][value="${format}"]`);if(radio)radio.checked=true;
+    $('#reagentAdminEditorTitle').textContent=title;$('#reagentAdminEditorHint').textContent=hint;drawEditorRows();
+    $('#reagentAdminEditor').classList.remove('hidden');window.scrollTo({top:$('#reagentAdminEditor').offsetTop-80,behavior:'smooth'});
+    saveReagentGeneratorDraft(normalized);
+  };
+
+  const closeEditor=()=>{$('#reagentAdminEditor').classList.add('hidden');sourceSetId='';};
+
+  const showSelected=()=>{
+    const container=$('#reagentAdminSelected');
+    if(!selectedSet){container.classList.add('hidden');container.innerHTML='';return;}
+    const statusActive=String(selectedSet.status).toUpperCase()==='ACTIVE';
+    container.classList.remove('hidden');
+    container.innerHTML=`<div class="reagent-admin-selected-head"><div><p class="eyebrow">ชุดที่เลือก</p><h3>${esc(selectedSet.set_name)}</h3><p>${esc([selectedSet.instrument_name,selectedSet.category].filter(Boolean).join(' · ') || 'ไม่ระบุเครื่อง/ประเภท')} · ${esc(reagentDateRange(selectedSet))}</p></div>${reagentStatusLabel(selectedSet)}</div><div class="reagent-admin-selected-info"><span>รูปแบบ <b>${selectedSet.reserve_right?'เว้นขวา 10 mm':'เต็มดวง'}</b></span><span>ผู้สร้าง <b>${esc(selectedSet.created_by_name||selectedSet.created_by_email||'-')}</b></span><span>บันทึกเมื่อ <b>${dt(selectedSet.created_at)}</b></span></div><div class="reagent-admin-selected-items">${selectedItems.map((row,index)=>`<div><b>${index+1}</b><span><strong>${esc(row.name)}</strong><small>${esc(row.barcode)}</small></span><em>${row.copies} ดวง</em></div>`).join('')}</div><div class="reagent-admin-selected-actions"><button type="button" class="secondary" id="reagentAdminCopySet">คัดลอกเป็นชุดใหม่</button><button type="button" class="${statusActive?'danger':'secondary'}" id="reagentAdminToggleSet">${statusActive?'เลิกใช้ชุดนี้':'เปิดใช้อีกครั้ง'}</button></div>`;
+    $('#reagentAdminCopySet').addEventListener('click',()=>openEditor({
+      setName:`${selectedSet.set_name} - ชุดใหม่`,instrument:selectedSet.instrument_name||'',category:selectedSet.category||'',validFrom:dateInputValue(new Date()),validTo:'',notes:selectedSet.notes||'',reserveRight:selectedSet.reserve_right!==false,rows:selectedItems
+    },{sourceId:selectedSet.id,title:'คัดลอกเป็นชุดใหม่',hint:'แก้เฉพาะข้อมูลที่เปลี่ยน ชุดเดิมจะยังอยู่ในประวัติ'}));
+    $('#reagentAdminToggleSet').addEventListener('click',async()=>{
+      const target=statusActive?'INACTIVE':'ACTIVE';
+      const {error}=await sb.rpc('fn_set_reagent_barcode_set_status',{p_set_id:selectedSet.id,p_status:target,p_valid_to:target==='INACTIVE'?dateInputValue(new Date()):null});
+      if(error)return toast(errMsg(error),true);
+      toast(target==='INACTIVE'?'เลิกใช้ชุดน้ำยาแล้ว':'เปิดใช้งานชุดน้ำยาแล้ว');await reloadSets(selectedSet.id);
+    });
+  };
+
+  const selectSet=async id=>{
+    selectedSet=sets.find(x=>String(x.id)===String(id)) || null;
+    if(!selectedSet)return;
+    try{selectedItems=await loadReagentSetItems(id);showSelected();window.scrollTo({top:$('#reagentAdminSelected').offsetTop-80,behavior:'smooth'});}catch(e){toast(errMsg(e),true);}
+  };
+
+  $('#reagentAdminSearch').addEventListener('input',renderList);
+  $$('[data-reagent-admin-filter]').forEach(button=>button.addEventListener('click',()=>{
+    filter=button.dataset.reagentAdminFilter;$$('[data-reagent-admin-filter]').forEach(x=>x.classList.toggle('active',x===button));renderList();
+  }));
+  $('#reagentAdminSetList').addEventListener('click',e=>{const card=e.target.closest('[data-reagent-admin-set]');if(card)selectSet(card.dataset.reagentAdminSet);});
+  $('#reagentAdminNew').addEventListener('click',()=>openEditor(reagentDefaultDraft()));
+  $('#reagentAdminEditorClose').addEventListener('click',closeEditor);$('#reagentAdminCancel').addEventListener('click',closeEditor);
+  $('#reagentAdminAddItem').addEventListener('click',()=>{syncRowsFromDom();editorRows.push(reagentEmptyRow());drawEditorRows();});
+  $('#reagentAdminItems').addEventListener('input',()=>{syncRowsFromDom();saveReagentGeneratorDraft(collectEditor());});
+  $('#reagentAdminItems').addEventListener('click',e=>{
+    const remove=e.target.closest('[data-reagent-admin-remove]');if(!remove)return;syncRowsFromDom();editorRows.splice(Number(remove.dataset.reagentAdminRemove),1);if(!editorRows.length)editorRows.push(reagentEmptyRow());drawEditorRows();
+  });
+  ['reagentAdminSetName','reagentAdminInstrument','reagentAdminCategory','reagentAdminValidFrom','reagentAdminValidTo','reagentAdminNotes'].forEach(id=>$(`#${id}`).addEventListener('input',()=>{syncRowsFromDom();saveReagentGeneratorDraft(collectEditor());}));
+  $$('input[name="reagentAdminFormat"]').forEach(input=>input.addEventListener('change',()=>{syncRowsFromDom();saveReagentGeneratorDraft(collectEditor());}));
+  $('#reagentAdminSave').addEventListener('click',async()=>{
+    syncRowsFromDom();const checked=reagentValidation(collectEditor(),{requireSetName:true});if(checked.error)return toast(checked.error,true);
+    const button=$('#reagentAdminSave');button.disabled=true;
+    const {data,error}=await sb.rpc('fn_save_reagent_barcode_set',{
+      p_set_name:checked.setName,p_instrument_name:checked.instrument||null,p_category:checked.category||null,p_valid_from:checked.validFrom,
+      p_valid_to:checked.validTo||null,p_notes:checked.notes||null,p_reserve_right:checked.reserveRight,p_items:checked.rows,p_source_set_id:sourceSetId||null
+    });
+    button.disabled=false;if(error)return toast(errMsg(error),true);
+    localStorage.removeItem(REAGENT_GENERATOR_DRAFT_KEY);closeEditor();toast('บันทึกชุดน้ำยาแล้ว');await reloadSets(data);
+  });
+
+  await reloadSets();
+  if(draft.setName || draft.rows.some(x=>x.name||x.barcode)){
+    // เก็บร่างเดิมไว้ แต่ไม่เปิดรบกวนหน้าโดยอัตโนมัติ
+  }
+}
+
+async function renderReagentGenerator() {
+  return isAdminMode() ? renderReagentSetAdmin() : renderReagentPrint();
+}
 
 function renderHelp() {
-  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>สร้างบัญชีครั้งแรก</h3><ol class="help-steps"><li>ใช้เฉพาะอีเมลมหิดล @mahidol.ac.th ที่ Admin อนุญาตไว้</li><li>ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว</li><li>กด “สร้างบัญชีครั้งแรก” แล้วกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</li></ol></div><div class="card help-card"><h3>ลืมรหัสผ่าน</h3><ol class="help-steps"><li>หน้าเข้าสู่ระบบกด “ลืมรหัสผ่าน” แล้วกรอกอีเมลมหิดล</li><li>เปิดลิงก์จากอีเมลและตั้งรหัสผ่านใหม่ด้วยตนเอง</li><li>Admin สามารถกด “ส่งลิงก์รีเซ็ต” จากเมนูผู้ใช้งานได้ แต่จะไม่เห็นหรือกำหนดรหัสผ่านแทนเจ้าหน้าที่</li><li>หากระบบแจ้งว่าส่งอีเมลครบโควตา ให้หยุดกดซ้ำ รอประมาณ 1 ชั่วโมงแล้วลองใหม่ และตรวจทั้ง Inbox กับ Spam</li></ol></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>พิมพ์ชื่อวัสดุบางส่วนแล้วเลือกจากรายการ</li><li>ตรวจชื่อผู้นำเข้าปัจจุบัน ใส่ Lot วันหมดอายุ และจำนวน แล้วบันทึก</li></ol></div><div class="card help-card"><h3>นำออก</h3><ol class="help-steps"><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าและวิธีนำออก แล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>วัสดุที่ตั้งให้ใช้สติ๊กเกอร์วันเปิด จะไปอยู่ในเมนู “พิมพ์วันเปิดใช้” ให้เลือกพิมพ์เมื่อเปิดใช้จริง โดยรายการล่าสุดอยู่บนสุด</li></ol></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแล</h3><p>แสดงเฉพาะวัสดุที่คุณเป็นผู้ดูแลหลัก โดยมีแท็บภาพรวม ต้องเบิก และตั้งค่าการเตือน ผู้ดูแลหลักเป็นผู้รับผิดชอบวางแผนเบิกและกำหนด Minimum/เกณฑ์แจ้งเตือน</p></div><div class="card help-card"><h3>สต๊อกที่ฉันช่วยดูแล</h3><p>แสดงแยกจากงานหลัก ใช้ติดตามยอดและช่วยเตือนผู้ดูแลหลัก มีแท็บภาพรวมงานช่วยดูแลและช่วยเตือนต้องเบิก โดยไม่มีแท็บตั้งค่าการเตือน</p></div><div class="card help-card"><h3>ตรวจวันศุกร์</h3><p>กด “เปิดหน้าต่างตรวจ Lot” เพื่อกรอกจำนวนจริง หากยอดไม่ตรงให้เลือกเหตุผลและระบุรายละเอียด ผู้ช่วยดูแลตรวจได้จากแท็บ “ฉันช่วยดูแล” แต่ไม่ถูกนับเป็นงานหลักที่รอตรวจ</p></div><div class="card help-card"><h3>สแกนตรวจ Lot</h3><p>เปิดกล้องหรือพิมพ์รหัส QR เพื่อดูยอด Lot ยอดรวม ผู้ดูแล ขั้นต่ำ และยืนยันตรวจหรือปรับยอดได้ทันที</p></div><div class="card help-card"><h3>สถานะผู้ตรวจ</h3><p>เปิดเมนู “สถานะผู้ตรวจ” แล้วกำหนดช่วงวันที่ เพื่อดูว่าแต่ละวันศุกร์ใครตรวจครบหรือยังไม่ครบ</p></div><div class="card help-card"><h3>สติ๊กเกอร์เดิม</h3><p>สติ๊กเกอร์รหัสเดิมยังสแกนได้ ไม่ต้องเปลี่ยนใหม่ทั้งหมด</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบไม่ตัดยอดเอง เปิดตรวจวันศุกร์และกด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์ถัดไป</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมดูได้ในหน้าประวัติและรายงาน</p></div><div class="card help-card"><h3>พิมพ์ QR Sticker ภายหลัง</h3><p>หลังรับเข้าผ่านโทรศัพท์ ให้เปิดเมนู “พิมพ์ QR Sticker” บนคอมพิวเตอร์ที่ต่อเครื่องพิมพ์ รายการรับเข้าจะอยู่ในคิวอัตโนมัติ เลือกจำนวนดวงแล้วกดพิมพ์</p></div><div class="card help-card"><h3>พิมพ์วันเปิดใช้</h3><p>เปิดเมนู “พิมพ์วันเปิดใช้” เลือกรายการนำออก แล้วระบุวัน–เวลาเปิดและอายุหลังเปิด โดยเลือกใช้ถึง EXP ผู้ผลิต, 24 ชั่วโมง, 7 วัน, 28 วัน, 1 เดือน, 3 เดือน, 6 เดือน หรือกำหนดเองได้ ระบบคำนวณวันใช้ได้ถึงให้อัตโนมัติและไม่ให้เกิน EXP ผู้ผลิต</p></div><div class="card help-card"><h3>สร้างสติ๊กเกอร์วันเปิดเอง</h3><p>เลือกวัสดุ กรอก Lot และ EXP ผู้ผลิต ระบุวัน–เวลาเปิดและอายุหลังเปิด ระบบคำนวณวันใช้ได้ถึงและสร้างสติ๊กเกอร์โดยไม่ตัดยอดสต๊อกเพิ่ม</p></div><div class="card help-card"><h3>Generate น้ำยาเข้าเครื่อง</h3><p>ใช้ค้นหาชุด Barcode/Lot เดิมจาก Supabase หรือสร้างชุดใหม่เมื่อค้นหาไม่พบ ระบบเก็บวันที่เริ่ม/เลิกใช้ หมายเหตุ ผู้บันทึก และประวัติชุดเดิม พร้อมพิมพ์ฉลาก 50 × 28 mm แบบเว้นขวาหรือไม่เว้นขวา</p></div><div class="card help-card"><h3>ตัวชี้วัด</h3><p>Admin เปิดเมนู “ตัวชี้วัด” เลือกช่วงวันที่ ระบบคำนวณ 12 ตัวชี้วัดจากผู้ใช้ วัสดุ Transaction การตรวจวันศุกร์ สติ๊กเกอร์ และ Audit Log อัตโนมัติ ส่วนเหตุการณ์ใช้เกินวันหลังเปิดหรือข้อร้องเรียนฉลาก ให้กด “บันทึกเหตุการณ์” ในหน้าเดียวกัน และส่งออก CSV ได้</p></div><div class="card help-card"><h3>ตั้งค่าผู้ดูแลระบบ</h3><p>หน้า Admin แยกเป็น 3 เมนูย่อย ได้แก่ ภาพรวม ผู้ใช้งาน และวัสดุและผู้ดูแล โดย Admin เพิ่มวัสดุใหม่พร้อมรหัส ชื่อ หน่วย Minimum เกณฑ์ EXP ผู้ดูแลหลัก ผู้ช่วย และอายุหลังเปิดเริ่มต้นได้</p></div><div class="card help-card"><h3>เครื่องพิมพ์สติ๊กเกอร์</h3><p>ฉลากจริง 25 × 20 mm ระบบใช้รูปแบบสติ๊กเกอร์มาตรฐานเดียวกันทุกเครื่อง พร้อม QR ขนาดใหญ่และขอบขาวมาตรฐาน ในหน้าพิมพ์ Chrome ให้เลือกเครื่องพิมพ์และตั้งกระดาษตามเครื่องที่ใช้งาน ใช้ Scale 100% หรือ Actual size ปิด Header/Footer และใช้ Margin None</p></div></div>`;
+  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>สร้างบัญชีครั้งแรก</h3><ol class="help-steps"><li>ใช้เฉพาะอีเมลมหิดล @mahidol.ac.th ที่ Admin อนุญาตไว้</li><li>ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว</li><li>กด “สร้างบัญชีครั้งแรก” แล้วกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</li></ol></div><div class="card help-card"><h3>ลืมรหัสผ่าน</h3><ol class="help-steps"><li>หน้าเข้าสู่ระบบกด “ลืมรหัสผ่าน” แล้วกรอกอีเมลมหิดล</li><li>เปิดลิงก์จากอีเมลและตั้งรหัสผ่านใหม่ด้วยตนเอง</li><li>Admin สามารถกด “ส่งลิงก์รีเซ็ต” จากเมนูผู้ใช้งานได้ แต่จะไม่เห็นหรือกำหนดรหัสผ่านแทนเจ้าหน้าที่</li><li>หากระบบแจ้งว่าส่งอีเมลครบโควตา ให้หยุดกดซ้ำ รอประมาณ 1 ชั่วโมงแล้วลองใหม่ และตรวจทั้ง Inbox กับ Spam</li></ol></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>พิมพ์ชื่อวัสดุบางส่วนแล้วเลือกจากรายการ</li><li>ตรวจชื่อผู้นำเข้าปัจจุบัน ใส่ Lot วันหมดอายุ และจำนวน แล้วบันทึก</li></ol></div><div class="card help-card"><h3>นำออก</h3><ol class="help-steps"><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าและวิธีนำออก แล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>วัสดุที่ตั้งให้ใช้สติ๊กเกอร์วันเปิด จะไปอยู่ในเมนู “พิมพ์วันเปิดใช้” ให้เลือกพิมพ์เมื่อเปิดใช้จริง โดยรายการล่าสุดอยู่บนสุด</li></ol></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแล</h3><p>แสดงเฉพาะวัสดุที่คุณเป็นผู้ดูแลหลัก โดยมีแท็บภาพรวม ต้องเบิก และตั้งค่าการเตือน ผู้ดูแลหลักเป็นผู้รับผิดชอบวางแผนเบิกและกำหนด Minimum/เกณฑ์แจ้งเตือน</p></div><div class="card help-card"><h3>สต๊อกที่ฉันช่วยดูแล</h3><p>แสดงแยกจากงานหลัก ใช้ติดตามยอดและช่วยเตือนผู้ดูแลหลัก มีแท็บภาพรวมงานช่วยดูแลและช่วยเตือนต้องเบิก โดยไม่มีแท็บตั้งค่าการเตือน</p></div><div class="card help-card"><h3>ตรวจวันศุกร์</h3><p>กด “เปิดหน้าต่างตรวจ Lot” เพื่อกรอกจำนวนจริง หากยอดไม่ตรงให้เลือกเหตุผลและระบุรายละเอียด ผู้ช่วยดูแลตรวจได้จากแท็บ “ฉันช่วยดูแล” แต่ไม่ถูกนับเป็นงานหลักที่รอตรวจ</p></div><div class="card help-card"><h3>สแกนตรวจ Lot</h3><p>เปิดกล้องหรือพิมพ์รหัส QR เพื่อดูยอด Lot ยอดรวม ผู้ดูแล ขั้นต่ำ และยืนยันตรวจหรือปรับยอดได้ทันที</p></div><div class="card help-card"><h3>สถานะผู้ตรวจ</h3><p>เปิดเมนู “สถานะผู้ตรวจ” แล้วกำหนดช่วงวันที่ เพื่อดูว่าแต่ละวันศุกร์ใครตรวจครบหรือยังไม่ครบ</p></div><div class="card help-card"><h3>สติ๊กเกอร์เดิม</h3><p>สติ๊กเกอร์รหัสเดิมยังสแกนได้ ไม่ต้องเปลี่ยนใหม่ทั้งหมด</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบไม่ตัดยอดเอง เปิดตรวจวันศุกร์และกด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์ถัดไป</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมดูได้ในหน้าประวัติและรายงาน</p></div><div class="card help-card"><h3>พิมพ์ QR Sticker ภายหลัง</h3><p>หลังรับเข้าผ่านโทรศัพท์ ให้เปิดเมนู “พิมพ์ QR Sticker” บนคอมพิวเตอร์ที่ต่อเครื่องพิมพ์ รายการรับเข้าจะอยู่ในคิวอัตโนมัติ เลือกจำนวนดวงแล้วกดพิมพ์</p></div><div class="card help-card"><h3>พิมพ์วันเปิดใช้</h3><p>เปิดเมนู “พิมพ์วันเปิดใช้” เลือกรายการนำออก แล้วระบุวัน–เวลาเปิดและอายุหลังเปิด โดยเลือกใช้ถึง EXP ผู้ผลิต, 24 ชั่วโมง, 7 วัน, 28 วัน, 1 เดือน, 3 เดือน, 6 เดือน หรือกำหนดเองได้ ระบบคำนวณวันใช้ได้ถึงให้อัตโนมัติและไม่ให้เกิน EXP ผู้ผลิต</p></div><div class="card help-card"><h3>สร้างสติ๊กเกอร์วันเปิดเอง</h3><p>เลือกวัสดุ กรอก Lot และ EXP ผู้ผลิต ระบุวัน–เวลาเปิดและอายุหลังเปิด ระบบคำนวณวันใช้ได้ถึงและสร้างสติ๊กเกอร์โดยไม่ตัดยอดสต๊อกเพิ่ม</p></div><div class="card help-card"><h3>พิมพ์น้ำยาเข้าเครื่อง</h3><p>Staff เลือกชุดน้ำยาที่ Admin เตรียมไว้ ระบุผู้เปิดใช้ วันเวลาเปิด และวันเวลาหมดอายุ จากนั้นกดพิมพ์ โดยไม่สามารถแก้ชื่อหรือ Barcode ของชุดได้</p></div><div class="card help-card"><h3>จัดการชุดน้ำยาเข้าเครื่อง</h3><p>Admin สร้างชุดน้ำยา เพิ่มรายการทีละรายการ กำหนด Barcode จำนวนดวง และเลือกรูปแบบเต็มดวงหรือเว้นขวา 10 mm ได้ ชุดเก่าให้คัดลอกเป็นชุดใหม่เพื่อรักษาประวัติ</p></div><div class="card help-card"><h3>ตัวชี้วัด</h3><p>Admin เปิดเมนู “ตัวชี้วัด” เลือกช่วงวันที่ ระบบคำนวณ 12 ตัวชี้วัดจากผู้ใช้ วัสดุ Transaction การตรวจวันศุกร์ สติ๊กเกอร์ และ Audit Log อัตโนมัติ ส่วนเหตุการณ์ใช้เกินวันหลังเปิดหรือข้อร้องเรียนฉลาก ให้กด “บันทึกเหตุการณ์” ในหน้าเดียวกัน และส่งออก CSV ได้</p></div><div class="card help-card"><h3>ตั้งค่าผู้ดูแลระบบ</h3><p>หน้า Admin แยกเป็น 3 เมนูย่อย ได้แก่ ภาพรวม ผู้ใช้งาน และวัสดุและผู้ดูแล โดย Admin เพิ่มวัสดุใหม่พร้อมรหัส ชื่อ หน่วย Minimum เกณฑ์ EXP ผู้ดูแลหลัก ผู้ช่วย และอายุหลังเปิดเริ่มต้นได้</p></div><div class="card help-card"><h3>เครื่องพิมพ์สติ๊กเกอร์</h3><p>ฉลากจริง 25 × 20 mm ระบบใช้รูปแบบสติ๊กเกอร์มาตรฐานเดียวกันทุกเครื่อง พร้อม QR ขนาดใหญ่และขอบขาวมาตรฐาน ในหน้าพิมพ์ Chrome ให้เลือกเครื่องพิมพ์และตั้งกระดาษตามเครื่องที่ใช้งาน ใช้ Scale 100% หรือ Actual size ปิด Header/Footer และใช้ Margin None</p></div></div>`;
   refreshInstallUI();
 }
 
