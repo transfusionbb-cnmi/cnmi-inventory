@@ -115,14 +115,14 @@ function makeLabel(row,payload){
   addText(svg,'ชื่อน้ำยา',left+6,32,{size:15.5,weight:700,maxWidth:74,minSize:13});
   addText(svg,name,left+86,32,{size:18,weight:500,maxWidth:contentWidth-98,minSize:11.5});
 
-  const barcodeX=left+10, barcodeWidth=contentWidth-38, barcodeY=44, barcodeHeight=68;
+  const barcodeX=left+10, barcodeWidth=contentWidth-38, barcodeY=44, barcodeHeight=83;
   addBarcode(svg,barcode,barcodeX,barcodeY,barcodeWidth,barcodeHeight);
-  addText(svg,barcode,left+(contentWidth/2),136,{size:14.8,weight:500,anchor:'middle',maxWidth:barcodeWidth,minSize:12});
+  addText(svg,barcode,left+(contentWidth/2),147,{size:15.4,weight:500,anchor:'middle',maxWidth:barcodeWidth,minSize:12.6});
 
-  addText(svg,`วันที่เปิด ${payload.openedDate} เวลา ${payload.openedTime}`,left+6,173,{size:15.6,weight:700,maxWidth:contentWidth-12,minSize:12.8});
-  addText(svg,`วันหมดอายุ ${payload.expiryDate} เวลา ${payload.expiryTime}`,left+6,201,{size:15.6,weight:700,maxWidth:contentWidth-12,minSize:12.8});
-  addText(svg,`ผู้เปิดใช้ ${payload.openedBy}`,left+6,229,{size:15.6,weight:700,maxWidth:contentWidth-12,minSize:12.8});
-  addText(svg,payload.footer,left+(contentWidth/2),267,{size:10.3,weight:500,anchor:'middle',maxWidth:contentWidth-8,minSize:8.8});
+  addText(svg,`วันที่เปิด ${payload.openedDate} เวลา ${payload.openedTime}`,left+6,182,{size:16.6,weight:700,maxWidth:contentWidth-12,minSize:13.4});
+  addText(svg,`วันหมดอายุ ${payload.expiryDate} เวลา ${payload.expiryTime}`,left+6,211,{size:16.6,weight:700,maxWidth:contentWidth-12,minSize:13.4});
+  addText(svg,`ผู้เปิดใช้ ${payload.openedBy}`,left+6,240,{size:16.6,weight:700,maxWidth:contentWidth-12,minSize:13.4});
+  addText(svg,payload.footer,left+(contentWidth/2),271,{size:11.2,weight:500,anchor:'middle',maxWidth:contentWidth-8,minSize:9.2});
 
   page.appendChild(svg); return page;
 }
