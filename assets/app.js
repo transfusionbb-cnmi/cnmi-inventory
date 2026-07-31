@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.63';
+const APP_VERSION = '1.4.66';
 const WEEKLY_CUTOVER_DATE = '2026-07-24';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const DEFAULT_EXPIRY_ALERT_DAYS = 30;
@@ -25,6 +25,8 @@ let activityMaterialMap = null;
 let usageMaterialCode = '';
 let myStockTab = 'overview';
 let myStockScope = 'primary';
+let myStockOwnerFilterValue = {primary:'',assistant:''};
+let lastRenderedViewKey = '';
 let weeklyAdminActingForEmail = '';
 let weeklyActiveFilter = 'pending';
 let weeklyOwnerFilterValue = '';
@@ -1086,6 +1088,129 @@ async function globalClick(e) {
   }
 }
 
+
+const VIEW_CONTINUITY_CONTROL_IDS = new Set([
+  'homeModeOwner','homeModeProduct','myStockAdminOwner',
+  'stockOwnerFilter','stockOwnerRole','stockStatusSelect','stockMaterialCode','stockMaterialCodeSearch',
+  'usageOwnerFilter','usageMaterial','usageMaterialSearch','usageFrom','usageTo',
+  'labelQueueSearch','openLabelHistoryDate','openLabelHistoryMaterial','openLabelHistoryOperator',
+  'weeklyOwnerFilter','adminWeeklyActingFor','weeklyStatusFrom','weeklyStatusTo',
+  'activityType','activitySearch','rfFrom','rfTo','rfProduct','rfLot','rfQuantity','rfBalance','rfMethod','rfRecorder',
+  'indicatorFrom','indicatorTo','adminMaterialSearch','reagentAdminSearch','reagentPrintSet','reagentOpenedBy'
+]);
+
+function currentViewKey() {
+  if (route === 'move') return `move:${moveTab || 'receive'}`;
+  if (route === 'my-stock' || route === 'assisted-stock') return `${route}:${myStockTab || 'overview'}`;
+  if (route === 'reports') return `reports:${reportTab || 'select'}`;
+  if (route === 'admin') return `admin:${adminTab || 'overview'}`;
+  return route || 'home';
+}
+
+function captureViewContinuity(key = lastRenderedViewKey || currentViewKey()) {
+  if (!key || !page || appView.classList.contains('hidden')) return null;
+  const controls = {};
+  VIEW_CONTINUITY_CONTROL_IDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el || !page.contains(el) || ['password','file'].includes(String(el.type || '').toLowerCase())) return;
+    controls[id] = {
+      value: String(el.value ?? ''),
+      checked: 'checked' in el ? Boolean(el.checked) : undefined
+    };
+  });
+  const active = {};
+  const activeSpecs = [
+    ['labelFilter','[data-label-filter].active','labelFilter'],
+    ['weeklyFilter','[data-wf].active','wf'],
+    ['reagentAdminFilter','[data-reagent-admin-filter].active','reagentAdminFilter'],
+    ['usagePreset','[data-usage-days].active','usageDays'],
+    ['indicatorPreset','[data-indicator-preset].active','indicatorPreset']
+  ];
+  activeSpecs.forEach(([name,selector,datasetKey]) => {
+    const button = page.querySelector(selector);
+    if (button?.dataset?.[datasetKey]) active[name] = button.dataset[datasetKey];
+  });
+  const scrollers = [...page.querySelectorAll('.horizontal-scroller,.table-wrap')].map((el,index)=>({index,left:el.scrollLeft,top:el.scrollTop}));
+  return {
+    key,
+    controls,
+    active,
+    scrollY:Math.max(0,window.scrollY || document.documentElement.scrollTop || 0),
+    focusId:page.contains(document.activeElement) && VIEW_CONTINUITY_CONTROL_IDS.has(document.activeElement?.id) ? document.activeElement.id : '',
+    scrollers
+  };
+}
+
+function restoreViewContinuity(state) {
+  if (!state || state.key !== currentViewKey()) return;
+  Object.entries(state.controls || {}).forEach(([id,saved]) => {
+    const el=document.getElementById(id);
+    if(!el || !page.contains(el)) return;
+    if ('checked' in el && saved.checked !== undefined) el.checked=Boolean(saved.checked);
+    if (saved.value !== undefined) el.value=saved.value;
+  });
+
+  const clickActive=(selector,value,datasetKey)=>{
+    if(!value) return;
+    const button=[...page.querySelectorAll(selector)].find(x=>String(x.dataset?.[datasetKey]||'')===String(value));
+    if(button && !button.classList.contains('active')) button.click();
+  };
+
+  if(route==='labels') {
+    clickActive('[data-label-filter]',state.active?.labelFilter,'labelFilter');
+    $('#labelQueueSearch')?.dispatchEvent(new Event('input',{bubbles:true}));
+  } else if(route==='stock') {
+    $('#stockOwnerFilter')?.dispatchEvent(new Event('change',{bubbles:true}));
+    $('#stockOwnerRole')?.dispatchEvent(new Event('change',{bubbles:true}));
+    $('#stockStatusSelect')?.dispatchEvent(new Event('change',{bubbles:true}));
+  } else if(route==='usage') {
+    if($('#usageMaterial')?.value) $('#usageFilterForm')?.requestSubmit();
+  } else if(route==='open-labels') {
+    if(state.controls?.openLabelHistoryDate?.value || state.controls?.openLabelHistoryMaterial?.value || state.controls?.openLabelHistoryOperator?.value) $('#searchOpenLabelHistory')?.click();
+  } else if(route==='weekly') {
+    $('#weeklyOwnerFilter')?.dispatchEvent(new Event('change',{bubbles:true}));
+    clickActive('[data-wf]',state.active?.weeklyFilter,'wf');
+  } else if(route==='weekly-status') {
+    $('#weeklyStatusForm')?.requestSubmit();
+  } else if(route==='activity') {
+    $('#activityType')?.dispatchEvent(new Event('change',{bubbles:true}));
+    setTimeout(()=>$('#activitySearch')?.dispatchEvent(new Event('input',{bubbles:true})),120);
+  } else if(route==='reports') {
+    if(reportTab && reportTab!=='stock') $('#reportFilterForm')?.requestSubmit();
+  } else if(route==='indicators') {
+    $('#indicatorFilterForm')?.requestSubmit();
+  } else if(route==='admin') {
+    $('#adminMaterialSearch')?.dispatchEvent(new Event('input',{bubbles:true}));
+  } else if(route==='reagent-set-admin') {
+    clickActive('[data-reagent-admin-filter]',state.active?.reagentAdminFilter,'reagentAdminFilter');
+    $('#reagentAdminSearch')?.dispatchEvent(new Event('input',{bubbles:true}));
+  } else if(route==='reagent-print') {
+    $('#reagentPrintSet')?.dispatchEvent(new Event('change',{bubbles:true}));
+  }
+
+  const restorePosition=()=>{
+    (state.scrollers || []).forEach(({index,left,top})=>{
+      const el=[...page.querySelectorAll('.horizontal-scroller,.table-wrap')][index];
+      if(el){el.scrollLeft=left||0;el.scrollTop=top||0;}
+    });
+    window.scrollTo({top:state.scrollY || 0,left:0,behavior:'auto'});
+    if(state.focusId) document.getElementById(state.focusId)?.focus({preventScroll:true});
+  };
+  requestAnimationFrame(()=>requestAnimationFrame(restorePosition));
+  setTimeout(restorePosition,220);
+}
+
+async function refreshCurrentView(renderer, ...args) {
+  const beforeKey=lastRenderedViewKey || currentViewKey();
+  const state=captureViewContinuity(beforeKey);
+  const result=await renderer(...args);
+  const afterKey=currentViewKey();
+  lastRenderedViewKey=afterKey;
+  queueResponsiveTables(page);
+  if(state && beforeKey===afterKey) restoreViewContinuity(state);
+  return result;
+}
+
 function navActive() {
   $$('.bottom-nav button, .side-nav button').forEach(b => {
     if (b.hasAttribute('data-mobile-menu')) {
@@ -1099,6 +1224,8 @@ function navActive() {
 }
 
 async function navigate(r, options = {}) {
+  const previousKey=lastRenderedViewKey || currentViewKey();
+  const previousState=lastRenderedViewKey ? captureViewContinuity(previousKey) : null;
   if (['admin','indicators','reagent-set-admin'].includes(r) && !isAdminMode()) {
     r = 'home';
     toast('สลับเป็นโหมดผู้ดูแลระบบก่อน', true);
@@ -1110,6 +1237,8 @@ async function navigate(r, options = {}) {
     myStockScope = r === 'assisted-stock' ? 'assistant' : 'primary';
     myStockTab = options.tab || myStockTab || 'overview';
   }
+  const targetKey=currentViewKey();
+  const keepState=previousState && previousKey===targetKey ? previousState : null;
   navActive();
   loading();
   try {
@@ -1135,8 +1264,10 @@ async function navigate(r, options = {}) {
     else if (r === 'admin') await renderAdmin();
     else await renderHome();
     queueResponsiveTables(page);
+    lastRenderedViewKey=currentViewKey();
     try { history.replaceState({}, '', `${location.pathname}${location.search}#${r}`); } catch (_) {}
-    window.scrollTo({top:0, behavior:'smooth'});
+    if(keepState) restoreViewContinuity(keepState);
+    else window.scrollTo({top:0, behavior:'smooth'});
   } catch (e) {
     page.innerHTML = `<div class="card notice">${esc(errMsg(e))}</div>`;
   }
@@ -1510,7 +1641,8 @@ async function renderMyStock(tab = 'overview', selectedOwner = null, scope = 'pr
     ? [row.assistant_responsible_email,row.assistant_responsible_name || row.assistant_responsible_email]
     : [row.responsible_email,row.responsible_name || row.responsible_email])
     .filter(([email])=>email)).entries()].sort((a,b)=>String(a[1]).localeCompare(String(b[1]),'th'));
-  const ownerParam = selectedOwner !== null ? selectedOwner : (adminMode ? '' : profile.email);
+  if(selectedOwner !== null) myStockOwnerFilterValue[myStockScope]=selectedOwner;
+  const ownerParam = selectedOwner !== null ? selectedOwner : (adminMode ? (myStockOwnerFilterValue[myStockScope] || '') : profile.email);
   const roleParam = myStockScope;
   const groups = buildMaterialGroups(rows.filter(g => ownerMatches(g, ownerParam, roleParam)), []);
   const reorder = groups.filter(g => g.needs_reorder);
@@ -1534,7 +1666,7 @@ async function renderMyStock(tab = 'overview', selectedOwner = null, scope = 'pr
   const noSelection = adminMode && !ownerParam;
   const body = noSelection ? `<div class="card select-first-state">${icon('user')}<div><strong>กรุณาเลือกเจ้าหน้าที่ก่อน</strong><span>ระบบจะแสดงเฉพาะบทบาท ${roleLabel}</span></div></div>` : myStockTab==='settings' ? settingsCards : myStockTab==='reorder' ? (reorderCards || `<div class="card empty">${myStockScope==='assistant'?'ยังไม่มีรายการที่ต้องช่วยเตือน':'ยังไม่มีสินค้าที่ถึงรอบเบิก'}</div>`) : overviewCards;
   page.innerHTML = `<div class="page-head"><div><h2>${adminMode?adminScopeTitle:scopeTitle}</h2>${ownerName?`<p class="muted small">กำลังดู: ${esc(ownerName)} · ${roleLabel}</p>`:''}</div></div>${filterPanel}${noSelection?'':scopeNote}${noSelection?'':tabBar}${noSelection?'':summary}<div class="my-stock-list">${body || `<div class="card empty">${myStockScope==='assistant'?'ยังไม่มีวัสดุที่กำหนดให้ช่วยดูแล':'ยังไม่มีวัสดุที่กำหนดให้ดูแลหลัก'}</div>`}</div>`;
-  $('#myStockAdminOwner')?.addEventListener('change',e=>renderMyStock(myStockTab,e.target.value,myStockScope));
+  $('#myStockAdminOwner')?.addEventListener('change',e=>{myStockOwnerFilterValue[myStockScope]=e.target.value;renderMyStock(myStockTab,e.target.value,myStockScope);});
   $$('[data-my-stock-tab]').forEach(b=>b.addEventListener('click',()=>renderMyStock(b.dataset.myStockTab,ownerParam,myStockScope)));
   $$('[data-my-settings-form]').forEach(form=>{
     const mode=form.elements.alert_mode;
@@ -1550,7 +1682,7 @@ async function renderMyStock(tab = 'overview', selectedOwner = null, scope = 'pr
     minimum.addEventListener('input',toggle);
     reorderDay.addEventListener('input',toggle);
     toggle();
-    form.addEventListener('submit',async e=>{e.preventDefault();const fd=new FormData(form);const btn=e.submitter;btn.disabled=true;const {error}=await sb.rpc('fn_update_my_stock_settings_v3',{p_material_code:form.dataset.materialCode,p_min_qty:Number(fd.get('minimum')||0),p_alert_mode:String(fd.get('alert_mode')),p_reorder_day:Number(fd.get('reorder_day')||1),p_acting_mode:actingMode,p_expiry_alert_days:Number(fd.get('expiry_alert_days')||DEFAULT_EXPIRY_ALERT_DAYS)});btn.disabled=false;if(error)return toast(errMsg(error),true);inventorySummaryCache=[];toast('บันทึกการตั้งค่าแล้ว');renderMyStock('settings',ownerParam,'primary');});
+    form.addEventListener('submit',async e=>{e.preventDefault();const fd=new FormData(form);const btn=e.submitter;btn.disabled=true;const {error}=await sb.rpc('fn_update_my_stock_settings_v3',{p_material_code:form.dataset.materialCode,p_min_qty:Number(fd.get('minimum')||0),p_alert_mode:String(fd.get('alert_mode')),p_reorder_day:Number(fd.get('reorder_day')||1),p_acting_mode:actingMode,p_expiry_alert_days:Number(fd.get('expiry_alert_days')||DEFAULT_EXPIRY_ALERT_DAYS)});btn.disabled=false;if(error)return toast(errMsg(error),true);inventorySummaryCache=[];toast('บันทึกการตั้งค่าแล้ว');refreshCurrentView(renderMyStock,'settings',ownerParam,'primary');});
   });
 }
 
@@ -2591,6 +2723,8 @@ async function resolveIssueCode(code, source = 'manual') {
 function openIssueModal(l, source = 'manual') {
   if (!l || Number(l.balance) <= 0) return toast('Lot นี้ไม่มียอดคงเหลือ', true);
   if (isExpired(l)) return toast('Lot นี้หมดอายุแล้ว ให้ยืนยันนำออกจากพื้นที่ในเมนูตรวจวันศุกร์', true);
+  const issueOriginRoute = route;
+  const issueOriginOptions = issueOriginRoute === 'move' ? {tab:moveTab} : issueOriginRoute === 'usage' ? {material:usageMaterialCode} : (issueOriginRoute === 'my-stock' || issueOriginRoute === 'assisted-stock') ? {tab:myStockTab} : issueOriginRoute === 'reports' ? {tab:reportTab} : {};
   const issueMethod = source === 'scan' ? 'QR_SCAN' : 'MANUAL_ENTRY';
   const openLabelNote = l.open_label_required
     ? `<div class="receive-print-later-note">${icon('print')}<span><strong>รายการนี้ใช้สติ๊กเกอร์วันเปิด</strong><small>หลังบันทึกแล้ว รายการจะอยู่ในเมนู “พิมพ์วันเปิดใช้” โดยรายการล่าสุดอยู่บนสุด เจ้าหน้าที่เลือกพิมพ์เมื่อเปิดใช้จริง</small></span></div>`
@@ -2613,7 +2747,8 @@ function openIssueModal(l, source = 'manual') {
     toast(l.open_label_required
       ? 'บันทึกนำออกแล้ว รายการอยู่ในเมนู “พิมพ์วันเปิดใช้”'
       : 'บันทึกนำออก 1 หน่วยแล้ว');
-    navigate(route === 'home' ? 'home' : 'stock');
+    await navigate(issueOriginRoute || 'stock', issueOriginOptions);
+    if (issueOriginRoute === 'move') setTimeout(() => $('#issueCode')?.focus(), 120);
   });
 }
 
@@ -3136,7 +3271,7 @@ function openWeeklyDelegateModal(items, staff, check) {
     if(error)return toast(errMsg(error),true);
     closeModal();
     toast(adminMode ? `มอบหมาย ${ids.length} Lot แล้ว` : `ส่งคำขอฝากตรวจ ${ids.length} Lot แล้ว`);
-    renderWeekly();
+    refreshCurrentView(renderWeekly);
   });
 }
 
@@ -3216,18 +3351,18 @@ async function renderWeekly() {
   $$('[data-delegation-response]').forEach(btn=>btn.addEventListener('click',async()=>{
     const accept=btn.dataset.delegationResponse==='accept'; btn.disabled=true;
     const {error}=await sb.rpc('fn_respond_weekly_delegation',{p_batch_id:btn.dataset.delegationBatch,p_accept:accept});
-    if(error){btn.disabled=false;return toast(errMsg(error),true);} toast(accept?'รับงานตรวจแทนแล้ว':'ปฏิเสธคำขอแล้ว'); renderWeekly();
+    if(error){btn.disabled=false;return toast(errMsg(error),true);} toast(accept?'รับงานตรวจแทนแล้ว':'ปฏิเสธคำขอแล้ว'); refreshCurrentView(renderWeekly);
   }));
   $$('[data-delegation-cancel]').forEach(btn=>btn.addEventListener('click',async()=>{
     if(!confirm('ยกเลิกการมอบหมายรายการนี้หรือไม่'))return; btn.disabled=true;
     const {error}=await sb.rpc('fn_cancel_weekly_delegation',{p_batch_id:btn.dataset.delegationCancel,p_acting_mode:actingMode});
-    if(error){btn.disabled=false;return toast(errMsg(error),true);} toast('ยกเลิกการมอบหมายแล้ว'); renderWeekly();
+    if(error){btn.disabled=false;return toast(errMsg(error),true);} toast('ยกเลิกการมอบหมายแล้ว'); refreshCurrentView(renderWeekly);
   }));
   draw();
   if ($('#completeCheck')) $('#completeCheck').onclick = async () => {
     const {error} = await sb.rpc('fn_complete_weekly_check', {p_check_id:check.id, p_acting_mode:actingMode});
     if (error) return toast(errMsg(error), true);
-    toast('ปิดรอบตรวจสต๊อกแล้ว'); renderWeekly();
+    toast('ปิดรอบตรวจสต๊อกแล้ว'); refreshCurrentView(renderWeekly);
   };
 }
 
@@ -3360,7 +3495,7 @@ function openCheck(id) {
     stockCache = []; scanLotsCache=[]; scanLotsLoadedAt=0;
     inventorySummaryCache=[];
     toast(diff ? `ปรับยอดคงเหลือเป็น ${qty(actual)} ${x.unit || ''} แล้ว` : 'บันทึกผลตรวจแล้ว ยอดตรงกับระบบ');
-    route === 'scan-stock' ? renderScanStock() : renderWeekly();
+    refreshCurrentView(route === 'scan-stock' ? renderScanStock : renderWeekly);
   });
 }
 
@@ -3388,7 +3523,7 @@ function openExpiredRemoval(id) {
     closeModal();
     stockCache = []; scanLotsCache=[]; scanLotsLoadedAt=0;
     toast('นำ Lot หมดอายุออกจากสต๊อกแล้ว สัปดาห์หน้าจะไม่แสดงซ้ำ');
-    route === 'scan-stock' ? renderScanStock() : renderWeekly();
+    refreshCurrentView(route === 'scan-stock' ? renderScanStock : renderWeekly);
   });
 }
 
@@ -3958,7 +4093,7 @@ function openMaterialCreator() {
     if (error) return toast(errMsg(error),true);
     closeModal(); materialsCache=[]; stockCache=[]; adminTab='materials';
     toast('เพิ่มวัสดุใหม่แล้ว');
-    renderAdmin();
+    refreshCurrentView(renderAdmin);
   });
 }
 
@@ -3995,7 +4130,7 @@ function openMaterialEditor(code) {
     if (error) return toast(errMsg(error), true);
     closeModal(); stockCache = []; scanLotsCache=[]; scanLotsLoadedAt=0; materialsCache = []; adminTab='materials';
     toast('บันทึกวัสดุแล้ว');
-    renderAdmin();
+    refreshCurrentView(renderAdmin);
   });
 }
 
@@ -4429,7 +4564,7 @@ async function renderReagentGenerator() {
 }
 
 function renderHelp() {
-  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>สร้างบัญชีครั้งแรก</h3><ol class="help-steps"><li>ใช้เฉพาะอีเมลมหิดล @mahidol.ac.th ที่ Admin อนุญาตไว้</li><li>ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว</li><li>กด “สร้างบัญชีครั้งแรก” แล้วกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</li></ol></div><div class="card help-card"><h3>ลืมรหัสผ่าน</h3><ol class="help-steps"><li>หน้าเข้าสู่ระบบกด “ลืมรหัสผ่าน” แล้วกรอกอีเมลมหิดล</li><li>เปิดลิงก์จากอีเมลและตั้งรหัสผ่านใหม่ด้วยตนเอง</li><li>Admin สามารถกด “ส่งลิงก์รีเซ็ต” จากเมนูผู้ใช้งานได้ แต่จะไม่เห็นหรือกำหนดรหัสผ่านแทนเจ้าหน้าที่</li><li>หากระบบแจ้งว่าส่งอีเมลครบโควตา ให้หยุดกดซ้ำ รอประมาณ 1 ชั่วโมงแล้วลองใหม่ และตรวจทั้ง Inbox กับ Spam</li></ol></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>พิมพ์ชื่อวัสดุบางส่วนแล้วเลือกจากรายการ</li><li>ตรวจชื่อผู้นำเข้าปัจจุบัน ใส่ Lot วันหมดอายุ และจำนวน แล้วบันทึก</li></ol></div><div class="card help-card"><h3>นำออก</h3><ol class="help-steps"><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าและวิธีนำออก แล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>วัสดุที่ตั้งให้ใช้สติ๊กเกอร์วันเปิด จะไปอยู่ในเมนู “พิมพ์วันเปิดใช้” ให้เลือกพิมพ์เมื่อเปิดใช้จริง โดยรายการล่าสุดอยู่บนสุด</li></ol></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแล</h3><p>แสดงเฉพาะวัสดุที่คุณเป็นผู้ดูแลหลัก โดยมีแท็บภาพรวม ต้องเบิก และตั้งค่าการเตือน ผู้ดูแลหลักเป็นผู้รับผิดชอบวางแผนเบิกและกำหนด Minimum/เกณฑ์แจ้งเตือน</p></div><div class="card help-card"><h3>สต๊อกที่ฉันช่วยดูแล</h3><p>แสดงแยกจากงานหลัก ใช้ติดตามยอดและช่วยเตือนผู้ดูแลหลัก มีแท็บภาพรวมงานช่วยดูแลและช่วยเตือนต้องเบิก โดยไม่มีแท็บตั้งค่าการเตือน</p></div><div class="card help-card"><h3>ตรวจวันศุกร์</h3><p>กด “เปิดหน้าต่างตรวจ Lot” เพื่อกรอกจำนวนจริง หากยอดไม่ตรงให้เลือกเหตุผลและระบุรายละเอียด ผู้ช่วยดูแลตรวจได้จากแท็บ “ฉันช่วยดูแล” แต่ไม่ถูกนับเป็นงานหลักที่รอตรวจ</p></div><div class="card help-card"><h3>สแกนตรวจ Lot</h3><p>เปิดกล้องหรือพิมพ์รหัส QR เพื่อดูยอด Lot ยอดรวม ผู้ดูแล ขั้นต่ำ และยืนยันตรวจหรือปรับยอดได้ทันที</p></div><div class="card help-card"><h3>สถานะผู้ตรวจ</h3><p>เปิดเมนู “สถานะผู้ตรวจ” แล้วกำหนดช่วงวันที่ เพื่อดูว่าแต่ละวันศุกร์ใครตรวจครบหรือยังไม่ครบ</p></div><div class="card help-card"><h3>สติ๊กเกอร์เดิม</h3><p>สติ๊กเกอร์รหัสเดิมยังสแกนได้ ไม่ต้องเปลี่ยนใหม่ทั้งหมด</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบไม่ตัดยอดเอง เปิดตรวจวันศุกร์และกด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์ถัดไป</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมดูได้ในหน้าประวัติและรายงาน</p></div><div class="card help-card"><h3>พิมพ์ QR Sticker ภายหลัง</h3><p>หลังรับเข้าผ่านโทรศัพท์ ให้เปิดเมนู “พิมพ์ QR Sticker” บนคอมพิวเตอร์ที่ต่อเครื่องพิมพ์ รายการรับเข้าจะอยู่ในคิวอัตโนมัติ เลือกจำนวนดวงแล้วกดพิมพ์</p></div><div class="card help-card"><h3>พิมพ์วันเปิดใช้</h3><p>เปิดเมนู “พิมพ์วันเปิดใช้” เลือกรายการนำออก แล้วระบุวัน–เวลาเปิดและอายุหลังเปิด โดยเลือกใช้ถึง EXP ผู้ผลิต, 24 ชั่วโมง, 7 วัน, 28 วัน, 1 เดือน, 3 เดือน, 6 เดือน หรือกำหนดเองได้ ระบบคำนวณวันใช้ได้ถึงให้อัตโนมัติและไม่ให้เกิน EXP ผู้ผลิต</p></div><div class="card help-card"><h3>สร้างสติ๊กเกอร์วันเปิดเอง</h3><p>เลือกวัสดุ กรอก Lot และ EXP ผู้ผลิต ระบุวัน–เวลาเปิดและอายุหลังเปิด ระบบคำนวณวันใช้ได้ถึงและสร้างสติ๊กเกอร์โดยไม่ตัดยอดสต๊อกเพิ่ม</p></div><div class="card help-card"><h3>พิมพ์น้ำยาเข้าเครื่อง</h3><p>Staff เลือกชุดน้ำยาที่ Admin เตรียมไว้ ระบุผู้เปิดใช้ วันเวลาเปิด และวันเวลาหมดอายุ จากนั้นกดพิมพ์ โดยไม่สามารถแก้ชื่อหรือ Barcode ของชุดได้</p></div><div class="card help-card"><h3>จัดการชุดน้ำยาเข้าเครื่อง</h3><p>Admin สร้างชุดน้ำยา เพิ่มรายการทีละรายการ กำหนด Barcode จำนวนดวง และเลือกรูปแบบเต็มดวงหรือเว้นขวา 10 mm ได้ รวมทั้งกดปุ่ม “แก้ไข” เพื่อปรับรายละเอียดชุดเดิม หรือคัดลอกเป็นชุดใหม่เมื่อมีการเปลี่ยนชุดน้ำยา</p></div><div class="card help-card"><h3>ตัวชี้วัด</h3><p>Admin เปิดเมนู “ตัวชี้วัด” เลือกช่วงวันที่ ระบบคำนวณ 12 ตัวชี้วัดจากผู้ใช้ วัสดุ Transaction การตรวจวันศุกร์ สติ๊กเกอร์ และ Audit Log อัตโนมัติ ส่วนเหตุการณ์ใช้เกินวันหลังเปิดหรือข้อร้องเรียนฉลาก ให้กด “บันทึกเหตุการณ์” ในหน้าเดียวกัน และส่งออก CSV ได้</p></div><div class="card help-card"><h3>ตั้งค่าผู้ดูแลระบบ</h3><p>หน้า Admin แยกเป็น 3 เมนูย่อย ได้แก่ ภาพรวม ผู้ใช้งาน และวัสดุและผู้ดูแล โดย Admin เพิ่มวัสดุใหม่พร้อมรหัส ชื่อ หน่วย Minimum เกณฑ์ EXP ผู้ดูแลหลัก ผู้ช่วย และอายุหลังเปิดเริ่มต้นได้</p></div><div class="card help-card"><h3>เครื่องพิมพ์สติ๊กเกอร์</h3><p>ฉลากจริง 25 × 20 mm ระบบใช้รูปแบบสติ๊กเกอร์มาตรฐานเดียวกันทุกเครื่อง พร้อม QR ขนาดใหญ่และขอบขาวมาตรฐาน ในหน้าพิมพ์ Chrome ให้เลือกเครื่องพิมพ์และตั้งกระดาษตามเครื่องที่ใช้งาน ใช้ Scale 100% หรือ Actual size ปิด Header/Footer และใช้ Margin None</p></div></div>`;
+  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>สร้างบัญชีครั้งแรก</h3><ol class="help-steps"><li>ใช้เฉพาะอีเมลมหิดล @mahidol.ac.th ที่ Admin อนุญาตไว้</li><li>ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว</li><li>กด “สร้างบัญชีครั้งแรก” แล้วกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</li></ol></div><div class="card help-card"><h3>ลืมรหัสผ่าน</h3><ol class="help-steps"><li>หน้าเข้าสู่ระบบกด “ลืมรหัสผ่าน” แล้วกรอกอีเมลมหิดล</li><li>เปิดลิงก์จากอีเมลและตั้งรหัสผ่านใหม่ด้วยตนเอง</li><li>Admin สามารถกด “ส่งลิงก์รีเซ็ต” จากเมนูผู้ใช้งานได้ แต่จะไม่เห็นหรือกำหนดรหัสผ่านแทนเจ้าหน้าที่</li><li>หากระบบแจ้งว่าส่งอีเมลครบโควตา ให้หยุดกดซ้ำ รอประมาณ 1 ชั่วโมงแล้วลองใหม่ และตรวจทั้ง Inbox กับ Spam</li></ol></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>พิมพ์ชื่อวัสดุบางส่วนแล้วเลือกจากรายการ</li><li>ตรวจชื่อผู้นำเข้าปัจจุบัน ใส่ Lot วันหมดอายุ และจำนวน แล้วบันทึก</li></ol></div><div class="card help-card"><h3>อยู่หน้าเดิมหลังทำรายการ</h3><p>หลังบันทึก แก้ไข ตรวจ หรือรีเฟรชข้อมูล ระบบจะคงอยู่เมนูเดิม แท็บเดิม ตัวกรองเดิม ช่วงวันที่ และตำแหน่งหน้าจอเดิม จนกว่าผู้ใช้งานจะกดเปลี่ยนเมนูหรือแท็บเอง</p></div><div class="card help-card"><h3>นำออก</h3><ol class="help-steps"><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าและวิธีนำออก แล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>หลังบันทึก ระบบคงอยู่ที่หน้า “นำออก” เพื่อสแกนหรือตัดสต๊อกรายการถัดไปได้ทันที ไม่เด้งไปหน้าเมนู</li><li>วัสดุที่ตั้งให้ใช้สติ๊กเกอร์วันเปิด จะไปอยู่ในเมนู “พิมพ์วันเปิดใช้” ให้เลือกพิมพ์เมื่อเปิดใช้จริง โดยรายการล่าสุดอยู่บนสุด</li></ol></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแล</h3><p>แสดงเฉพาะวัสดุที่คุณเป็นผู้ดูแลหลัก โดยมีแท็บภาพรวม ต้องเบิก และตั้งค่าการเตือน ผู้ดูแลหลักเป็นผู้รับผิดชอบวางแผนเบิกและกำหนด Minimum/เกณฑ์แจ้งเตือน</p></div><div class="card help-card"><h3>สต๊อกที่ฉันช่วยดูแล</h3><p>แสดงแยกจากงานหลัก ใช้ติดตามยอดและช่วยเตือนผู้ดูแลหลัก มีแท็บภาพรวมงานช่วยดูแลและช่วยเตือนต้องเบิก โดยไม่มีแท็บตั้งค่าการเตือน</p></div><div class="card help-card"><h3>ตรวจวันศุกร์</h3><p>กด “เปิดหน้าต่างตรวจ Lot” เพื่อกรอกจำนวนจริง หากยอดไม่ตรงให้เลือกเหตุผลและระบุรายละเอียด ผู้ช่วยดูแลตรวจได้จากแท็บ “ฉันช่วยดูแล” แต่ไม่ถูกนับเป็นงานหลักที่รอตรวจ</p></div><div class="card help-card"><h3>สแกนตรวจ Lot</h3><p>เปิดกล้องหรือพิมพ์รหัส QR เพื่อดูยอด Lot ยอดรวม ผู้ดูแล ขั้นต่ำ และยืนยันตรวจหรือปรับยอดได้ทันที</p></div><div class="card help-card"><h3>สถานะผู้ตรวจ</h3><p>เปิดเมนู “สถานะผู้ตรวจ” แล้วกำหนดช่วงวันที่ เพื่อดูว่าแต่ละวันศุกร์ใครตรวจครบหรือยังไม่ครบ</p></div><div class="card help-card"><h3>สติ๊กเกอร์เดิม</h3><p>สติ๊กเกอร์รหัสเดิมยังสแกนได้ ไม่ต้องเปลี่ยนใหม่ทั้งหมด</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบไม่ตัดยอดเอง เปิดตรวจวันศุกร์และกด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์ถัดไป</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมดูได้ในหน้าประวัติและรายงาน</p></div><div class="card help-card"><h3>พิมพ์ QR Sticker ภายหลัง</h3><p>หลังรับเข้าผ่านโทรศัพท์ ให้เปิดเมนู “พิมพ์ QR Sticker” บนคอมพิวเตอร์ที่ต่อเครื่องพิมพ์ รายการรับเข้าจะอยู่ในคิวอัตโนมัติ เลือกจำนวนดวงแล้วกดพิมพ์</p></div><div class="card help-card"><h3>พิมพ์วันเปิดใช้</h3><p>เปิดเมนู “พิมพ์วันเปิดใช้” เลือกรายการนำออก แล้วระบุวัน–เวลาเปิดและอายุหลังเปิด โดยเลือกใช้ถึง EXP ผู้ผลิต, 24 ชั่วโมง, 7 วัน, 28 วัน, 1 เดือน, 3 เดือน, 6 เดือน หรือกำหนดเองได้ ระบบคำนวณวันใช้ได้ถึงให้อัตโนมัติและไม่ให้เกิน EXP ผู้ผลิต</p></div><div class="card help-card"><h3>สร้างสติ๊กเกอร์วันเปิดเอง</h3><p>เลือกวัสดุ กรอก Lot และ EXP ผู้ผลิต ระบุวัน–เวลาเปิดและอายุหลังเปิด ระบบคำนวณวันใช้ได้ถึงและสร้างสติ๊กเกอร์โดยไม่ตัดยอดสต๊อกเพิ่ม</p></div><div class="card help-card"><h3>พิมพ์น้ำยาเข้าเครื่อง</h3><p>Staff เลือกชุดน้ำยาที่ Admin เตรียมไว้ ระบุผู้เปิดใช้ วันเวลาเปิด และวันเวลาหมดอายุ จากนั้นกดพิมพ์ โดยไม่สามารถแก้ชื่อหรือ Barcode ของชุดได้</p></div><div class="card help-card"><h3>จัดการชุดน้ำยาเข้าเครื่อง</h3><p>Admin สร้างชุดน้ำยา เพิ่มรายการทีละรายการ กำหนด Barcode จำนวนดวง และเลือกรูปแบบเต็มดวงหรือเว้นขวา 10 mm ได้ รวมทั้งกดปุ่ม “แก้ไข” เพื่อปรับรายละเอียดชุดเดิม หรือคัดลอกเป็นชุดใหม่เมื่อมีการเปลี่ยนชุดน้ำยา</p></div><div class="card help-card"><h3>ตัวชี้วัด</h3><p>Admin เปิดเมนู “ตัวชี้วัด” เลือกช่วงวันที่ ระบบคำนวณ 12 ตัวชี้วัดจากผู้ใช้ วัสดุ Transaction การตรวจวันศุกร์ สติ๊กเกอร์ และ Audit Log อัตโนมัติ ส่วนเหตุการณ์ใช้เกินวันหลังเปิดหรือข้อร้องเรียนฉลาก ให้กด “บันทึกเหตุการณ์” ในหน้าเดียวกัน และส่งออก CSV ได้</p></div><div class="card help-card"><h3>ตั้งค่าผู้ดูแลระบบ</h3><p>หน้า Admin แยกเป็น 3 เมนูย่อย ได้แก่ ภาพรวม ผู้ใช้งาน และวัสดุและผู้ดูแล โดย Admin เพิ่มวัสดุใหม่พร้อมรหัส ชื่อ หน่วย Minimum เกณฑ์ EXP ผู้ดูแลหลัก ผู้ช่วย และอายุหลังเปิดเริ่มต้นได้</p></div><div class="card help-card"><h3>เครื่องพิมพ์สติ๊กเกอร์</h3><p>ฉลากจริง 25 × 20 mm ระบบใช้รูปแบบสติ๊กเกอร์มาตรฐานเดียวกันทุกเครื่อง พร้อม QR ขนาดใหญ่และขอบขาวมาตรฐาน ในหน้าพิมพ์ Chrome ให้เลือกเครื่องพิมพ์และตั้งกระดาษตามเครื่องที่ใช้งาน ใช้ Scale 100% หรือ Actual size ปิด Header/Footer และใช้ Margin None</p></div></div>`;
   refreshInstallUI();
 }
 
