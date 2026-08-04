@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.66';
+const APP_VERSION = '1.4.67';
 const WEEKLY_CUTOVER_DATE = '2026-07-24';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const DEFAULT_EXPIRY_ALERT_DAYS = 30;
@@ -1095,7 +1095,7 @@ const VIEW_CONTINUITY_CONTROL_IDS = new Set([
   'usageOwnerFilter','usageMaterial','usageMaterialSearch','usageFrom','usageTo',
   'labelQueueSearch','openLabelHistoryDate','openLabelHistoryMaterial','openLabelHistoryOperator',
   'weeklyOwnerFilter','adminWeeklyActingFor','weeklyStatusFrom','weeklyStatusTo',
-  'activityType','activitySearch','rfFrom','rfTo','rfProduct','rfLot','rfQuantity','rfBalance','rfMethod','rfRecorder',
+  'activityType','activitySearch','activityPeriodMode','activityDate','activityMonth','activityYear','activityFrom','activityTo','activityActor','rfFrom','rfTo','rfProduct','rfLot','rfQuantity','rfBalance','rfMethod','rfRecorder',
   'indicatorFrom','indicatorTo','adminMaterialSearch','reagentAdminSearch','reagentPrintSet','reagentOpenedBy'
 ]);
 
@@ -1173,8 +1173,14 @@ function restoreViewContinuity(state) {
   } else if(route==='weekly-status') {
     $('#weeklyStatusForm')?.requestSubmit();
   } else if(route==='activity') {
-    $('#activityType')?.dispatchEvent(new Event('change',{bubbles:true}));
-    setTimeout(()=>$('#activitySearch')?.dispatchEvent(new Event('input',{bubbles:true})),120);
+    const savedActor=state.controls?.activityActor?.value || '';
+    page.addEventListener('activity-loaded',()=>{
+      if(savedActor && $('#activityActor')) $('#activityActor').value=savedActor;
+      $('#activityActor')?.dispatchEvent(new Event('change',{bubbles:true}));
+      $('#activitySearch')?.dispatchEvent(new Event('input',{bubbles:true}));
+    },{once:true});
+    $('#activityPeriodMode')?.dispatchEvent(new Event('change',{bubbles:true}));
+    $('#activityLoad')?.click();
   } else if(route==='reports') {
     if(reportTab && reportTab!=='stock') $('#reportFilterForm')?.requestSubmit();
   } else if(route==='indicators') {
@@ -1376,35 +1382,201 @@ function issueMethodBadge(value) {
   return `<span class="badge ${cls}">${esc(issueMethodLabel(value))}</span>`;
 }
 
+const ACTIVITY_ACTION_LABELS = {
+  RECEIVE:'รับเข้าสต๊อก',
+  ISSUE:'นำออกจากสต๊อก',
+  LABEL_PRINT:'พิมพ์ QR Sticker',
+  OPEN_LABEL_PRINT:'พิมพ์สติ๊กเกอร์วันเปิดใช้',
+  REAGENT_BARCODE_PRINT:'พิมพ์บาร์โค้ดน้ำยาเข้าเครื่อง',
+  STOCK_CHECK_MATCHED:'ตรวจสต๊อกตรงกับระบบ',
+  STOCK_CHECK_ADJUSTED:'ตรวจสต๊อกและปรับยอด',
+  WEEKLY_CHECK_COMPLETED:'ปิดรอบตรวจสต๊อก',
+  WEEKLY_CHECK_CARRY_FORWARD:'ย้ายงานตรวจเข้าสู่รอบใหม่',
+  WEEKLY_DELEGATION_REQUESTED:'ขอฝากเพื่อนตรวจแทน',
+  WEEKLY_DELEGATION_ADMIN_ASSIGNED:'Admin มอบหมายผู้ตรวจแทน',
+  WEEKLY_DELEGATION_ACCEPTED:'รับงานตรวจแทน',
+  WEEKLY_DELEGATION_REJECTED:'ปฏิเสธงานตรวจแทน',
+  WEEKLY_DELEGATION_CANCELLED:'ยกเลิกการมอบหมายตรวจแทน',
+  EXPIRED_REMOVED:'ยืนยันนำ Lot หมดอายุออก',
+  AUTO_EXPIRED:'ปิด Lot หมดอายุอัตโนมัติ',
+  MIGRATED_AUTO_EXPIRED:'ย้ายข้อมูล Lot หมดอายุเดิม',
+  HISTORICAL_EXPIRED_CLEANUP:'จัดการประวัติ Lot หมดอายุ',
+  REAGENT_BARCODE_SET_CREATE:'สร้างชุดน้ำยาเข้าเครื่อง',
+  REAGENT_BARCODE_SET_UPDATE:'แก้ไขชุดน้ำยาเข้าเครื่อง',
+  REAGENT_BARCODE_SET_DEACTIVATE:'เลิกใช้ชุดน้ำยาเข้าเครื่อง',
+  REAGENT_BARCODE_SET_REACTIVATE:'เปิดใช้ชุดน้ำยาเข้าเครื่องอีกครั้ง',
+  INDICATOR_EVENT_CREATED:'บันทึกเหตุการณ์ตัวชี้วัด',
+  INDICATOR_EVENT_UPDATED:'แก้ไขเหตุการณ์ตัวชี้วัด',
+  PASSWORD_RESET_REQUEST:'ส่งลิงก์รีเซ็ตรหัสผ่าน',
+  INSERT:'เพิ่มข้อมูลตั้งค่า',
+  UPDATE:'แก้ไขข้อมูลตั้งค่า',
+  DELETE:'ลบข้อมูลตั้งค่า'
+};
+
+const ACTIVITY_PRINT_ACTIONS = ['LABEL_PRINT','OPEN_LABEL_PRINT','REAGENT_BARCODE_PRINT'];
+const ACTIVITY_CHECK_ACTIONS = ['STOCK_CHECK_MATCHED','STOCK_CHECK_ADJUSTED','WEEKLY_CHECK_COMPLETED','WEEKLY_CHECK_CARRY_FORWARD'];
+const ACTIVITY_DELEGATION_ACTIONS = ['WEEKLY_DELEGATION_REQUESTED','WEEKLY_DELEGATION_ADMIN_ASSIGNED','WEEKLY_DELEGATION_ACCEPTED','WEEKLY_DELEGATION_REJECTED','WEEKLY_DELEGATION_CANCELLED'];
+const ACTIVITY_EXPIRED_ACTIONS = ['EXPIRED_REMOVED','AUTO_EXPIRED','MIGRATED_AUTO_EXPIRED','HISTORICAL_EXPIRED_CLEANUP'];
+const ACTIVITY_REAGENT_SET_ACTIONS = ['REAGENT_BARCODE_SET_CREATE','REAGENT_BARCODE_SET_UPDATE','REAGENT_BARCODE_SET_DEACTIVATE','REAGENT_BARCODE_SET_REACTIVATE'];
+const ACTIVITY_SETTING_ACTIONS = ['INSERT','UPDATE','DELETE'];
+const ACTIVITY_INDICATOR_ACTIONS = ['INDICATOR_EVENT_CREATED','INDICATOR_EVENT_UPDATED'];
+const ACTIVITY_SECURITY_ACTIONS = ['PASSWORD_RESET_REQUEST'];
+const ACTIVITY_KNOWN_ACTIONS = new Set(['RECEIVE','ISSUE',...ACTIVITY_PRINT_ACTIONS,...ACTIVITY_CHECK_ACTIONS,...ACTIVITY_DELEGATION_ACTIONS,...ACTIVITY_EXPIRED_ACTIONS,...ACTIVITY_REAGENT_SET_ACTIONS,...ACTIVITY_SETTING_ACTIONS,...ACTIVITY_INDICATOR_ACTIONS,...ACTIVITY_SECURITY_ACTIONS]);
+
+function activityActionLabel(a) {
+  return ACTIVITY_ACTION_LABELS[a.action] || a.action_label || a.action || 'ทำรายการ';
+}
+
+function activityEntityLabel(entityType='') {
+  const map={materials:'วัสดุและผู้ดูแล',staff_directory:'ผู้ใช้งาน',reagent_barcode_sets:'ชุดน้ำยาเข้าเครื่อง',inventory_indicator_event:'เหตุการณ์ตัวชี้วัด',stock_lot:'Lot สต๊อก',weekly_check_item:'รายการตรวจสต๊อก',weekly_check:'รอบตรวจสต๊อก'};
+  return map[String(entityType||'')] || String(entityType||'ข้อมูลระบบ').replaceAll('_',' ');
+}
+
+function activityActorKey(a) {
+  return String(a.actor_email || a.actor_name || 'SYSTEM').trim().toLowerCase();
+}
+
+function activityActorLabel(a) {
+  const name=String(a.actor_name || '').trim();
+  const email=String(a.actor_email || '').trim();
+  if(name && email && name.toLowerCase()!==email.toLowerCase()) return `${name} (${email})`;
+  return name || email || 'SYSTEM';
+}
+
+function activityTypeMatches(action,filter) {
+  const a=String(action||'').toUpperCase();
+  if(!filter || filter==='all') return true;
+  if(filter==='receive') return a==='RECEIVE';
+  if(filter==='issue') return a==='ISSUE';
+  if(filter==='print-all') return ACTIVITY_PRINT_ACTIONS.includes(a);
+  if(filter==='print-qr') return a==='LABEL_PRINT';
+  if(filter==='print-open') return a==='OPEN_LABEL_PRINT';
+  if(filter==='print-reagent') return a==='REAGENT_BARCODE_PRINT';
+  if(filter==='check') return ACTIVITY_CHECK_ACTIONS.includes(a);
+  if(filter==='delegation') return ACTIVITY_DELEGATION_ACTIONS.includes(a);
+  if(filter==='expired') return ACTIVITY_EXPIRED_ACTIONS.includes(a);
+  if(filter==='reagent-set') return ACTIVITY_REAGENT_SET_ACTIONS.includes(a);
+  if(filter==='settings') return ACTIVITY_SETTING_ACTIONS.includes(a);
+  if(filter==='indicator') return ACTIVITY_INDICATOR_ACTIONS.includes(a);
+  if(filter==='security') return ACTIVITY_SECURITY_ACTIONS.includes(a);
+  if(filter==='other') return !ACTIVITY_KNOWN_ACTIONS.has(a);
+  return a===String(filter||'').toUpperCase();
+}
+
+function activityChangedFields(detail={}) {
+  const before=detail.old && typeof detail.old==='object' ? detail.old : {};
+  const after=detail.new && typeof detail.new==='object' ? detail.new : {};
+  const hidden=new Set(['updated_at','created_at','id']);
+  return [...new Set([...Object.keys(before),...Object.keys(after)])]
+    .filter(k=>!hidden.has(k) && JSON.stringify(before[k])!==JSON.stringify(after[k]))
+    .slice(0,8);
+}
+
 function activityCard(a) {
-  const detail = a.summary || {};
+  const detail = a.summary && typeof a.summary==='object' ? a.summary : {};
   const info = activityMaterialInfo(detail);
-  const actionText = a.action_label || a.action || 'ทำรายการ';
-  const title = info.name ? `${actionText} · ${info.name}` : actionText;
+  const action = String(a.action || '');
+  const actionText = activityActionLabel(a);
+  let subject='';
+  if(action==='REAGENT_BARCODE_PRINT' || ACTIVITY_REAGENT_SET_ACTIONS.includes(action)) subject=detail.set_name || '';
+  else if(ACTIVITY_SETTING_ACTIONS.includes(action)) {
+    const row=detail.new || detail.old || {};
+    subject=row.name || row.display_name || row.email || row.code || activityEntityLabel(a.entity_type);
+  } else if(ACTIVITY_INDICATOR_ACTIONS.includes(action)) subject=detail.event_type || 'เหตุการณ์ตัวชี้วัด';
+  else subject=info.name || '';
+  const title = subject ? `${actionText} · ${subject}` : actionText;
   const detailParts = [];
+  const badges=[];
   if (detail.lot_no) detailParts.push(`Lot ${detail.lot_no}`);
-  if (String(a.action || '').startsWith('WEEKLY_DELEGATION')) {
-    if (detail.to_name) detailParts.push(`ผู้รับ: ${detail.to_name}`);
-    if (detail.item_count !== undefined) detailParts.push(`${qty(detail.item_count)} Lot`);
-    if (detail.reason) detailParts.push(detail.reason);
+
+  if(action==='RECEIVE') {
+    if(detail.quantity!==undefined) detailParts.push(`รับเข้า ${qty(detail.quantity)}${info.unit?' '+info.unit:''}`);
   }
-  if (a.action === 'ISSUE') detailParts.push(`วิธีนำออก: ${issueMethodLabel(detail.issue_method)}`);
-  if (a.action === 'OPEN_LABEL_PRINT') {
-    if (detail.opened_on) detailParts.push(`เปิดใช้ ${d(detail.opened_on)}`);
-    if (detail.expiry_date) detailParts.push(`EXP ${d(detail.expiry_date)}`);
-    if (detail.opened_by) detailParts.push(`ผู้เปิดใช้ ${detail.opened_by}`);
+  if(action==='ISSUE') {
+    if(detail.quantity!==undefined) detailParts.push(`นำออก ${qty(detail.quantity)}${info.unit?' '+info.unit:''}`);
+    detailParts.push(`วิธีนำออก: ${issueMethodLabel(detail.issue_method)}`);
+    if(detail.reason) detailParts.push(`หมายเหตุ: ${detail.reason}`);
   }
-  if (detail.before !== undefined && detail.after !== undefined) {
-    detailParts.push(`คงเหลือ ${qty(detail.before)} → ${qty(detail.after)}${info.unit ? ' ' + info.unit : ''}`);
-  } else if (detail.quantity !== undefined) {
-    detailParts.push(`จำนวน ${qty(detail.quantity)}${info.unit ? ' ' + info.unit : ''}`);
+  if(action==='LABEL_PRINT') {
+    badges.push('QR Sticker 25 × 20 mm');
+    const profile=printLogProfile(detail);
+    if(profile?.name) detailParts.push(`เครื่อง/รูปแบบ: ${profile.name}`);
+    if(detail.copy_count!==undefined) detailParts.push(`${qty(detail.copy_count)} ดวง`);
   }
-  const metaParts = [];
-  if (info.code) metaParts.push(`รหัส ${info.code}`);
-  metaParts.push(`โดย ${a.actor_name || a.actor_email || 'SYSTEM'}`);
+  if(action==='OPEN_LABEL_PRINT') {
+    badges.push('สติ๊กเกอร์วันเปิดใช้ 25 × 20 mm');
+    if(detail.source) detailParts.push(detail.source==='ISSUE_HISTORY'?'จากรายการนำออก':'สร้างเอง');
+    if(detail.opened_on) detailParts.push(`เปิดใช้ ${d(detail.opened_on)}`);
+    if(detail.expiry_date) detailParts.push(`EXP ผู้ผลิต ${d(detail.expiry_date)}`);
+    if(detail.opened_by) detailParts.push(`ผู้เปิดใช้ ${detail.opened_by}`);
+    if(detail.form_code) detailParts.push(detail.form_code);
+  }
+  if(action==='REAGENT_BARCODE_PRINT') {
+    badges.push(`Barcode น้ำยาเข้าเครื่อง ${detail.label_size || '50 × 28 mm'}`);
+    if(detail.instrument_name) detailParts.push(`เครื่อง ${detail.instrument_name}`);
+    if(detail.category) detailParts.push(`ประเภทชุด ${detail.category}`);
+    if(detail.set_count!==undefined) detailParts.push(`${qty(detail.set_count)} ชุด`);
+    if(detail.label_count!==undefined) detailParts.push(`รวม ${qty(detail.label_count)} ดวง`);
+    else if(detail.copy_count!==undefined) detailParts.push(`${qty(detail.copy_count)} ดวง`);
+    detailParts.push(detail.reserve_right===false?'เต็มดวง':'เว้นขวา 10 mm');
+    if(detail.opened_by_name || detail.opened_by_email) detailParts.push(`ผู้เปิดใช้ ${detail.opened_by_name || detail.opened_by_email}`);
+    if(detail.opened_at) detailParts.push(`เปิด ${dt(detail.opened_at)}`);
+    if(detail.use_until_at) detailParts.push(`ใช้ได้ถึง ${dt(detail.use_until_at)}`);
+  }
+  if(ACTIVITY_REAGENT_SET_ACTIONS.includes(action)) {
+    if(detail.instrument_name) detailParts.push(`เครื่อง ${detail.instrument_name}`);
+    if(detail.category) detailParts.push(`ประเภท ${detail.category}`);
+    if(detail.item_count!==undefined) detailParts.push(`${qty(detail.item_count)} รายการน้ำยา`);
+    if(detail.reserve_right!==undefined) detailParts.push(detail.reserve_right?'เว้นขวา 10 mm':'เต็มดวง');
+    if(detail.valid_from) detailParts.push(`เริ่มใช้ ${d(detail.valid_from)}`);
+    if(detail.valid_to) detailParts.push(`เลิกใช้ ${d(detail.valid_to)}`);
+    if(detail.old_status || detail.new_status) detailParts.push(`${detail.old_status || '-'} → ${detail.new_status || '-'}`);
+  }
+  if(ACTIVITY_CHECK_ACTIONS.includes(action)) {
+    if(detail.before!==undefined && detail.after!==undefined) detailParts.push(`คงเหลือ ${qty(detail.before)} → ${qty(detail.after)}${info.unit?' '+info.unit:''}`);
+    if(detail.reason_code) detailParts.push(`เหตุผล ${detail.reason_code}`);
+    if(detail.reason_detail) detailParts.push(detail.reason_detail);
+    if(detail.responsible_name) detailParts.push(`ผู้ดูแล ${detail.responsible_name}`);
+    if(detail.actual_checker_name) detailParts.push(`ผู้ตรวจจริง ${detail.actual_checker_name}`);
+    if(detail.acting_for_name) detailParts.push(`ทำแทน ${detail.acting_for_name}`);
+  }
+  if(ACTIVITY_DELEGATION_ACTIONS.includes(action)) {
+    if(detail.to_name) detailParts.push(`ผู้รับ ${detail.to_name}`);
+    if(detail.from_name) detailParts.push(`ผู้มอบหมาย ${detail.from_name}`);
+    if(detail.item_count!==undefined) detailParts.push(`${qty(detail.item_count)} Lot`);
+    if(detail.reason) detailParts.push(detail.reason);
+  }
+  if(ACTIVITY_EXPIRED_ACTIONS.includes(action)) {
+    if(detail.expiry_date) detailParts.push(`EXP ${d(detail.expiry_date)}`);
+    if(detail.before!==undefined && detail.after!==undefined) detailParts.push(`คงเหลือ ${qty(detail.before)} → ${qty(detail.after)}${info.unit?' '+info.unit:''}`);
+    if(detail.note) detailParts.push(detail.note);
+  }
+  if(ACTIVITY_SETTING_ACTIONS.includes(action)) {
+    badges.push(activityEntityLabel(a.entity_type));
+    const changed=activityChangedFields(detail);
+    if(changed.length) detailParts.push(`ช่องที่เปลี่ยน: ${changed.join(', ')}`);
+  }
+  if(ACTIVITY_INDICATOR_ACTIONS.includes(action)) {
+    if(detail.occurred_on) detailParts.push(`วันที่เกิดเหตุ ${d(detail.occurred_on)}`);
+    if(detail.material_code) detailParts.push(`วัสดุ ${detail.material_code}`);
+    if(detail.lot_no) detailParts.push(`Lot ${detail.lot_no}`);
+    if(detail.status) detailParts.push(`สถานะ ${detail.status}`);
+  }
+  if(action==='PASSWORD_RESET_REQUEST') {
+    if(detail.target_email) detailParts.push(`บัญชี ${detail.target_email}`);
+    if(detail.source) detailParts.push(`ส่งจาก ${detail.source==='ADMIN'?'Admin':'หน้าเข้าสู่ระบบ'}`);
+  }
+  if(detail.before!==undefined && detail.after!==undefined && !ACTIVITY_CHECK_ACTIONS.includes(action) && !ACTIVITY_EXPIRED_ACTIONS.includes(action)) {
+    detailParts.push(`คงเหลือ ${qty(detail.before)} → ${qty(detail.after)}${info.unit?' '+info.unit:''}`);
+  }
+  if(!detailParts.length && detail.quantity!==undefined) detailParts.push(`จำนวน ${qty(detail.quantity)}${info.unit?' '+info.unit:''}`);
+
+  const metaParts=[];
+  if(info.code) metaParts.push(`รหัส ${info.code}`);
+  metaParts.push(`โดย ${activityActorLabel(a)}`);
   metaParts.push(dt(a.created_at));
-  const iconName = a.action === 'RECEIVE' ? 'plus' : a.action === 'ISSUE' ? 'minus' : ['LABEL_PRINT','OPEN_LABEL_PRINT'].includes(a.action) ? 'print' : 'check';
-  return `<div class="activity-row"><span class="activity-dot">${icon(iconName)}</span><div class="activity-copy"><strong class="activity-title">${esc(title)}</strong>${detailParts.length ? `<div class="activity-detail">${detailParts.map(esc).join(' · ')}</div>` : ''}<div class="activity-meta">${metaParts.map(esc).join(' · ')}</div></div></div>`;
+  const iconName = action==='RECEIVE'?'plus':action==='ISSUE'?'minus':ACTIVITY_PRINT_ACTIONS.includes(action)?'print':ACTIVITY_SETTING_ACTIONS.includes(action)||ACTIVITY_REAGENT_SET_ACTIONS.includes(action)?'settings':action==='PASSWORD_RESET_REQUEST'?'user':'check';
+  return `<article class="activity-row activity-row-rich"><span class="activity-dot">${icon(iconName)}</span><div class="activity-copy"><div class="activity-title-line"><strong class="activity-title">${esc(title)}</strong><code>${esc(action)}</code></div>${badges.length?`<div class="activity-badges">${badges.map(x=>`<span>${esc(x)}</span>`).join('')}</div>`:''}${detailParts.length?`<div class="activity-detail">${detailParts.map(esc).join(' · ')}</div>`:''}<div class="activity-meta">${metaParts.map(esc).join(' · ')}</div></div></article>`;
 }
 
 async function renderHome() {
@@ -3528,26 +3700,150 @@ function openExpiredRemoval(id) {
 }
 
 async function renderActivity() {
-  page.innerHTML = `<div class="page-head"><div><h2>ประวัติการทำรายการ</h2><p class="muted small">เลือกประเภทก่อน ระบบจึงจะโหลดรายการล่าสุด</p></div></div><section class="card lazy-filter-card"><label>ประเภทกิจกรรม<select id="activityType"><option value="">กรุณาเลือกประเภท</option><option value="all">ทั้งหมด</option><option value="receive">นำเข้า</option><option value="issue">นำออก</option><option value="print">พิมพ์ QR Sticker</option><option value="check">ตรวจสต๊อก</option><option value="expired">ของหมดอายุ</option></select></label><div class="search-box">${icon('search')}<input id="activitySearch" placeholder="ค้นหาในรายการที่โหลด" disabled></div></section><div id="activityList"><div class="card select-first-state">${icon('history')}<div><strong>กรุณาเลือกประเภทกิจกรรม</strong><span>ยังไม่มีการโหลดประวัติ</span></div></div></div>`;
+  const now=new Date();
+  const today=dateInputValue(now);
+  const currentMonth=today.slice(0,7);
+  const currentYear=String(now.getFullYear());
+  page.innerHTML = `<div class="page-head activity-page-head"><div><p class="eyebrow">Audit trail</p><h2>ประวัติการทำรายการ</h2><p class="muted small">กรองตามวันที่ เดือน ปี ประเภท และผู้ทำรายการ พร้อมดูรายละเอียดการพิมพ์สติ๊กเกอร์แต่ละแบบ</p></div></div>
+  <section class="card activity-filter-card">
+    <div class="activity-filter-grid">
+      <label>ช่วงเวลา<select id="activityPeriodMode"><option value="day">วันที่</option><option value="month" selected>เดือน</option><option value="year">ปี</option><option value="range">ช่วงวันที่</option><option value="all">ทั้งหมด</option></select></label>
+      <label data-activity-period="day" class="hidden">วันที่<input id="activityDate" type="date" value="${today}"></label>
+      <label data-activity-period="month">เดือน<input id="activityMonth" type="month" value="${currentMonth}"></label>
+      <label data-activity-period="year" class="hidden">ปี ค.ศ.<input id="activityYear" type="number" min="2020" max="2100" value="${currentYear}" inputmode="numeric"></label>
+      <div data-activity-period="range" class="activity-range-fields hidden"><label>จากวันที่<input id="activityFrom" type="date" value="${today}"></label><label>ถึงวันที่<input id="activityTo" type="date" value="${today}"></label></div>
+      <label>ประเภทกิจกรรม<select id="activityType">
+        <option value="all">ทั้งหมดทุกประเภท</option>
+        <optgroup label="สต๊อก"><option value="receive">นำเข้า</option><option value="issue">นำออก</option><option value="expired">ของหมดอายุ</option></optgroup>
+        <optgroup label="พิมพ์"><option value="print-all">พิมพ์ทั้งหมด</option><option value="print-qr">QR Sticker</option><option value="print-open">สติ๊กเกอร์วันเปิดใช้</option><option value="print-reagent">บาร์โค้ดน้ำยาเข้าเครื่อง</option></optgroup>
+        <optgroup label="ตรวจสต๊อก"><option value="check">ตรวจสต๊อก/ปรับยอด</option><option value="delegation">มอบหมายผู้ตรวจแทน</option></optgroup>
+        <optgroup label="การตั้งค่า"><option value="reagent-set">จัดการชุดน้ำยาเข้าเครื่อง</option><option value="settings">วัสดุ/ผู้ใช้งาน/การตั้งค่า</option></optgroup>
+        <optgroup label="ระบบ"><option value="indicator">เหตุการณ์ตัวชี้วัด</option><option value="security">รีเซ็ตรหัสผ่าน</option><option value="other">กิจกรรมอื่น ๆ</option></optgroup>
+      </select></label>
+      <label>ผู้ทำรายการ<select id="activityActor" disabled><option value="">ทุกคน</option></select></label>
+      <div class="search-box activity-search-box">${icon('search')}<input id="activitySearch" placeholder="ค้นหาชื่อวัสดุ Lot Barcode ชื่อคน หรือรายละเอียด" disabled></div>
+    </div>
+    <div class="activity-filter-actions"><button type="button" class="ghost" id="activityReset">ล้างตัวกรอง</button><button type="button" class="primary" id="activityLoad">${icon('search')} โหลดประวัติ</button></div>
+  </section>
+  <section class="activity-result-head"><div id="activityResultInfo"><strong>กำลังเตรียมข้อมูล…</strong></div><div class="activity-type-key"><span class="receive">นำเข้า</span><span class="issue">นำออก</span><span class="print">พิมพ์</span><span class="check">ตรวจ/ตั้งค่า</span></div></section>
+  <div id="activityList"><div class="card usage-loading">กำลังโหลดประวัติเดือนนี้…</div></div>`;
+
   let loaded=[];
-  const draw=()=>{const s=$('#activitySearch').value.toLowerCase();const arr=loaded.filter(a=>!s||JSON.stringify(a).toLowerCase().includes(s));$('#activityList').innerHTML=arr.map(a=>`<div class="card">${activityCard(a)}</div>`).join('')||'<div class="card empty">ไม่พบกิจกรรม</div>';};
-  const load=async()=>{
-    const type=$('#activityType').value;
-    if(!type){loaded=[];$('#activitySearch').disabled=true;$('#activityList').innerHTML='<div class="card select-first-state">'+icon('history')+'<div><strong>กรุณาเลือกประเภทกิจกรรม</strong><span>ยังไม่มีการโหลดประวัติ</span></div></div>';return;}
-    $('#activityList').innerHTML='<div class="card usage-loading">กำลังโหลดกิจกรรมล่าสุด…</div>';
-    try { await loadActivityMaterials(); } catch (_) {}
-    let q=sb.from('v_audit_activity').select('*');
-    if(type==='receive')q=q.eq('action','RECEIVE');
-    else if(type==='issue')q=q.eq('action','ISSUE');
-    else if(type==='print')q=q.in('action',['LABEL_PRINT','OPEN_LABEL_PRINT']);
-    else if(type==='expired')q=q.in('action',['EXPIRED_REMOVED','AUTO_EXPIRED']);
-    else if(type==='check')q=q.in('action',['STOCK_CHECK_MATCHED','STOCK_CHECK_ADJUSTED','WEEKLY_CHECK_COMPLETED','WEEKLY_DELEGATION_REQUESTED','WEEKLY_DELEGATION_ADMIN_ASSIGNED','WEEKLY_DELEGATION_ACCEPTED','WEEKLY_DELEGATION_REJECTED','WEEKLY_DELEGATION_CANCELLED']);
-    const {data,error}=await q.limit(300);
-    if(error){$('#activityList').innerHTML=`<div class="card notice">${esc(errMsg(error))}</div>`;return;}
-    loaded=data||[];$('#activitySearch').disabled=false;draw();
+  let truncated=false;
+  let currentPage=1;
+  const pageSize=50;
+
+  const periodControls=()=>{
+    const mode=$('#activityPeriodMode').value;
+    $$('[data-activity-period]',page).forEach(el=>el.classList.toggle('hidden',el.dataset.activityPeriod!==mode));
   };
-  $('#activityType').addEventListener('change',load);
-  $('#activitySearch').addEventListener('input',draw);
+
+  const rangeIso=()=>{
+    const mode=$('#activityPeriodMode').value;
+    if(mode==='all') return {from:null,to:null,label:'ทั้งหมด'};
+    let start,end,label='';
+    if(mode==='day') {
+      const value=$('#activityDate').value;
+      if(!value) return {error:'กรุณาเลือกวันที่'};
+      start=new Date(`${value}T00:00:00`); end=new Date(start); end.setDate(end.getDate()+1); label=d(value);
+    } else if(mode==='month') {
+      const value=$('#activityMonth').value;
+      if(!/^\d{4}-\d{2}$/.test(value)) return {error:'กรุณาเลือกเดือน'};
+      const [y,m]=value.split('-').map(Number); start=new Date(y,m-1,1); end=new Date(y,m,1);
+      label=start.toLocaleDateString('th-TH',{month:'long',year:'numeric'});
+    } else if(mode==='year') {
+      const y=Number($('#activityYear').value);
+      if(!Number.isInteger(y)||y<2020||y>2100) return {error:'กรุณาระบุปี ค.ศ. ให้ถูกต้อง'};
+      start=new Date(y,0,1); end=new Date(y+1,0,1); label=String(y+543);
+    } else {
+      const from=$('#activityFrom').value,to=$('#activityTo').value;
+      if(!from||!to) return {error:'กรุณาระบุช่วงวันที่ให้ครบ'};
+      start=new Date(`${from}T00:00:00`); end=new Date(`${to}T00:00:00`); end.setDate(end.getDate()+1);
+      if(end<=start) return {error:'วันที่สิ้นสุดต้องไม่น้อยกว่าวันเริ่มต้น'};
+      label=`${d(from)} – ${d(to)}`;
+    }
+    return {from:start.toISOString(),to:end.toISOString(),label};
+  };
+
+  const populateActors=()=>{
+    const select=$('#activityActor');
+    const previous=select.value;
+    const map=new Map();
+    loaded.forEach(a=>map.set(activityActorKey(a),activityActorLabel(a)));
+    const options=[...map.entries()].sort((a,b)=>a[1].localeCompare(b[1],'th'));
+    select.innerHTML='<option value="">ทุกคน</option>'+options.map(([key,label])=>`<option value="${esc(key)}">${esc(label)}</option>`).join('');
+    if(options.some(([key])=>key===previous)) select.value=previous;
+    select.disabled=false;
+  };
+
+  const filteredRows=()=>{
+    const type=$('#activityType').value;
+    const actor=$('#activityActor').value;
+    const search=$('#activitySearch').value.trim().toLowerCase();
+    return loaded.filter(a=>{
+      if(!activityTypeMatches(a.action,type)) return false;
+      if(actor && activityActorKey(a)!==actor) return false;
+      if(search) {
+        const hay=[a.action,activityActionLabel(a),activityActorLabel(a),a.entity_type,a.entity_id,JSON.stringify(a.summary||{})].join(' ').toLowerCase();
+        if(!hay.includes(search)) return false;
+      }
+      return true;
+    });
+  };
+
+  const draw=()=>{
+    const arr=filteredRows();
+    const pages=Math.max(1,Math.ceil(arr.length/pageSize));
+    currentPage=Math.min(Math.max(1,currentPage),pages);
+    const start=(currentPage-1)*pageSize;
+    const shown=arr.slice(start,start+pageSize);
+    const range=rangeIso();
+    $('#activityResultInfo').innerHTML=`<strong>${arr.length.toLocaleString('th-TH')} รายการ</strong><span>${esc(range.label||'')} · โหลดจาก Audit Log ${loaded.length.toLocaleString('th-TH')} รายการ${truncated?' · แสดงสูงสุด 10,000 รายการ':''}</span>`;
+    $('#activityList').innerHTML=shown.map(a=>`<div class="card activity-card">${activityCard(a)}</div>`).join('')||'<div class="card empty">ไม่พบกิจกรรมตามตัวกรองนี้</div>';
+    if(arr.length>pageSize) $('#activityList').insertAdjacentHTML('beforeend',`<div class="activity-pagination"><button type="button" class="ghost" data-activity-page="${currentPage-1}" ${currentPage<=1?'disabled':''}>ก่อนหน้า</button><span>หน้า ${currentPage.toLocaleString('th-TH')} / ${pages.toLocaleString('th-TH')} · รายการ ${(start+1).toLocaleString('th-TH')}–${Math.min(start+pageSize,arr.length).toLocaleString('th-TH')}</span><button type="button" class="ghost" data-activity-page="${currentPage+1}" ${currentPage>=pages?'disabled':''}>ถัดไป</button></div>`);
+  };
+
+  const load=async()=>{
+    const range=rangeIso();
+    if(range.error) return toast(range.error,true);
+    $('#activityList').innerHTML='<div class="card usage-loading">กำลังโหลด Audit Log…</div>';
+    $('#activityLoad').disabled=true;
+    try { await loadActivityMaterials(); } catch (_) {}
+    const batch=1000,maxRows=10000;
+    loaded=[];truncated=false;
+    for(let offset=0;offset<maxRows;offset+=batch) {
+      let q=sb.from('v_audit_activity').select('*').order('created_at',{ascending:false}).range(offset,offset+batch-1);
+      if(range.from) q=q.gte('created_at',range.from);
+      if(range.to) q=q.lt('created_at',range.to);
+      const {data,error}=await q;
+      if(error) { $('#activityList').innerHTML=`<div class="card notice">${esc(errMsg(error))}</div>`; $('#activityLoad').disabled=false; return; }
+      const rows=data||[]; loaded.push(...rows);
+      if(rows.length<batch) break;
+      if(offset+batch>=maxRows) truncated=true;
+    }
+    currentPage=1;
+    populateActors();
+    $('#activitySearch').disabled=false;
+    $('#activityLoad').disabled=false;
+    draw();
+    page.dispatchEvent(new CustomEvent('activity-loaded'));
+  };
+
+  $('#activityPeriodMode').addEventListener('change',periodControls);
+  $('#activityType').addEventListener('change',()=>{currentPage=1;draw();});
+  $('#activityActor').addEventListener('change',()=>{currentPage=1;draw();});
+  $('#activitySearch').addEventListener('input',()=>{currentPage=1;draw();});
+  $('#activityLoad').addEventListener('click',load);
+  $('#activityReset').addEventListener('click',()=>{
+    $('#activityPeriodMode').value='month';$('#activityMonth').value=currentMonth;$('#activityDate').value=today;$('#activityYear').value=currentYear;$('#activityFrom').value=today;$('#activityTo').value=today;$('#activityType').value='all';$('#activityActor').value='';$('#activitySearch').value='';periodControls();load();
+  });
+  $('#activityList').addEventListener('click',e=>{
+    const button=e.target.closest('[data-activity-page]');
+    if(!button||button.disabled)return;
+    currentPage=Number(button.dataset.activityPage)||1;draw();window.scrollTo({top:Math.max(0,$('#activityList').offsetTop-120),behavior:'smooth'});
+  });
+  periodControls();
+  await load();
 }
 
 function csvCell(v) {
@@ -4564,7 +4860,7 @@ async function renderReagentGenerator() {
 }
 
 function renderHelp() {
-  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>สร้างบัญชีครั้งแรก</h3><ol class="help-steps"><li>ใช้เฉพาะอีเมลมหิดล @mahidol.ac.th ที่ Admin อนุญาตไว้</li><li>ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว</li><li>กด “สร้างบัญชีครั้งแรก” แล้วกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</li></ol></div><div class="card help-card"><h3>ลืมรหัสผ่าน</h3><ol class="help-steps"><li>หน้าเข้าสู่ระบบกด “ลืมรหัสผ่าน” แล้วกรอกอีเมลมหิดล</li><li>เปิดลิงก์จากอีเมลและตั้งรหัสผ่านใหม่ด้วยตนเอง</li><li>Admin สามารถกด “ส่งลิงก์รีเซ็ต” จากเมนูผู้ใช้งานได้ แต่จะไม่เห็นหรือกำหนดรหัสผ่านแทนเจ้าหน้าที่</li><li>หากระบบแจ้งว่าส่งอีเมลครบโควตา ให้หยุดกดซ้ำ รอประมาณ 1 ชั่วโมงแล้วลองใหม่ และตรวจทั้ง Inbox กับ Spam</li></ol></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>พิมพ์ชื่อวัสดุบางส่วนแล้วเลือกจากรายการ</li><li>ตรวจชื่อผู้นำเข้าปัจจุบัน ใส่ Lot วันหมดอายุ และจำนวน แล้วบันทึก</li></ol></div><div class="card help-card"><h3>อยู่หน้าเดิมหลังทำรายการ</h3><p>หลังบันทึก แก้ไข ตรวจ หรือรีเฟรชข้อมูล ระบบจะคงอยู่เมนูเดิม แท็บเดิม ตัวกรองเดิม ช่วงวันที่ และตำแหน่งหน้าจอเดิม จนกว่าผู้ใช้งานจะกดเปลี่ยนเมนูหรือแท็บเอง</p></div><div class="card help-card"><h3>นำออก</h3><ol class="help-steps"><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าและวิธีนำออก แล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>หลังบันทึก ระบบคงอยู่ที่หน้า “นำออก” เพื่อสแกนหรือตัดสต๊อกรายการถัดไปได้ทันที ไม่เด้งไปหน้าเมนู</li><li>วัสดุที่ตั้งให้ใช้สติ๊กเกอร์วันเปิด จะไปอยู่ในเมนู “พิมพ์วันเปิดใช้” ให้เลือกพิมพ์เมื่อเปิดใช้จริง โดยรายการล่าสุดอยู่บนสุด</li></ol></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแล</h3><p>แสดงเฉพาะวัสดุที่คุณเป็นผู้ดูแลหลัก โดยมีแท็บภาพรวม ต้องเบิก และตั้งค่าการเตือน ผู้ดูแลหลักเป็นผู้รับผิดชอบวางแผนเบิกและกำหนด Minimum/เกณฑ์แจ้งเตือน</p></div><div class="card help-card"><h3>สต๊อกที่ฉันช่วยดูแล</h3><p>แสดงแยกจากงานหลัก ใช้ติดตามยอดและช่วยเตือนผู้ดูแลหลัก มีแท็บภาพรวมงานช่วยดูแลและช่วยเตือนต้องเบิก โดยไม่มีแท็บตั้งค่าการเตือน</p></div><div class="card help-card"><h3>ตรวจวันศุกร์</h3><p>กด “เปิดหน้าต่างตรวจ Lot” เพื่อกรอกจำนวนจริง หากยอดไม่ตรงให้เลือกเหตุผลและระบุรายละเอียด ผู้ช่วยดูแลตรวจได้จากแท็บ “ฉันช่วยดูแล” แต่ไม่ถูกนับเป็นงานหลักที่รอตรวจ</p></div><div class="card help-card"><h3>สแกนตรวจ Lot</h3><p>เปิดกล้องหรือพิมพ์รหัส QR เพื่อดูยอด Lot ยอดรวม ผู้ดูแล ขั้นต่ำ และยืนยันตรวจหรือปรับยอดได้ทันที</p></div><div class="card help-card"><h3>สถานะผู้ตรวจ</h3><p>เปิดเมนู “สถานะผู้ตรวจ” แล้วกำหนดช่วงวันที่ เพื่อดูว่าแต่ละวันศุกร์ใครตรวจครบหรือยังไม่ครบ</p></div><div class="card help-card"><h3>สติ๊กเกอร์เดิม</h3><p>สติ๊กเกอร์รหัสเดิมยังสแกนได้ ไม่ต้องเปลี่ยนใหม่ทั้งหมด</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบไม่ตัดยอดเอง เปิดตรวจวันศุกร์และกด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์ถัดไป</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมดูได้ในหน้าประวัติและรายงาน</p></div><div class="card help-card"><h3>พิมพ์ QR Sticker ภายหลัง</h3><p>หลังรับเข้าผ่านโทรศัพท์ ให้เปิดเมนู “พิมพ์ QR Sticker” บนคอมพิวเตอร์ที่ต่อเครื่องพิมพ์ รายการรับเข้าจะอยู่ในคิวอัตโนมัติ เลือกจำนวนดวงแล้วกดพิมพ์</p></div><div class="card help-card"><h3>พิมพ์วันเปิดใช้</h3><p>เปิดเมนู “พิมพ์วันเปิดใช้” เลือกรายการนำออก แล้วระบุวัน–เวลาเปิดและอายุหลังเปิด โดยเลือกใช้ถึง EXP ผู้ผลิต, 24 ชั่วโมง, 7 วัน, 28 วัน, 1 เดือน, 3 เดือน, 6 เดือน หรือกำหนดเองได้ ระบบคำนวณวันใช้ได้ถึงให้อัตโนมัติและไม่ให้เกิน EXP ผู้ผลิต</p></div><div class="card help-card"><h3>สร้างสติ๊กเกอร์วันเปิดเอง</h3><p>เลือกวัสดุ กรอก Lot และ EXP ผู้ผลิต ระบุวัน–เวลาเปิดและอายุหลังเปิด ระบบคำนวณวันใช้ได้ถึงและสร้างสติ๊กเกอร์โดยไม่ตัดยอดสต๊อกเพิ่ม</p></div><div class="card help-card"><h3>พิมพ์น้ำยาเข้าเครื่อง</h3><p>Staff เลือกชุดน้ำยาที่ Admin เตรียมไว้ ระบุผู้เปิดใช้ วันเวลาเปิด และวันเวลาหมดอายุ จากนั้นกดพิมพ์ โดยไม่สามารถแก้ชื่อหรือ Barcode ของชุดได้</p></div><div class="card help-card"><h3>จัดการชุดน้ำยาเข้าเครื่อง</h3><p>Admin สร้างชุดน้ำยา เพิ่มรายการทีละรายการ กำหนด Barcode จำนวนดวง และเลือกรูปแบบเต็มดวงหรือเว้นขวา 10 mm ได้ รวมทั้งกดปุ่ม “แก้ไข” เพื่อปรับรายละเอียดชุดเดิม หรือคัดลอกเป็นชุดใหม่เมื่อมีการเปลี่ยนชุดน้ำยา</p></div><div class="card help-card"><h3>ตัวชี้วัด</h3><p>Admin เปิดเมนู “ตัวชี้วัด” เลือกช่วงวันที่ ระบบคำนวณ 12 ตัวชี้วัดจากผู้ใช้ วัสดุ Transaction การตรวจวันศุกร์ สติ๊กเกอร์ และ Audit Log อัตโนมัติ ส่วนเหตุการณ์ใช้เกินวันหลังเปิดหรือข้อร้องเรียนฉลาก ให้กด “บันทึกเหตุการณ์” ในหน้าเดียวกัน และส่งออก CSV ได้</p></div><div class="card help-card"><h3>ตั้งค่าผู้ดูแลระบบ</h3><p>หน้า Admin แยกเป็น 3 เมนูย่อย ได้แก่ ภาพรวม ผู้ใช้งาน และวัสดุและผู้ดูแล โดย Admin เพิ่มวัสดุใหม่พร้อมรหัส ชื่อ หน่วย Minimum เกณฑ์ EXP ผู้ดูแลหลัก ผู้ช่วย และอายุหลังเปิดเริ่มต้นได้</p></div><div class="card help-card"><h3>เครื่องพิมพ์สติ๊กเกอร์</h3><p>ฉลากจริง 25 × 20 mm ระบบใช้รูปแบบสติ๊กเกอร์มาตรฐานเดียวกันทุกเครื่อง พร้อม QR ขนาดใหญ่และขอบขาวมาตรฐาน ในหน้าพิมพ์ Chrome ให้เลือกเครื่องพิมพ์และตั้งกระดาษตามเครื่องที่ใช้งาน ใช้ Scale 100% หรือ Actual size ปิด Header/Footer และใช้ Margin None</p></div></div>`;
+  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>สร้างบัญชีครั้งแรก</h3><ol class="help-steps"><li>ใช้เฉพาะอีเมลมหิดล @mahidol.ac.th ที่ Admin อนุญาตไว้</li><li>ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว</li><li>กด “สร้างบัญชีครั้งแรก” แล้วกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</li></ol></div><div class="card help-card"><h3>ลืมรหัสผ่าน</h3><ol class="help-steps"><li>หน้าเข้าสู่ระบบกด “ลืมรหัสผ่าน” แล้วกรอกอีเมลมหิดล</li><li>เปิดลิงก์จากอีเมลและตั้งรหัสผ่านใหม่ด้วยตนเอง</li><li>Admin สามารถกด “ส่งลิงก์รีเซ็ต” จากเมนูผู้ใช้งานได้ แต่จะไม่เห็นหรือกำหนดรหัสผ่านแทนเจ้าหน้าที่</li><li>หากระบบแจ้งว่าส่งอีเมลครบโควตา ให้หยุดกดซ้ำ รอประมาณ 1 ชั่วโมงแล้วลองใหม่ และตรวจทั้ง Inbox กับ Spam</li></ol></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>พิมพ์ชื่อวัสดุบางส่วนแล้วเลือกจากรายการ</li><li>ตรวจชื่อผู้นำเข้าปัจจุบัน ใส่ Lot วันหมดอายุ และจำนวน แล้วบันทึก</li></ol></div><div class="card help-card"><h3>อยู่หน้าเดิมหลังทำรายการ</h3><p>หลังบันทึก แก้ไข ตรวจ หรือรีเฟรชข้อมูล ระบบจะคงอยู่เมนูเดิม แท็บเดิม ตัวกรองเดิม ช่วงวันที่ และตำแหน่งหน้าจอเดิม จนกว่าผู้ใช้งานจะกดเปลี่ยนเมนูหรือแท็บเอง</p></div><div class="card help-card"><h3>นำออก</h3><ol class="help-steps"><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าและวิธีนำออก แล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>หลังบันทึก ระบบคงอยู่ที่หน้า “นำออก” เพื่อสแกนหรือตัดสต๊อกรายการถัดไปได้ทันที ไม่เด้งไปหน้าเมนู</li><li>วัสดุที่ตั้งให้ใช้สติ๊กเกอร์วันเปิด จะไปอยู่ในเมนู “พิมพ์วันเปิดใช้” ให้เลือกพิมพ์เมื่อเปิดใช้จริง โดยรายการล่าสุดอยู่บนสุด</li></ol></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแล</h3><p>แสดงเฉพาะวัสดุที่คุณเป็นผู้ดูแลหลัก โดยมีแท็บภาพรวม ต้องเบิก และตั้งค่าการเตือน ผู้ดูแลหลักเป็นผู้รับผิดชอบวางแผนเบิกและกำหนด Minimum/เกณฑ์แจ้งเตือน</p></div><div class="card help-card"><h3>สต๊อกที่ฉันช่วยดูแล</h3><p>แสดงแยกจากงานหลัก ใช้ติดตามยอดและช่วยเตือนผู้ดูแลหลัก มีแท็บภาพรวมงานช่วยดูแลและช่วยเตือนต้องเบิก โดยไม่มีแท็บตั้งค่าการเตือน</p></div><div class="card help-card"><h3>ตรวจวันศุกร์</h3><p>กด “เปิดหน้าต่างตรวจ Lot” เพื่อกรอกจำนวนจริง หากยอดไม่ตรงให้เลือกเหตุผลและระบุรายละเอียด ผู้ช่วยดูแลตรวจได้จากแท็บ “ฉันช่วยดูแล” แต่ไม่ถูกนับเป็นงานหลักที่รอตรวจ</p></div><div class="card help-card"><h3>สแกนตรวจ Lot</h3><p>เปิดกล้องหรือพิมพ์รหัส QR เพื่อดูยอด Lot ยอดรวม ผู้ดูแล ขั้นต่ำ และยืนยันตรวจหรือปรับยอดได้ทันที</p></div><div class="card help-card"><h3>สถานะผู้ตรวจ</h3><p>เปิดเมนู “สถานะผู้ตรวจ” แล้วกำหนดช่วงวันที่ เพื่อดูว่าแต่ละวันศุกร์ใครตรวจครบหรือยังไม่ครบ</p></div><div class="card help-card"><h3>สติ๊กเกอร์เดิม</h3><p>สติ๊กเกอร์รหัสเดิมยังสแกนได้ ไม่ต้องเปลี่ยนใหม่ทั้งหมด</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบไม่ตัดยอดเอง เปิดตรวจวันศุกร์และกด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์ถัดไป</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมดูได้ในหน้าประวัติและรายงาน</p></div><div class="card help-card"><h3>ประวัติการทำรายการ</h3><p>กรองประวัติตามวันที่ เดือน ปี ช่วงวันที่ ประเภทกิจกรรม และผู้ทำรายการได้ โดยรายการพิมพ์จะแยกให้เห็นว่าเป็น QR Sticker, สติ๊กเกอร์วันเปิดใช้ หรือบาร์โค้ดน้ำยาเข้าเครื่อง พร้อมจำนวนดวง รูปแบบฉลาก และผู้ดำเนินการ</p></div><div class="card help-card"><h3>พิมพ์ QR Sticker ภายหลัง</h3><p>หลังรับเข้าผ่านโทรศัพท์ ให้เปิดเมนู “พิมพ์ QR Sticker” บนคอมพิวเตอร์ที่ต่อเครื่องพิมพ์ รายการรับเข้าจะอยู่ในคิวอัตโนมัติ เลือกจำนวนดวงแล้วกดพิมพ์</p></div><div class="card help-card"><h3>พิมพ์วันเปิดใช้</h3><p>เปิดเมนู “พิมพ์วันเปิดใช้” เลือกรายการนำออก แล้วระบุวัน–เวลาเปิดและอายุหลังเปิด โดยเลือกใช้ถึง EXP ผู้ผลิต, 24 ชั่วโมง, 7 วัน, 28 วัน, 1 เดือน, 3 เดือน, 6 เดือน หรือกำหนดเองได้ ระบบคำนวณวันใช้ได้ถึงให้อัตโนมัติและไม่ให้เกิน EXP ผู้ผลิต</p></div><div class="card help-card"><h3>สร้างสติ๊กเกอร์วันเปิดเอง</h3><p>เลือกวัสดุ กรอก Lot และ EXP ผู้ผลิต ระบุวัน–เวลาเปิดและอายุหลังเปิด ระบบคำนวณวันใช้ได้ถึงและสร้างสติ๊กเกอร์โดยไม่ตัดยอดสต๊อกเพิ่ม</p></div><div class="card help-card"><h3>พิมพ์น้ำยาเข้าเครื่อง</h3><p>Staff เลือกชุดน้ำยาที่ Admin เตรียมไว้ ระบุผู้เปิดใช้ วันเวลาเปิด และวันเวลาหมดอายุ จากนั้นกดพิมพ์ โดยไม่สามารถแก้ชื่อหรือ Barcode ของชุดได้</p></div><div class="card help-card"><h3>จัดการชุดน้ำยาเข้าเครื่อง</h3><p>Admin สร้างชุดน้ำยา เพิ่มรายการทีละรายการ กำหนด Barcode จำนวนดวง และเลือกรูปแบบเต็มดวงหรือเว้นขวา 10 mm ได้ รวมทั้งกดปุ่ม “แก้ไข” เพื่อปรับรายละเอียดชุดเดิม หรือคัดลอกเป็นชุดใหม่เมื่อมีการเปลี่ยนชุดน้ำยา</p></div><div class="card help-card"><h3>ตัวชี้วัด</h3><p>Admin เปิดเมนู “ตัวชี้วัด” เลือกช่วงวันที่ ระบบคำนวณ 12 ตัวชี้วัดจากผู้ใช้ วัสดุ Transaction การตรวจวันศุกร์ สติ๊กเกอร์ และ Audit Log อัตโนมัติ ส่วนเหตุการณ์ใช้เกินวันหลังเปิดหรือข้อร้องเรียนฉลาก ให้กด “บันทึกเหตุการณ์” ในหน้าเดียวกัน และส่งออก CSV ได้</p></div><div class="card help-card"><h3>ตั้งค่าผู้ดูแลระบบ</h3><p>หน้า Admin แยกเป็น 3 เมนูย่อย ได้แก่ ภาพรวม ผู้ใช้งาน และวัสดุและผู้ดูแล โดย Admin เพิ่มวัสดุใหม่พร้อมรหัส ชื่อ หน่วย Minimum เกณฑ์ EXP ผู้ดูแลหลัก ผู้ช่วย และอายุหลังเปิดเริ่มต้นได้</p></div><div class="card help-card"><h3>เครื่องพิมพ์สติ๊กเกอร์</h3><p>ฉลากจริง 25 × 20 mm ระบบใช้รูปแบบสติ๊กเกอร์มาตรฐานเดียวกันทุกเครื่อง พร้อม QR ขนาดใหญ่และขอบขาวมาตรฐาน ในหน้าพิมพ์ Chrome ให้เลือกเครื่องพิมพ์และตั้งกระดาษตามเครื่องที่ใช้งาน ใช้ Scale 100% หรือ Actual size ปิด Header/Footer และใช้ Margin None</p></div></div>`;
   refreshInstallUI();
 }
 
