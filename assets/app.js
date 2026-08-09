@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.67';
+const APP_VERSION = '1.4.68';
 const WEEKLY_CUTOVER_DATE = '2026-07-24';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const DEFAULT_EXPIRY_ALERT_DAYS = 30;
@@ -3472,7 +3472,7 @@ async function renderWeekly() {
   const primaryOwnerSet=new Set(primaryOwnerEntries.map(([email])=>email));
   if (isAdminMode() && weeklyAdminActingForEmail && !primaryOwnerSet.has(weeklyAdminActingForEmail)) weeklyAdminActingForEmail='';
   const ownerSelect = ['<option value="mine">ของฉัน</option>', '<option value="all">ทุกคน</option>'].concat(ownerEntries.map(([email, name]) => `<option value="${esc(email)}">${esc(name)}</option>`)).join('');
-  const transitionNote = '';
+  const transitionNote = `<div class="notice"><strong>กติกาของรอบวันศุกร์</strong><br>นับเฉพาะ Lot ที่มียอดอยู่ใน Friday snapshot ของรอบนั้น · Lot ที่รับเข้าเสาร์–อาทิตย์จะเริ่มนับในวันศุกร์ถัดไป และไม่ย้อนเพิ่มงานของรอบที่ผ่านมา</div>`;
   const adminActingPanel = isAdminMode() ? `<section class="card admin-weekly-acting"><div class="admin-weekly-acting-copy"><span>${icon('user')}</span><div><p class="eyebrow">Admin acting</p><h3>ตรวจแทนเจ้าหน้าที่</h3><p>เลือกชื่อเจ้าของงานก่อนกดตรวจ ระบบจะเก็บชื่อ Admin เป็นผู้ตรวจจริง</p></div></div><label>กำลังทำแทน<select id="adminWeeklyActingFor"><option value="">เลือกชื่อเจ้าหน้าที่</option>${primaryOwnerEntries.map(([email,name])=>`<option value="${esc(email)}" ${email===weeklyAdminActingForEmail?'selected':''}>${esc(name)}</option>`).join('')}</select></label><button class="secondary" type="button" data-open-weekly-delegate>มอบหมายให้คนอื่น</button></section>` : '';
 
   page.innerHTML = `<div class="page-head"><div><h2>ตรวจสต๊อกวันศุกร์</h2><p class="muted small">รอบวันที่ ${d(check.week_friday)}</p></div><div class="weekly-head-actions"><button class="mini ghost" data-route="weekly-status">${icon('user')} สถานะผู้ตรวจ</button><button class="mini" type="button" data-open-weekly-delegate>${isAdminMode()?'มอบหมายผู้ตรวจแทน':'ฝากเพื่อนตรวจแทน'}</button></div></div>${transitionNote}${adminActingPanel}
@@ -3541,7 +3541,7 @@ async function renderWeekly() {
 async function renderWeeklyStatus() {
   const end=new Date();
   const start=new Date(`${WEEKLY_CUTOVER_DATE}T00:00:00+07:00`);
-  page.innerHTML=`<div class="page-head"><div><h2>สถานะผู้ตรวจวันศุกร์</h2><p class="muted small">แสดงเฉพาะรอบตั้งแต่ 24 กรกฎาคม 2569</p></div><button class="mini ghost" data-route="weekly">กลับไปตรวจสต๊อก</button></div><form id="weeklyStatusForm" class="card weekly-status-filter"><label>ตั้งแต่วันที่<input id="weeklyStatusFrom" type="date" min="${WEEKLY_CUTOVER_DATE}" value="${dateInputValue(start)}"></label><label>ถึงวันที่<input id="weeklyStatusTo" type="date" min="${WEEKLY_CUTOVER_DATE}" value="${dateInputValue(end)}"></label><button class="primary" type="submit">แสดงผล</button></form><div id="weeklyStatusResult"></div>`;
+  page.innerHTML=`<div class="page-head"><div><h2>สถานะผู้ตรวจวันศุกร์</h2><p class="muted small">แสดงเฉพาะรอบตั้งแต่ 24 กรกฎาคม 2569 · Lot รับเข้าเสาร์–อาทิตย์เริ่มนับในศุกร์ถัดไป</p></div><button class="mini ghost" data-route="weekly">กลับไปตรวจสต๊อก</button></div><form id="weeklyStatusForm" class="card weekly-status-filter"><label>ตั้งแต่วันที่<input id="weeklyStatusFrom" type="date" min="${WEEKLY_CUTOVER_DATE}" value="${dateInputValue(start)}"></label><label>ถึงวันที่<input id="weeklyStatusTo" type="date" min="${WEEKLY_CUTOVER_DATE}" value="${dateInputValue(end)}"></label><button class="primary" type="submit">แสดงผล</button></form><div class="notice"><strong>Friday snapshot</strong> ระบบไม่นำ Lot ที่เพิ่งรับเข้าเสาร์–อาทิตย์ย้อนกลับไปเพิ่มยอด “ไม่ครบ” ของวันศุกร์ที่ผ่านมา</div><div id="weeklyStatusResult"></div>`;
   const load=async()=>{
     let from=$('#weeklyStatusFrom').value,to=$('#weeklyStatusTo').value;
     if(from<WEEKLY_CUTOVER_DATE){from=WEEKLY_CUTOVER_DATE;$('#weeklyStatusFrom').value=WEEKLY_CUTOVER_DATE;}
