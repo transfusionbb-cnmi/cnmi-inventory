@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.68';
+const APP_VERSION = '1.4.69';
 const WEEKLY_CUTOVER_DATE = '2026-07-24';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const DEFAULT_EXPIRY_ALERT_DAYS = 30;
@@ -39,6 +39,7 @@ let passwordRecoveryMode = new URLSearchParams(location.search).get('password_re
 let passwordRecoverySession = null;
 let pendingIssueCode = new URLSearchParams(location.search).get('issue') || new URLSearchParams(location.search).get('lot');
 let deferredInstallPrompt = null;
+const openLabelComponentsCache = new Map();
 const REAGENT_GENERATOR_DRAFT_KEY = 'cnmi-inventory-reagent-generator-draft-v1';
 const MOVE_HISTORY_PAGE_SIZE = 7;
 const REPORT_PAGE_SIZE = 10;
@@ -1405,6 +1406,7 @@ const ACTIVITY_ACTION_LABELS = {
   REAGENT_BARCODE_SET_UPDATE:'แก้ไขชุดน้ำยาเข้าเครื่อง',
   REAGENT_BARCODE_SET_DEACTIVATE:'เลิกใช้ชุดน้ำยาเข้าเครื่อง',
   REAGENT_BARCODE_SET_REACTIVATE:'เปิดใช้ชุดน้ำยาเข้าเครื่องอีกครั้ง',
+  OPEN_LABEL_COMPONENTS_UPDATE:'ตั้งค่าขวด/ชื่อย่อยวันเปิดใช้',
   INDICATOR_EVENT_CREATED:'บันทึกเหตุการณ์ตัวชี้วัด',
   INDICATOR_EVENT_UPDATED:'แก้ไขเหตุการณ์ตัวชี้วัด',
   PASSWORD_RESET_REQUEST:'ส่งลิงก์รีเซ็ตรหัสผ่าน',
@@ -1418,7 +1420,7 @@ const ACTIVITY_CHECK_ACTIONS = ['STOCK_CHECK_MATCHED','STOCK_CHECK_ADJUSTED','WE
 const ACTIVITY_DELEGATION_ACTIONS = ['WEEKLY_DELEGATION_REQUESTED','WEEKLY_DELEGATION_ADMIN_ASSIGNED','WEEKLY_DELEGATION_ACCEPTED','WEEKLY_DELEGATION_REJECTED','WEEKLY_DELEGATION_CANCELLED'];
 const ACTIVITY_EXPIRED_ACTIONS = ['EXPIRED_REMOVED','AUTO_EXPIRED','MIGRATED_AUTO_EXPIRED','HISTORICAL_EXPIRED_CLEANUP'];
 const ACTIVITY_REAGENT_SET_ACTIONS = ['REAGENT_BARCODE_SET_CREATE','REAGENT_BARCODE_SET_UPDATE','REAGENT_BARCODE_SET_DEACTIVATE','REAGENT_BARCODE_SET_REACTIVATE'];
-const ACTIVITY_SETTING_ACTIONS = ['INSERT','UPDATE','DELETE'];
+const ACTIVITY_SETTING_ACTIONS = ['INSERT','UPDATE','DELETE','OPEN_LABEL_COMPONENTS_UPDATE'];
 const ACTIVITY_INDICATOR_ACTIONS = ['INDICATOR_EVENT_CREATED','INDICATOR_EVENT_UPDATED'];
 const ACTIVITY_SECURITY_ACTIONS = ['PASSWORD_RESET_REQUEST'];
 const ACTIVITY_KNOWN_ACTIONS = new Set(['RECEIVE','ISSUE',...ACTIVITY_PRINT_ACTIONS,...ACTIVITY_CHECK_ACTIONS,...ACTIVITY_DELEGATION_ACTIONS,...ACTIVITY_EXPIRED_ACTIONS,...ACTIVITY_REAGENT_SET_ACTIONS,...ACTIVITY_SETTING_ACTIONS,...ACTIVITY_INDICATOR_ACTIONS,...ACTIVITY_SECURITY_ACTIONS]);
@@ -1509,6 +1511,7 @@ function activityCard(a) {
     if(detail.opened_on) detailParts.push(`เปิดใช้ ${d(detail.opened_on)}`);
     if(detail.expiry_date) detailParts.push(`EXP ผู้ผลิต ${d(detail.expiry_date)}`);
     if(detail.opened_by) detailParts.push(`ผู้เปิดใช้ ${detail.opened_by}`);
+    if(Array.isArray(detail.label_items) && detail.label_items.length) detailParts.push(`ภายในกล่อง: ${detail.label_items.map(x=>`${x.name} ×${x.copies}`).join(', ')}`);
     if(detail.form_code) detailParts.push(detail.form_code);
   }
   if(action==='REAGENT_BARCODE_PRINT') {
@@ -1522,6 +1525,11 @@ function activityCard(a) {
     if(detail.opened_by_name || detail.opened_by_email) detailParts.push(`ผู้เปิดใช้ ${detail.opened_by_name || detail.opened_by_email}`);
     if(detail.opened_at) detailParts.push(`เปิด ${dt(detail.opened_at)}`);
     if(detail.use_until_at) detailParts.push(`ใช้ได้ถึง ${dt(detail.use_until_at)}`);
+  }
+  if(action==='OPEN_LABEL_COMPONENTS_UPDATE') {
+    if(detail.component_count!==undefined) detailParts.push(`${qty(detail.component_count)} ชื่อย่อย`);
+    if(detail.label_count_per_set!==undefined) detailParts.push(`${qty(detail.label_count_per_set)} ดวง/กล่อง`);
+    if(Array.isArray(detail.components)&&detail.components.length) detailParts.push(detail.components.map(x=>`${x.name} ×${x.copies}`).join(', '));
   }
   if(ACTIVITY_REAGENT_SET_ACTIONS.includes(action)) {
     if(detail.instrument_name) detailParts.push(`เครื่อง ${detail.instrument_name}`);
@@ -1983,6 +1991,55 @@ function openLabelCalculationText(result) {
   return result?.useUntil ? formatThaiOpenDateTime(result.useUntil,true) : 'กรุณากรอกข้อมูลให้ครบ';
 }
 
+
+async function loadOpenLabelComponents(materialCode,{force=false}={}) {
+  const code=String(materialCode||'').trim();
+  if(!code) return [];
+  if(!force && openLabelComponentsCache.has(code)) return openLabelComponentsCache.get(code);
+  const {data,error}=await sb.from('material_open_label_components').select('*').eq('material_code',code).eq('active',true).order('sort_order').order('id');
+  if(error){
+    if(String(error.code||'')==='42P01' || /material_open_label_components/i.test(String(error.message||''))) return [];
+    throw error;
+  }
+  const rows=(data||[]).map(x=>({
+    id:x.id,material_code:x.material_code,label_name:String(x.label_name||'').trim(),
+    default_copies:Math.max(1,Math.min(50,Math.round(Number(x.default_copies)||1))),sort_order:Number(x.sort_order||0),active:x.active!==false
+  })).filter(x=>x.label_name);
+  openLabelComponentsCache.set(code,rows);
+  return rows;
+}
+function openLabelComponentTotal(rows=[]){return (rows||[]).reduce((sum,x)=>sum+Math.max(1,Math.round(Number(x.default_copies)||1)),0);}
+function openLabelExpandedItems(material,components=[],setCount=1,fallbackCopies=1){
+  const sets=Math.max(1,Math.min(20,Math.round(Number(setCount)||1)));
+  if(components?.length) return components.map(x=>({name:x.label_name,copies:Math.max(1,Math.min(50,Math.round(Number(x.default_copies)||1))*sets)}));
+  return [{name:material?.label_name||material?.material_name||material?.name||'-',copies:normalizedLabelCopies(fallbackCopies)}];
+}
+function openLabelComponentPreview(rows=[]){
+  return (rows||[]).map((x,i)=>`<div class="open-label-component-item"><b>${i+1}</b><span>${esc(x.label_name)}</span><em>${qty(x.default_copies)} ดวง</em></div>`).join('');
+}
+function openLabelComponentEditorMarkup(prefix,rows=[]){
+  const data=(rows?.length?rows:[{label_name:'',default_copies:1}]);
+  return `<div class="open-label-component-editor" id="${prefix}OpenComponentsWrap"><div class="open-label-component-head"><div><strong>ขวด/ชื่อย่อยภายใน 1 กล่อง</strong><small>ถ้า 1 กล่องเปิดแล้วต้องติดหลายขวด ให้กำหนดชื่อบนสติ๊กเกอร์และจำนวนดวงต่อกล่องไว้ตรงนี้ หากเป็นวัสดุปกติให้เว้นส่วนนี้ว่าง</small></div><button type="button" class="mini secondary" id="${prefix}OpenComponentAdd">${icon('plus')} เพิ่มชื่อย่อย</button></div><div id="${prefix}OpenComponentRows" class="open-label-component-rows">${data.map((x,i)=>`<div class="open-label-component-edit-row" data-open-component-row><span>${i+1}</span><input data-open-component-name maxlength="80" value="${esc(x.label_name||'')}" placeholder="เช่น P1, P2 หรือชื่อขวดย่อย"><label><small>จำนวนดวง</small><input data-open-component-copies type="number" min="1" max="50" step="1" value="${Math.max(1,Math.round(Number(x.default_copies)||1))}"></label><button type="button" class="mini ghost" data-open-component-remove>ลบ</button></div>`).join('')}</div><div class="open-label-component-total">1 กล่อง = <strong id="${prefix}OpenComponentTotal">${openLabelComponentTotal(data.filter(x=>String(x.label_name||'').trim()))} ดวง</strong></div></div>`;
+}
+function bindOpenLabelComponentEditor(prefix){
+  const wrap=$(`#${prefix}OpenComponentsWrap`),rowsEl=$(`#${prefix}OpenComponentRows`),add=$(`#${prefix}OpenComponentAdd`),check=$(`#${prefix}OpenLabel`);
+  if(!wrap||!rowsEl)return;
+  const renumber=()=>{ $$('[data-open-component-row]',rowsEl).forEach((row,i)=>{const no=row.querySelector(':scope>span');if(no)no.textContent=i+1;}); const total=$(`#${prefix}OpenComponentTotal`);if(total)total.textContent=`${collectOpenLabelComponentEditor(prefix).reduce((s,x)=>s+x.default_copies,0)} ดวง`; };
+  const sync=()=>wrap.classList.toggle('hidden',!check?.checked);
+  add?.addEventListener('click',()=>{const row=document.createElement('div');row.className='open-label-component-edit-row';row.dataset.openComponentRow='';row.innerHTML=`<span></span><input data-open-component-name maxlength="80" placeholder="เช่น P1, P2 หรือชื่อขวดย่อย"><label><small>จำนวนดวง</small><input data-open-component-copies type="number" min="1" max="50" step="1" value="1"></label><button type="button" class="mini ghost" data-open-component-remove>ลบ</button>`;rowsEl.appendChild(row);renumber();row.querySelector('[data-open-component-name]')?.focus();});
+  rowsEl.addEventListener('click',e=>{const b=e.target.closest('[data-open-component-remove]');if(!b)return;const row=b.closest('[data-open-component-row]');row?.remove();if(!rowsEl.querySelector('[data-open-component-row]')) add?.click();renumber();});
+  rowsEl.addEventListener('input',renumber); check?.addEventListener('change',sync); sync();renumber();
+}
+function collectOpenLabelComponentEditor(prefix){
+  return $$('[data-open-component-row]',$(`#${prefix}OpenComponentRows`)).map((row,i)=>({label_name:String($('[data-open-component-name]',row)?.value||'').trim(),default_copies:Math.max(1,Math.min(50,Math.round(Number($('[data-open-component-copies]',row)?.value)||1))),sort_order:i+1})).filter(x=>x.label_name);
+}
+async function saveOpenLabelComponents(materialCode,items=[]){
+  const {data,error}=await sb.rpc('fn_admin_save_open_label_components',{p_material_code:materialCode,p_components:items});
+  if(error) throw error;
+  openLabelComponentsCache.delete(String(materialCode||''));
+  return data;
+}
+
 function transactionReferenceDate(row) {
   if (row?.tx_type === 'EXPIRED' && /^\d{4}-\d{2}-\d{2}$/.test(String(row.expiry_date || ''))) return row.expiry_date;
   return row?.created_at ? new Date(row.created_at).toLocaleDateString('en-CA',{timeZone:'Asia/Bangkok',year:'numeric',month:'2-digit',day:'2-digit'}) : '';
@@ -2153,7 +2210,8 @@ async function launchOpenLabelPrint(l, {
   materialCode = '',
   lotNo = '',
   source = 'ISSUE_HISTORY',
-  copies = 1
+  copies = 1,
+  labelItems = []
 } = {}) {
   if (!l) return false;
   const printWindow = popup || preparePrintPopup('กำลังเตรียมสติ๊กเกอร์วันเปิดใช้', 'ขนาด 25 × 20 mm…');
@@ -2171,26 +2229,39 @@ async function launchOpenLabelPrint(l, {
   const operator = openedBy || profile?.display_name || profile?.email || 'ผู้ใช้งานปัจจุบัน';
   const code = materialCode || l.material_code || l.canonical_code || '';
   const lot = lotNo || l.lot_no || '-';
-  const copyCount = normalizedLabelCopies(copies);
+  const normalizedItems=(Array.isArray(labelItems)?labelItems:[]).map(x=>({name:String(x?.name||'').trim(),copies:Math.max(1,Math.min(50,Math.round(Number(x?.copies)||1)))})).filter(x=>x.name);
+  const copyCount = normalizedItems.length ? normalizedItems.reduce((s,x)=>s+x.copies,0) : normalizedLabelCopies(copies);
   const periodCode = String(period || 'CUSTOM').toUpperCase();
   try {
-    const params = new URLSearchParams({
-      name:l.label_name || l.material_name || '-',
-      lot,
-      opened:formatThaiOpenDateTime(openedDate,false),
-      exp:formatThaiOpenDateTime(useUntilDate,false),
-      period:openLabelPeriodShort(periodCode),
-      user:operator,
-      footer:'FM-CNPL-034 Rev.00 วันบังคับใช้ 1 สิงหาคม 2562',
-      copies:String(copyCount),
-      auto:'1'
-    });
     const labelUrl = new URL('open-label.html', location.href);
-    labelUrl.search = params.toString();
+    if(normalizedItems.length){
+      const batchKey=`cnmi-open-label:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+      localStorage.setItem(batchKey,JSON.stringify({items:normalizedItems,lot,opened:formatThaiOpenDateTime(openedDate,false),exp:formatThaiOpenDateTime(useUntilDate,false),period:openLabelPeriodShort(periodCode),user:operator,footer:'FM-CNPL-034 Rev.00 วันบังคับใช้ 1 สิงหาคม 2562'}));
+      labelUrl.search=new URLSearchParams({batch:batchKey,auto:'1'}).toString();
+    } else {
+      labelUrl.search=new URLSearchParams({name:l.label_name || l.material_name || '-',lot,opened:formatThaiOpenDateTime(openedDate,false),exp:formatThaiOpenDateTime(useUntilDate,false),period:openLabelPeriodShort(periodCode),user:operator,footer:'FM-CNPL-034 Rev.00 วันบังคับใช้ 1 สิงหาคม 2562',copies:String(copyCount),auto:'1'}).toString();
+    }
     printWindow.location.replace(labelUrl.toString());
     (async () => {
       try {
-        const result = await sb.rpc('fn_log_open_label_print_v3', {
+        const result = await sb.rpc('fn_log_open_label_print_v4', {
+          p_issue_transaction_id:issueTransactionId || null,
+          p_lot_id:l.lot_id || null,
+          p_material_code:code || null,
+          p_lot_no:lot === '-' ? null : lot,
+          p_opened_at:openedDate.toISOString(),
+          p_use_until_at:useUntilDate.toISOString(),
+          p_manufacturer_expiry:manufacturerExpiry || null,
+          p_open_period:periodCode,
+          p_opened_by:operator,
+          p_source:source,
+          p_copy_count:copyCount,
+          p_label_items:normalizedItems.length ? normalizedItems : null
+        });
+        if (result.error) throw result.error;
+      } catch (_) {
+        try {
+          const result = await sb.rpc('fn_log_open_label_print_v3', {
           p_issue_transaction_id:issueTransactionId || null,
           p_lot_id:l.lot_id || null,
           p_material_code:code || null,
@@ -2222,6 +2293,7 @@ async function launchOpenLabelPrint(l, {
             try { await sb.rpc('fn_log_open_label_print', {p_lot_id:l.lot_id,p_opened_on:dateInputValue(openedDate)}); } catch (_) {}
           }
         }
+      }
       }
     })();
     return true;
@@ -2340,6 +2412,7 @@ async function printOpenLabelIssue(transactionId) {
   const row = openLabelIssueRowsCache.find(x => String(x.transaction_id) === String(transactionId));
   if (!row) return toast('ไม่พบรายการนำออก กรุณารีเฟรชหน้าแล้วลองใหม่', true);
   const defaultPeriod = row.open_label_default_period || 'CUSTOM';
+  const components = await loadOpenLabelComponents(row.material_code);
   const openedDefault = dateTimeLocalValue(new Date());
   const customDefault = dateTimeLocalValue(new Date(Date.now()+24*60*60*1000));
   openModal(`<section class="open-label-setup-modal"><div class="section-title compact"><div><p class="eyebrow">Opened reagent</p><h3>กำหนดวันเปิดใช้</h3><p class="muted small">ตรวจข้อมูลจากภาชนะจริงก่อนยืนยันพิมพ์</p></div></div>
@@ -2351,7 +2424,7 @@ async function printOpenLabelIssue(transactionId) {
       <label id="openLabelSetupCustomWrap" class="hidden">ระบุวันและเวลาใช้ได้ถึง<input id="openLabelSetupCustom" type="datetime-local" value="${customDefault}"></label>
       <div class="open-label-calculation"><small>ระบบคำนวณให้ใช้ได้ถึง</small><strong id="openLabelSetupResult">-</strong><span id="openLabelSetupWarning" class="hidden"></span></div>
       <label>ผู้เปิดใช้<input value="${esc(profile?.display_name || profile?.email || '')}" readonly></label>
-      <label>จำนวนสติ๊กเกอร์<input id="openLabelSetupCopies" type="number" min="1" max="20" step="1" value="1" inputmode="numeric" required></label>
+      ${components.length?`<div class="open-label-component-print"><div><strong>ขวด/ชื่อย่อยใน 1 กล่อง</strong><small>${components.length} รายการ · รวม ${openLabelComponentTotal(components)} ดวง/กล่อง</small></div><div class="open-label-component-preview">${openLabelComponentPreview(components)}</div><label>จำนวนกล่องที่เปิด<input id="openLabelSetupSets" type="number" min="1" max="20" step="1" value="1" inputmode="numeric"></label><p>พิมพ์รวม <strong id="openLabelSetupTotal">${openLabelComponentTotal(components)} ดวง</strong></p></div>`:`<label>จำนวนสติ๊กเกอร์<input id="openLabelSetupCopies" type="number" min="1" max="20" step="1" value="1" inputmode="numeric" required></label>`}
       <button class="primary wide-action" type="submit">${icon('print')} ยืนยันและพิมพ์</button>
     </form></section>`);
   const periodInput = $('#openLabelSetupPeriod');
@@ -2378,11 +2451,14 @@ async function printOpenLabelIssue(transactionId) {
   };
   ['openLabelSetupOpenedAt','openLabelSetupPeriod','openLabelSetupCustom'].forEach(id => $(`#${id}`)?.addEventListener('input',calculate));
   calculate();
+  if(components.length){ const updateTotal=()=>{const sets=Math.max(1,Math.min(20,Math.round(Number($('#openLabelSetupSets')?.value)||1))); $('#openLabelSetupTotal').textContent=`${openLabelComponentTotal(components)*sets} ดวง`;}; $('#openLabelSetupSets')?.addEventListener('input',updateTotal); updateTotal(); }
   $('#openLabelSetupForm')?.addEventListener('submit', async e => {
     e.preventDefault();
     const result = calculate();
     if (result.error) return toast(result.error,true);
-    const copies = normalizedLabelCopies($('#openLabelSetupCopies').value || 1);
+    const sets = components.length ? Math.max(1,Math.min(20,Math.round(Number($('#openLabelSetupSets')?.value)||1))) : 1;
+    const copies = components.length ? openLabelComponentTotal(components)*sets : normalizedLabelCopies($('#openLabelSetupCopies').value || 1);
+    const labelItems = openLabelExpandedItems(row,components,sets,copies);
     const popup = preparePrintPopup('กำลังเตรียมสติ๊กเกอร์วันเปิดใช้', `${copies} ดวง · ขนาด 25 × 20 mm…`);
     if (!popup) return toast('เบราว์เซอร์บล็อกหน้าพิมพ์ กรุณาอนุญาต Pop-up ของเว็บไซต์นี้', true);
     const button = e.submitter;
@@ -2398,7 +2474,8 @@ async function printOpenLabelIssue(transactionId) {
       materialCode:row.material_code,
       lotNo:row.lot_no,
       source:'ISSUE_HISTORY',
-      copies
+      copies,
+      labelItems:components.length ? labelItems : []
     });
     button.disabled = false;
     if (!ok) return;
@@ -2478,6 +2555,7 @@ async function renderOpenLabelCreate() {
   page.innerHTML = `<div class="page-head"><div><p class="eyebrow">Manual label generator</p><h2>สร้างสติ๊กเกอร์วันเปิดใช้</h2><p class="muted small">ใช้เมื่อต้องการสร้างสติ๊กเกอร์เอง ระบบคำนวณวันใช้ได้ถึงและล็อกไม่ให้เกิน EXP ผู้ผลิต</p></div><button class="mini secondary" data-route="open-labels">${icon('history')} กลับไปรายการนำออก</button></div>
   <section class="card open-label-generator-card"><div class="open-label-generator-head">${icon('print')}<div><h3>ข้อมูลบนสติ๊กเกอร์</h3><p>ขนาด 25 × 20 mm ตามแบบ FM-CNPL-034 Rev.00</p></div></div><form id="openLabelGeneratorForm" class="form-grid open-label-generator-form">
     ${materialComboboxMarkup({id:'openLabelMaterial',label:'วัสดุ',placeholder:'พิมพ์ชื่อวัสดุ เช่น น้ำเกลือ',materials})}
+    <div id="openLabelComponentPrintWrap" class="open-label-component-print hidden"><div><strong>ขวด/ชื่อย่อยใน 1 กล่อง</strong><small id="openLabelComponentSummary"></small></div><div id="openLabelComponentPreview" class="open-label-component-preview"></div><label>จำนวนกล่องที่เปิด<input id="openLabelSetCount" type="number" min="1" max="20" step="1" value="1" inputmode="numeric"></label><p>พิมพ์รวม <strong id="openLabelComponentTotalPrint">0 ดวง</strong></p></div>
     <label>Lot<input id="openLabelLot" maxlength="60" autocomplete="off" placeholder="พิมพ์ Lot ที่อยู่บนขวด" required></label>
     <label>วันหมดอายุจากผู้ผลิต<input id="openLabelManufacturerExpiry" type="date" required></label>
     <label>วันและเวลาเปิดใช้<input id="openLabelOpenedAt" type="datetime-local" value="${openedDefault}" required></label>
@@ -2485,14 +2563,18 @@ async function renderOpenLabelCreate() {
     <label id="openLabelCustomWrap">ระบุวันและเวลาใช้ได้ถึง<input id="openLabelCustomUseUntil" type="datetime-local" value="${customDefault}"></label>
     <div class="open-label-calculation"><small>ระบบคำนวณให้ใช้ได้ถึง</small><strong id="openLabelCalculatedUntil">-</strong><span id="openLabelCalculatedWarning" class="hidden"></span></div>
     <label>ผู้เปิดใช้<input value="${esc(profile?.display_name || profile?.email || '')}" readonly></label>
-    <label>จำนวนดวง<input id="openLabelCopies" type="number" min="1" max="20" step="1" value="1" inputmode="numeric" required></label>
+    <label id="openLabelCopiesWrap">จำนวนดวง<input id="openLabelCopies" type="number" min="1" max="20" step="1" value="1" inputmode="numeric" required></label>
     <div class="open-label-generator-note">${icon('info')}<span>ระบบจะไม่ตัดสต๊อกเพิ่ม เมนูนี้สร้างและบันทึกประวัติการพิมพ์เท่านั้น</span></div>
     <button class="primary wide-action" type="submit">${icon('print')} ยืนยันและพิมพ์สติ๊กเกอร์</button>
   </form></section>`;
-  const combo = setupMaterialCombobox('openLabelMaterial',materials,{maxResults:20,onChange:(code) => {
+  let selectedComponents=[];
+  const updateComponentPrint=()=>{ const wrap=$('#openLabelComponentPrintWrap'); const copiesWrap=$('#openLabelCopiesWrap'); if(!wrap)return; const has=selectedComponents.length>0; wrap.classList.toggle('hidden',!has); copiesWrap?.classList.toggle('hidden',has); if(has){ const sets=Math.max(1,Math.min(20,Math.round(Number($('#openLabelSetCount')?.value)||1))); $('#openLabelComponentSummary').textContent=`${selectedComponents.length} รายการ · ${openLabelComponentTotal(selectedComponents)} ดวง/กล่อง`; $('#openLabelComponentPreview').innerHTML=openLabelComponentPreview(selectedComponents); $('#openLabelComponentTotalPrint').textContent=`${openLabelComponentTotal(selectedComponents)*sets} ดวง`; } };
+  $('#openLabelSetCount')?.addEventListener('input',updateComponentPrint);
+  const combo = setupMaterialCombobox('openLabelMaterial',materials,{maxResults:20,onChange:async(code) => {
     const material = materials.find(x => x.code === code);
     if (material) $('#openLabelPeriod').value = material.open_label_default_period || 'CUSTOM';
-    calculate();
+    selectedComponents = material ? await loadOpenLabelComponents(material.code) : [];
+    updateComponentPrint(); calculate();
   }});
   const calculate = () => {
     const period = $('#openLabelPeriod').value;
@@ -2523,7 +2605,9 @@ async function renderOpenLabelCreate() {
     const lot = $('#openLabelLot').value.trim();
     const manufacturerExpiry = $('#openLabelManufacturerExpiry').value;
     const result = calculate();
-    const copies = normalizedLabelCopies($('#openLabelCopies').value || 1);
+    const sets = selectedComponents.length ? Math.max(1,Math.min(20,Math.round(Number($('#openLabelSetCount')?.value)||1))) : 1;
+    const copies = selectedComponents.length ? openLabelComponentTotal(selectedComponents)*sets : normalizedLabelCopies($('#openLabelCopies').value || 1);
+    const labelItems = openLabelExpandedItems(material,selectedComponents,sets,copies);
     if (!material) return toast('กรุณาเลือกวัสดุจากรายการ', true);
     if (!lot) return toast('กรุณาระบุ Lot', true);
     if (!manufacturerExpiry) return toast('กรุณาระบุวันหมดอายุจากผู้ผลิต', true);
@@ -2548,7 +2632,8 @@ async function renderOpenLabelCreate() {
       materialCode:material.code,
       lotNo:lot,
       source:'MANUAL_GENERATOR',
-      copies
+      copies,
+      labelItems:selectedComponents.length ? labelItems : []
     });
     button.disabled = false;
     if (ok) toast('กำลังเปิดหน้าพิมพ์สติ๊กเกอร์วันเปิดใช้');
@@ -4361,11 +4446,13 @@ function openMaterialCreator() {
     <div class="open-label-generator-note">${icon('info')}<span>วันหมดอายุจริงของวัสดุกรอกตอน “นำเข้า” แยกตาม Lot ส่วนช่องนี้กำหนดว่าจะเตือน EXP ล่วงหน้านานเท่าใด</span></div>
     <label class="confirm-check open-label-setting"><input id="newMatOpenLabel" type="checkbox"><span><strong>ใช้สติ๊กเกอร์วันเปิดใช้</strong><small>กำหนดอายุหลังเปิดเริ่มต้นเพื่อให้ระบบเลือกให้อัตโนมัติ</small></span></label>
     <label>อายุหลังเปิดเริ่มต้น<select id="newMatOpenPeriod">${openLabelPeriodOptions('CUSTOM')}</select></label>
+    ${openLabelComponentEditorMarkup('newMat',[])}
     <label>ผู้ดูแลหลัก<select id="newMatOwner">${ownerOptions(staff,'')}</select></label>
     <label>ผู้ช่วยดูแล<select id="newMatAssistantOwner">${ownerOptions(staff,'')}</select></label>
     <button class="primary" type="submit">${icon('plus')} บันทึกวัสดุใหม่</button>
   </form>`);
   bindOpenLabelAdminFields('newMat','CUSTOM');
+  bindOpenLabelComponentEditor('newMat');
   $('#newMatName')?.addEventListener('input',()=>{ if (!$('#newMatLabel').dataset.edited) $('#newMatLabel').value=$('#newMatName').value; });
   $('#newMatLabel')?.addEventListener('input',()=>{$('#newMatLabel').dataset.edited='1';});
   $('#newMaterialForm')?.addEventListener('submit', async e => {
@@ -4387,16 +4474,18 @@ function openMaterialCreator() {
     });
     button.disabled=false;
     if (error) return toast(errMsg(error),true);
+    try { await saveOpenLabelComponents(code,$('#newMatOpenLabel').checked ? collectOpenLabelComponentEditor('newMat') : []); } catch(e2) { return toast(`เพิ่มวัสดุแล้ว แต่บันทึกรายการขวดย่อยไม่สำเร็จ: ${errMsg(e2)}`,true); }
     closeModal(); materialsCache=[]; stockCache=[]; adminTab='materials';
     toast('เพิ่มวัสดุใหม่แล้ว');
     refreshCurrentView(renderAdmin);
   });
 }
 
-function openMaterialEditor(code) {
+async function openMaterialEditor(code) {
   const x = (window._adminMaterials || []).find(m => m.code === code);
   const staff = window._adminStaff || [];
   if (!x) return;
+  const openComponents = await loadOpenLabelComponents(code,{force:true});
   openModal(`<h3>${esc(x.code)} · ${esc(x.name)}</h3><form id="matForm" class="form-grid">
     <label>ชื่อวัสดุ<input value="${esc(x.name)}" readonly></label>
     <label>ชื่อบนสติ๊กเกอร์<input id="matLabel" maxlength="80" value="${esc(x.label_name || x.name)}"></label>
@@ -4404,11 +4493,13 @@ function openMaterialEditor(code) {
     <label>แจ้งใกล้หมดอายุล่วงหน้า<select id="matExpiryAlert"><option value="7" ${expiryAlertDays(x)===7?'selected':''}>1 สัปดาห์</option><option value="14" ${expiryAlertDays(x)===14?'selected':''}>2 สัปดาห์</option><option value="30" ${expiryAlertDays(x)===30?'selected':''}>1 เดือน — รายการทั่วไป</option><option value="240" ${expiryAlertDays(x)===240?'selected':''}>8 เดือน — ต้องเคลมหรือจัดการล่วงหน้า</option></select></label>
     <label class="confirm-check open-label-setting"><input id="matOpenLabel" type="checkbox" ${x.open_label_required?'checked':''}><span><strong>ใช้สติ๊กเกอร์วันเปิดใช้</strong><small>รายการนำออกจะอยู่ในเมนูพิมพ์วันเปิดใช้ และเลือกอายุหลังเปิดเริ่มต้นให้อัตโนมัติ</small></span></label>
     <label>อายุหลังเปิดเริ่มต้น<select id="matOpenPeriod">${openLabelPeriodOptions(x.open_label_default_period || 'CUSTOM')}</select></label>
+    ${openLabelComponentEditorMarkup('mat',openComponents)}
     <label>ผู้ดูแลหลัก<select id="matOwner">${ownerOptions(staff, x.responsible_email || '')}</select></label>
     <label>ผู้ช่วยดูแล<select id="matAssistantOwner">${ownerOptions(staff, x.assistant_responsible_email || '')}</select></label>
     <button class="primary" type="submit">บันทึก</button>
   </form>`);
   bindOpenLabelAdminFields('mat',x.open_label_default_period || 'CUSTOM');
+  bindOpenLabelComponentEditor('mat');
   $('#matForm').addEventListener('submit', async e => {
     e.preventDefault();
     const owner=$('#matOwner').value || null;
@@ -4424,6 +4515,7 @@ function openMaterialEditor(code) {
       assistant_responsible_email:assistant
     }).eq('code', code);
     if (error) return toast(errMsg(error), true);
+    try { await saveOpenLabelComponents(code,$('#matOpenLabel').checked ? collectOpenLabelComponentEditor('mat') : []); } catch(e2) { return toast(`บันทึกวัสดุแล้ว แต่บันทึกรายการขวดย่อยไม่สำเร็จ: ${errMsg(e2)}`,true); }
     closeModal(); stockCache = []; scanLotsCache=[]; scanLotsLoadedAt=0; materialsCache = []; adminTab='materials';
     toast('บันทึกวัสดุแล้ว');
     refreshCurrentView(renderAdmin);

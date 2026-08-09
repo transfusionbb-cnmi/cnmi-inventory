@@ -29,14 +29,19 @@ html,body{margin:0;padding:0;width:var(--paper-w);background:#eef2f3;font-family
 'use strict';
 const p=new URLSearchParams(location.search);
 const safe=(v,f='-')=>v&&v!=='null'?v:f;
-const name=safe(p.get('name'));
-const lot=safe(p.get('lot'));
-const opened=safe(p.get('opened'));
-const exp=safe(p.get('exp'),'ไม่ระบุ');
-const period=safe(p.get('period'),'');
-const user=safe(p.get('user'));
-const footer=safe(p.get('footer'),'FM-CNPL-034 Rev.00 วันบังคับใช้ 1 สิงหาคม 2562');
-const copies=Math.max(1,Math.min(20,Math.round(Number(p.get('copies'))||1)));
+let batch=null;
+const batchKey=p.get('batch')||'';
+if(batchKey){try{const raw=localStorage.getItem(batchKey);if(raw)batch=JSON.parse(raw);}catch(_){}finally{try{localStorage.removeItem(batchKey);}catch(_){}}}
+const lot=safe(batch?.lot ?? p.get('lot'));
+const opened=safe(batch?.opened ?? p.get('opened'));
+const exp=safe(batch?.exp ?? p.get('exp'),'ไม่ระบุ');
+const period=safe(batch?.period ?? p.get('period'),'');
+const user=safe(batch?.user ?? p.get('user'));
+const footer=safe(batch?.footer ?? p.get('footer'),'FM-CNPL-034 Rev.00 วันบังคับใช้ 1 สิงหาคม 2562');
+const singleName=safe(p.get('name'));
+const singleCopies=Math.max(1,Math.min(20,Math.round(Number(p.get('copies'))||1)));
+const labelItems=Array.isArray(batch?.items)&&batch.items.length?batch.items.map(x=>({name:safe(x?.name),copies:Math.max(1,Math.min(50,Math.round(Number(x?.copies)||1)))})):[{name:singleName,copies:singleCopies}];
+const totalCopies=labelItems.reduce((sum,x)=>sum+x.copies,0);
 const pages=document.getElementById('printPages');
 const statusEl=document.getElementById('screenStatus');
 const W=300,H=236;
@@ -85,18 +90,18 @@ function fitWrapped(text,maxWidth,start,min,maxLines){
   }
   setMeasureFont(700,min);return {size:min,lines:wrapText(text,maxWidth).slice(0,maxLines),lineHeight:min*1.05};
 }
-function makePage(){
+function makePage(labelName){
   const page=document.createElement('div');page.className='label-page';
-  page.setAttribute('aria-label',`สติ๊กเกอร์วันเปิดใช้ ${name} Lot ${lot}`);
+  page.setAttribute('aria-label',`สติ๊กเกอร์วันเปิดใช้ ${labelName} Lot ${lot}`);
   const svg=svgNode('svg',{class:'label-vector',viewBox:`0 0 ${W} ${H}`,preserveAspectRatio:'none','aria-hidden':'true'});
   svg.appendChild(svgNode('rect',{x:0,y:0,width:W,height:H,fill:'#fff'}));
   page.appendChild(svg);pages.appendChild(page);
   return svg;
 }
-function drawLabel(svg){
+function drawLabel(svg,labelName){
   const x=8,right=292;
   const labelW=78,valueX=84,valueW=right-valueX;
-  const nameFit=fitWrapped(name,valueW,24,14,2);
+  const nameFit=fitWrapped(labelName,valueW,24,14,2);
   svgText(svg,'ชื่อ:',x,25,{weight:700,size:22});
   let nameY=25;
   nameFit.lines.forEach((line,index)=>svgText(svg,line,valueX,nameY+index*nameFit.lineHeight,{weight:700,size:nameFit.size}));
@@ -132,13 +137,13 @@ function drawLabel(svg){
 }
 async function prepare(){
   if(document.fonts&&document.fonts.ready){try{await document.fonts.ready;}catch(_){}}
-  for(let i=0;i<copies;i++)drawLabel(makePage());
+  labelItems.forEach(item=>{for(let i=0;i<item.copies;i+=1){const svg=makePage(item.name);drawLabel(svg,item.name);}});
   await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
 }
 async function startPrint(){
   try{
     await prepare();
-    statusEl.innerHTML=`กำลังเปิดหน้าพิมพ์…<small>${copies} ดวง · ขนาด 25 × 20 mm · Scale 100% / Actual size</small>`;
+    statusEl.innerHTML=`กำลังเปิดหน้าพิมพ์…<small>${totalCopies} ดวง · ขนาด 25 × 20 mm · Scale 100% / Actual size</small>`;
     await new Promise(resolve=>setTimeout(resolve,180));
     window.focus();window.print();
   }catch(e){statusEl.innerHTML='สร้างสติ๊กเกอร์ไม่สำเร็จ กรุณาปิดหน้านี้แล้วลองใหม่';console.error(e);}
