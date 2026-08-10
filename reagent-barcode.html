@@ -131,14 +131,52 @@ function encodeCode128(text){
   return codes;
 }
 
-function addBarcode(svg,text,x,y,width,height){
-  const codes=encodeCode128(text); const quiet=10; let cursor=quiet; const bars=[];
-  codes.forEach(code=>{const pattern=CODE128_PATTERNS[code]; for(let i=0;i<pattern.length;i+=1){const module=Number(pattern[i]); if(i%2===0)bars.push({x:cursor,w:module}); cursor+=module;}});
-  const total=cursor+quiet;
-  const group=svgNode('g',{'shape-rendering':'crispEdges',transform:`translate(${x} ${y}) scale(${width/total} ${height/72})`});
-  group.appendChild(svgNode('rect',{x:0,y:0,width:total,height:72,fill:'#fff'}));
-  bars.forEach(bar=>group.appendChild(svgNode('rect',{x:bar.x,y:0,width:bar.w,height:72,fill:'#000'})));
-  svg.appendChild(group);
+function barcodeRaster203(text){
+  // GoDEX RT700i+ is a 203 dpi / 8 dots-per-mm printer.
+  // Draw every Code 128 module as an exact whole-number printer-dot width so Chrome
+  // does not rescale individual bars to fractional dots. 3 dots/module matches the
+  // LIS label width for normal reagent codes such as 6904.IAT and 14-digit codes.
+  const codes=encodeCode128(text);
+  const quietModules=10;
+  let symbolModules=0;
+  codes.forEach(code=>{symbolModules+=CODE128_PATTERNS[code].split('').reduce((sum,n)=>sum+Number(n),0);});
+  const totalModules=symbolModules+(quietModules*2);
+  const maxDots=396; // 49.5 mm at 8 dots/mm, leaves 0.25 mm each side on 50 mm stock.
+  const moduleDots=(totalModules*3<=maxDots)?3:2;
+  const widthDots=totalModules*moduleDots;
+  const heightDots=80; // 10 mm
+  const canvas=document.createElement('canvas');
+  canvas.width=widthDots; canvas.height=heightDots;
+  const ctx=canvas.getContext('2d',{alpha:false});
+  ctx.imageSmoothingEnabled=false;
+  ctx.fillStyle='#fff'; ctx.fillRect(0,0,widthDots,heightDots);
+  ctx.fillStyle='#000';
+  let cursor=quietModules*moduleDots;
+  codes.forEach(code=>{
+    const pattern=CODE128_PATTERNS[code];
+    for(let i=0;i<pattern.length;i+=1){
+      const w=Number(pattern[i])*moduleDots;
+      if(i%2===0)ctx.fillRect(cursor,0,w,heightDots);
+      cursor+=w;
+    }
+  });
+  return {dataUrl:canvas.toDataURL('image/png'),widthDots,heightDots,moduleDots,totalModules};
+}
+function addBarcode(svg,text,y){
+  const raster=barcodeRaster203(text);
+  const widthMm=raster.widthDots/8;
+  const heightMm=raster.heightDots/8;
+  const widthUnits=widthMm*10;
+  const heightUnits=heightMm*10;
+  const x=(W-widthUnits)/2;
+  const image=svgNode('image',{
+    x,y,width:widthUnits,height:heightUnits,
+    href:raster.dataUrl,
+    preserveAspectRatio:'none'
+  });
+  image.style.imageRendering='pixelated';
+  svg.appendChild(image);
+  return {x,width:widthUnits,height:heightUnits,moduleDots:raster.moduleDots};
 }
 function makeLabel(row,payload){
   const page=document.createElement('div'); page.className='label-page';
@@ -148,15 +186,21 @@ function makeLabel(row,payload){
   const reserve=Boolean(payload.reserveRight);
   const left=18, top=12, contentRight=reserve?388:478, contentWidth=(reserve?388:478)-18;
   const sepX=reserve?399:null;
-  if(reserve)svg.appendChild(svgNode('line',{x1:sepX,y1:top,x2:sepX,y2:H-12,stroke:'#000','stroke-width':2}));
 
   const name=safeText(row?.name); const barcode=safeText(row?.barcode);
   addText(svg,'ชื่อน้ำยา',left+6,32,{size:15.5,weight:700,maxWidth:74,minSize:13});
   addText(svg,name,left+86,32,{size:21,weight:700,maxWidth:contentWidth-98,minSize:13});
 
-  const barcodeX=left+10, barcodeWidth=contentWidth-38, barcodeY=44, barcodeHeight=93;
-  addBarcode(svg,barcode,barcodeX,barcodeY,barcodeWidth,barcodeHeight);
-  addText(svg,barcode,left+(contentWidth/2),154,{size:15.4,weight:500,anchor:'middle',maxWidth:barcodeWidth,minSize:12.6});
+  // Barcode compatibility mode: use almost the full 50 mm label width, like the LIS label.
+  // The optional 10 mm reserve remains for the text area; the divider is interrupted across
+  // the barcode so it can never cut through a quiet zone or a bar.
+  const barcodeY=42;
+  const barcodeBox=addBarcode(svg,barcode,barcodeY);
+  if(reserve){
+    svg.appendChild(svgNode('line',{x1:sepX,y1:top,x2:sepX,y2:36,stroke:'#000','stroke-width':2}));
+    svg.appendChild(svgNode('line',{x1:sepX,y1:168,x2:sepX,y2:H-12,stroke:'#000','stroke-width':2}));
+  }
+  addText(svg,barcode,W/2,160,{size:15.4,weight:500,anchor:'middle',maxWidth:450,minSize:12.6});
 
   addText(svg,`วันที่เปิด ${payload.openedDate} เวลา ${payload.openedTime}`,left+6,182,{size:16.6,weight:700,maxWidth:contentWidth-12,minSize:13.4});
   addText(svg,`วันหมดอายุ ${payload.expiryDate} เวลา ${payload.expiryTime}`,left+6,211,{size:16.6,weight:700,maxWidth:contentWidth-12,minSize:13.4});
@@ -176,7 +220,7 @@ async function prepare(){
 async function startPrint(){
   try{
     const payload=await prepare();
-    statusEl.innerHTML=`กำลังเปิดหน้าพิมพ์…<small>${payload.labels.length} ดวง · ขนาด 50 × 28 mm · Scale 100% / Actual size · Margin None</small>`;
+    statusEl.innerHTML=`กำลังเปิดหน้าพิมพ์…<small>${payload.labels.length} ดวง · ขนาด 50 × 28 mm · Code 128 โหมดเครื่องอ่าน LIS · Scale 100% / Actual size · Margin None</small>`;
     await new Promise(resolve=>setTimeout(resolve,180));
     window.focus(); window.print();
   }catch(e){statusEl.innerHTML=`${esc(e.message||'สร้างบาร์โค้ดไม่สำเร็จ')}<small>กรุณาปิดหน้านี้ แล้วกลับไปกดพิมพ์ใหม่</small>`; console.error(e);}
