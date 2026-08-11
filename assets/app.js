@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.72';
+const APP_VERSION = '1.4.73';
 const WEEKLY_CUTOVER_DATE = '2026-07-24';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const DEFAULT_EXPIRY_ALERT_DAYS = 30;
@@ -3557,10 +3557,9 @@ async function renderWeekly() {
   const primaryOwnerSet=new Set(primaryOwnerEntries.map(([email])=>email));
   if (isAdminMode() && weeklyAdminActingForEmail && !primaryOwnerSet.has(weeklyAdminActingForEmail)) weeklyAdminActingForEmail='';
   const ownerSelect = ['<option value="mine">ของฉัน</option>', '<option value="all">ทุกคน</option>'].concat(ownerEntries.map(([email, name]) => `<option value="${esc(email)}">${esc(name)}</option>`)).join('');
-  const transitionNote = `<div class="notice"><strong>กติกาของรอบวันศุกร์</strong><br>นับเฉพาะ Lot ที่มียอดอยู่ใน Friday snapshot ของรอบนั้น · Lot ที่รับเข้าเสาร์–อาทิตย์จะเริ่มนับในวันศุกร์ถัดไป และไม่ย้อนเพิ่มงานของรอบที่ผ่านมา</div>`;
   const adminActingPanel = isAdminMode() ? `<section class="card admin-weekly-acting"><div class="admin-weekly-acting-copy"><span>${icon('user')}</span><div><p class="eyebrow">Admin acting</p><h3>ตรวจแทนเจ้าหน้าที่</h3><p>เลือกชื่อเจ้าของงานก่อนกดตรวจ ระบบจะเก็บชื่อ Admin เป็นผู้ตรวจจริง</p></div></div><label>กำลังทำแทน<select id="adminWeeklyActingFor"><option value="">เลือกชื่อเจ้าหน้าที่</option>${primaryOwnerEntries.map(([email,name])=>`<option value="${esc(email)}" ${email===weeklyAdminActingForEmail?'selected':''}>${esc(name)}</option>`).join('')}</select></label><button class="secondary" type="button" data-open-weekly-delegate>มอบหมายให้คนอื่น</button></section>` : '';
 
-  page.innerHTML = `<div class="page-head"><div><h2>ตรวจสต๊อกวันศุกร์</h2><p class="muted small">รอบวันที่ ${d(check.week_friday)}</p></div><div class="weekly-head-actions"><button class="mini ghost" data-route="weekly-status">${icon('user')} สถานะผู้ตรวจ</button><button class="mini" type="button" data-open-weekly-delegate>${isAdminMode()?'มอบหมายผู้ตรวจแทน':'ฝากเพื่อนตรวจแทน'}</button></div></div>${transitionNote}${adminActingPanel}
+  page.innerHTML = `<div class="page-head"><div><h2>ตรวจสต๊อกวันศุกร์</h2><p class="muted small">รอบวันที่ ${d(check.week_friday)}</p></div><div class="weekly-head-actions"><button class="mini ghost" data-route="weekly-status">${icon('user')} สถานะผู้ตรวจ</button><button class="mini" type="button" data-open-weekly-delegate>${isAdminMode()?'มอบหมายผู้ตรวจแทน':'ฝากเพื่อนตรวจแทน'}</button></div></div>${adminActingPanel}
   <section class="card weekly-header"><div class="weekly-ring small-ring" style="--pct:${pct}"><div><strong>${pct}%</strong><span>${done}/${items.length}</span></div></div><div><h3>ความคืบหน้า</h3><p class="muted">ยังไม่ตรวจ ${items.length-done} Lot · หมดอายุรอยืนยัน ${expiredPending} Lot${delegatedToMe?` · ได้รับฝาก ${delegatedToMe} Lot`:''}${incomingRequests?` · รอตอบรับ ${incomingRequests} คำขอ`:''}</p></div></section>
   ${weeklyDelegationPanels(items)}
   <div class="weekly-tools"><label>กรองเจ้าหน้าที่<select id="weeklyOwnerFilter">${ownerSelect}</select></label><div class="filters horizontal-scroller" style="margin-bottom:0"><button class="chip ${weeklyActiveFilter==='pending'?'active':''}" data-wf="pending">ยังไม่ตรวจ</button><button class="chip ${weeklyActiveFilter==='primary'?'active':''}" data-wf="primary">ฉันดูแลหลัก</button><button class="chip ${weeklyActiveFilter==='assistant'?'active':''}" data-wf="assistant">ฉันช่วยดูแล</button><button class="chip ${weeklyActiveFilter==='received'?'active':''}" data-wf="received">งานที่ได้รับฝาก${delegatedToMe?` ${delegatedToMe}`:''}</button><button class="chip ${weeklyActiveFilter==='expired'?'active':''}" data-wf="expired">หมดอายุ</button><button class="chip ${weeklyActiveFilter==='mismatch'?'active':''}" data-wf="mismatch">ไม่ตรง</button><button class="chip ${weeklyActiveFilter==='done'?'active':''}" data-wf="done">ตรวจแล้ว</button><button class="chip ${weeklyActiveFilter==='all'?'active':''}" data-wf="all">ทั้งหมด</button></div></div><div id="checkList" class="list"></div>${check.status !== 'COMPLETED' && isAdminMode() ? '<button id="completeCheck" class="primary wide-action">เสร็จสิ้นและปิดรอบตรวจ</button>' : ''}`;
