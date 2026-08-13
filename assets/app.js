@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.74';
+const APP_VERSION = '1.4.75';
 const WEEKLY_CUTOVER_DATE = '2026-07-24';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const DEFAULT_EXPIRY_ALERT_DAYS = 30;
@@ -57,6 +57,21 @@ const icon = (name, cls = 'icon') => `<svg class="${cls}" aria-hidden="true"><us
 const isAdminAccount = () => profile?.role === 'admin';
 const isAdminMode = () => isAdminAccount() && actingMode === 'admin';
 const isMahidolEmail = email => /^[^@\s]+@mahidol\.ac\.th$/i.test(String(email || '').trim());
+const MAHIDOL_DOMAIN = '@mahidol.ac.th';
+const mahidolEmailFromInput = value => {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return '';
+  return raw.includes('@') ? raw : `${raw}${MAHIDOL_DOMAIN}`;
+};
+const mahidolUsernameFromInput = value => {
+  const raw = String(value || '').trim().toLowerCase();
+  return raw.endsWith(MAHIDOL_DOMAIN) ? raw.slice(0, -MAHIDOL_DOMAIN.length) : raw;
+};
+const normalizeMahidolUsernameField = input => {
+  if (!input) return;
+  const normalized = mahidolUsernameFromInput(input.value);
+  if (normalized !== input.value) input.value = normalized;
+};
 
 
 function passwordResetRedirectUrl() {
@@ -669,6 +684,8 @@ async function init() {
     closeModal();
   });
   $('#loginForm').addEventListener('submit', login);
+  ['input','change','blur'].forEach(eventName => $('#loginEmail').addEventListener(eventName, () => normalizeMahidolUsernameField($('#loginEmail'))));
+  requestAnimationFrame(() => normalizeMahidolUsernameField($('#loginEmail')));
   $('#registerBtn').addEventListener('click', register);
   $('#forgotPasswordBtn').addEventListener('click', openForgotPassword);
   $('#logoutBtn').addEventListener('click', logout);
@@ -731,9 +748,9 @@ async function init() {
 async function login(e) {
   e.preventDefault();
   if (!configured) return toast('กรุณาตั้งค่า Supabase ก่อน', true);
-  const email = $('#loginEmail').value.trim().toLowerCase();
+  const email = mahidolEmailFromInput($('#loginEmail').value);
   const password = $('#loginPassword').value;
-  if (!isMahidolEmail(email)) return toast('ใช้ได้เฉพาะอีเมลมหิดล @mahidol.ac.th', true);
+  if (!isMahidolEmail(email)) return toast('กรอกเฉพาะชื่อหน้า @mahidol.ac.th เช่น parichat', true);
   const btn = e.submitter;
   btn.disabled = true;
   const {error} = await sb.auth.signInWithPassword({email, password});
@@ -744,9 +761,9 @@ async function login(e) {
 
 async function register() {
   if (!configured) return toast('กรุณาตั้งค่า Supabase ก่อน', true);
-  const email = $('#loginEmail').value.trim().toLowerCase();
+  const email = mahidolEmailFromInput($('#loginEmail').value);
   const password = $('#loginPassword').value;
-  if (!isMahidolEmail(email)) return toast('ใช้ได้เฉพาะอีเมลมหิดล @mahidol.ac.th', true);
+  if (!isMahidolEmail(email)) return toast('กรอกเฉพาะชื่อหน้า @mahidol.ac.th เช่น parichat', true);
   if (password.length < 6) return toast('ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว', true);
   const {data,error} = await sb.auth.signUp({email, password});
   if (error) {
@@ -761,13 +778,13 @@ async function register() {
 
 function openForgotPassword() {
   if (!configured) return toast('กรุณาตั้งค่า Supabase ก่อน', true);
-  const currentEmail = $('#loginEmail')?.value?.trim().toLowerCase() || '';
-  openModal(`<section class="password-reset-request"><div class="auth-modal-head"><span>${icon('help')}</span><div><p class="eyebrow">Password reset</p><h3>ลืมรหัสผ่าน</h3><p>ระบบจะส่งลิงก์สำหรับตั้งรหัสผ่านใหม่ไปยังอีเมลมหิดลของเจ้าหน้าที่</p></div></div><form id="forgotPasswordForm" class="form-grid"><label>อีเมลมหิดล<input id="forgotPasswordEmail" type="email" inputmode="email" autocomplete="email" value="${esc(currentEmail)}" placeholder="name@mahidol.ac.th" required></label><div class="auth-security-note"><strong>เพื่อความปลอดภัย</strong><span>Admin จะไม่เห็นรหัสผ่านเดิมหรือรหัสผ่านใหม่ เจ้าหน้าที่ต้องเปิดลิงก์จากอีเมลและตั้งรหัสผ่านด้วยตนเอง</span></div><div class="auth-security-note password-email-limit-note"><strong>ข้อจำกัดการส่งอีเมล</strong><span>ระบบส่งอีเมลรีเซ็ตรหัสผ่านได้จำกัดในแต่ละช่วงเวลา หากมีผู้ขอพร้อมกันหลายคน อาจส่งไม่ได้ชั่วคราว กรุณาไม่กดซ้ำ และลองใหม่หลังประมาณ 1 ชั่วโมง</span></div><button class="primary large" type="submit">ส่งลิงก์รีเซ็ตรหัสผ่าน</button><button class="secondary" type="button" data-modal-close>ยกเลิก</button></form></section>`);
+  const currentEmail = mahidolUsernameFromInput($('#loginEmail')?.value || '');
+  openModal(`<section class="password-reset-request"><div class="auth-modal-head"><span>${icon('help')}</span><div><p class="eyebrow">Password reset</p><h3>ลืมรหัสผ่าน</h3><p>กรอกเฉพาะชื่อหน้า @mahidol.ac.th ระบบจะเติมท้ายอีเมลให้อัตโนมัติ</p></div></div><form id="forgotPasswordForm" class="form-grid"><label>อีเมลมหิดล<span class="email-suffix-field"><input id="forgotPasswordEmail" type="text" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" value="${esc(currentEmail)}" placeholder="ชื่อผู้ใช้" required><span class="email-domain" aria-hidden="true">@mahidol.ac.th</span></span></label><div class="auth-security-note"><strong>เพื่อความปลอดภัย</strong><span>Admin จะไม่เห็นรหัสผ่านเดิมหรือรหัสผ่านใหม่ เจ้าหน้าที่ต้องเปิดลิงก์จากอีเมลและตั้งรหัสผ่านด้วยตนเอง</span></div><div class="auth-security-note password-email-limit-note"><strong>ข้อจำกัดการส่งอีเมล</strong><span>ระบบส่งอีเมลรีเซ็ตรหัสผ่านได้จำกัดในแต่ละช่วงเวลา หากมีผู้ขอพร้อมกันหลายคน อาจส่งไม่ได้ชั่วคราว กรุณาไม่กดซ้ำ และลองใหม่หลังประมาณ 1 ชั่วโมง</span></div><button class="primary large" type="submit">ส่งลิงก์รีเซ็ตรหัสผ่าน</button><button class="secondary" type="button" data-modal-close>ยกเลิก</button></form></section>`);
   $('#forgotPasswordForm').addEventListener('submit', async event => {
     event.preventDefault();
     const button = event.submitter || $('#forgotPasswordForm button[type="submit"]');
-    const email = $('#forgotPasswordEmail').value.trim().toLowerCase();
-    if (!isMahidolEmail(email)) return toast('ใช้ได้เฉพาะอีเมลมหิดล @mahidol.ac.th', true);
+    const email = mahidolEmailFromInput($('#forgotPasswordEmail').value);
+    if (!isMahidolEmail(email)) return toast('กรอกเฉพาะชื่อหน้า @mahidol.ac.th เช่น parichat', true);
     button.disabled = true;
     button.textContent = 'กำลังส่งลิงก์...';
     try {
@@ -785,7 +802,11 @@ function openForgotPassword() {
       }
     }
   });
-  requestAnimationFrame(() => $('#forgotPasswordEmail')?.focus({preventScroll:true}));
+  ['input','change','blur'].forEach(eventName => $('#forgotPasswordEmail')?.addEventListener(eventName, () => normalizeMahidolUsernameField($('#forgotPasswordEmail'))));
+  requestAnimationFrame(() => {
+    normalizeMahidolUsernameField($('#forgotPasswordEmail'));
+    $('#forgotPasswordEmail')?.focus({preventScroll:true});
+  });
 }
 
 function isPasswordResetRateLimitError(error) {
@@ -4951,7 +4972,7 @@ async function renderReagentGenerator() {
 }
 
 function renderHelp() {
-  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>สร้างบัญชีครั้งแรก</h3><ol class="help-steps"><li>ใช้เฉพาะอีเมลมหิดล @mahidol.ac.th ที่ Admin อนุญาตไว้</li><li>ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว</li><li>กด “สร้างบัญชีครั้งแรก” แล้วกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</li></ol></div><div class="card help-card"><h3>ลืมรหัสผ่าน</h3><ol class="help-steps"><li>หน้าเข้าสู่ระบบกด “ลืมรหัสผ่าน” แล้วกรอกอีเมลมหิดล</li><li>เปิดลิงก์จากอีเมลและตั้งรหัสผ่านใหม่ด้วยตนเอง</li><li>Admin สามารถกด “ส่งลิงก์รีเซ็ต” จากเมนูผู้ใช้งานได้ แต่จะไม่เห็นหรือกำหนดรหัสผ่านแทนเจ้าหน้าที่</li><li>หากระบบแจ้งว่าส่งอีเมลครบโควตา ให้หยุดกดซ้ำ รอประมาณ 1 ชั่วโมงแล้วลองใหม่ และตรวจทั้ง Inbox กับ Spam</li></ol></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>พิมพ์ชื่อวัสดุบางส่วนแล้วเลือกจากรายการ</li><li>ตรวจชื่อผู้นำเข้าปัจจุบัน ใส่ Lot วันหมดอายุ และจำนวน แล้วบันทึก</li></ol></div><div class="card help-card"><h3>อยู่หน้าเดิมหลังทำรายการ</h3><p>หลังบันทึก แก้ไข ตรวจ หรือรีเฟรชข้อมูล ระบบจะคงอยู่เมนูเดิม แท็บเดิม ตัวกรองเดิม ช่วงวันที่ และตำแหน่งหน้าจอเดิม จนกว่าผู้ใช้งานจะกดเปลี่ยนเมนูหรือแท็บเอง</p></div><div class="card help-card"><h3>นำออก</h3><ol class="help-steps"><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าและวิธีนำออก แล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>หลังบันทึก ระบบคงอยู่ที่หน้า “นำออก” เพื่อสแกนหรือตัดสต๊อกรายการถัดไปได้ทันที ไม่เด้งไปหน้าเมนู</li><li>วัสดุที่ตั้งให้ใช้สติ๊กเกอร์วันเปิด จะไปอยู่ในเมนู “พิมพ์วันเปิดใช้” ให้เลือกพิมพ์เมื่อเปิดใช้จริง โดยรายการล่าสุดอยู่บนสุด</li></ol></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแล</h3><p>แสดงเฉพาะวัสดุที่คุณเป็นผู้ดูแลหลัก โดยมีแท็บภาพรวม ต้องเบิก และตั้งค่าการเตือน ผู้ดูแลหลักเป็นผู้รับผิดชอบวางแผนเบิกและกำหนด Minimum/เกณฑ์แจ้งเตือน</p></div><div class="card help-card"><h3>สต๊อกที่ฉันช่วยดูแล</h3><p>แสดงแยกจากงานหลัก ใช้ติดตามยอดและช่วยเตือนผู้ดูแลหลัก มีแท็บภาพรวมงานช่วยดูแลและช่วยเตือนต้องเบิก โดยไม่มีแท็บตั้งค่าการเตือน</p></div><div class="card help-card"><h3>ตรวจวันศุกร์</h3><p>กด “เปิดหน้าต่างตรวจ Lot” เพื่อกรอกจำนวนจริง หากยอดไม่ตรงให้เลือกเหตุผลและระบุรายละเอียด ผู้ช่วยดูแลตรวจได้จากแท็บ “ฉันช่วยดูแล” แต่ไม่ถูกนับเป็นงานหลักที่รอตรวจ</p></div><div class="card help-card"><h3>สแกนตรวจ Lot</h3><p>เปิดกล้องหรือพิมพ์รหัส QR เพื่อดูยอด Lot ยอดรวม ผู้ดูแล ขั้นต่ำ และยืนยันตรวจหรือปรับยอดได้ทันที</p></div><div class="card help-card"><h3>สถานะผู้ตรวจ</h3><p>เปิดเมนู “สถานะผู้ตรวจ” แล้วกำหนดช่วงวันที่ เพื่อดูว่าแต่ละวันศุกร์ใครตรวจครบหรือยังไม่ครบ</p></div><div class="card help-card"><h3>สติ๊กเกอร์เดิม</h3><p>สติ๊กเกอร์รหัสเดิมยังสแกนได้ ไม่ต้องเปลี่ยนใหม่ทั้งหมด</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบไม่ตัดยอดเอง เปิดตรวจวันศุกร์และกด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์ถัดไป</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมดูได้ในหน้าประวัติและรายงาน</p></div><div class="card help-card"><h3>ประวัติการทำรายการ</h3><p>กรองประวัติตามวันที่ เดือน ปี ช่วงวันที่ ประเภทกิจกรรม และผู้ทำรายการได้ โดยรายการพิมพ์จะแยกให้เห็นว่าเป็น QR Sticker, สติ๊กเกอร์วันเปิดใช้ หรือบาร์โค้ดน้ำยาเข้าเครื่อง พร้อมจำนวนดวง รูปแบบฉลาก และผู้ดำเนินการ</p></div><div class="card help-card"><h3>พิมพ์ QR Sticker ภายหลัง</h3><p>หลังรับเข้าผ่านโทรศัพท์ ให้เปิดเมนู “พิมพ์ QR Sticker” บนคอมพิวเตอร์ที่ต่อเครื่องพิมพ์ รายการรับเข้าจะอยู่ในคิวอัตโนมัติ เลือกจำนวนดวงแล้วกดพิมพ์</p></div><div class="card help-card"><h3>พิมพ์วันเปิดใช้</h3><p>เปิดเมนู “พิมพ์วันเปิดใช้” เลือกรายการนำออก แล้วระบุวัน–เวลาเปิดและอายุหลังเปิด โดยเลือกใช้ถึง EXP ผู้ผลิต, 24 ชั่วโมง, 7 วัน, 28 วัน, 1 เดือน, 3 เดือน, 6 เดือน หรือกำหนดเองได้ ระบบคำนวณวันใช้ได้ถึงให้อัตโนมัติและไม่ให้เกิน EXP ผู้ผลิต</p></div><div class="card help-card"><h3>สร้างสติ๊กเกอร์วันเปิดเอง</h3><p>เลือกวัสดุ กรอก Lot และ EXP ผู้ผลิต ระบุวัน–เวลาเปิดและอายุหลังเปิด ระบบคำนวณวันใช้ได้ถึงและสร้างสติ๊กเกอร์โดยไม่ตัดยอดสต๊อกเพิ่ม</p></div><div class="card help-card"><h3>พิมพ์น้ำยาเข้าเครื่อง</h3><p>Staff เลือกชุดน้ำยาที่ Admin เตรียมไว้ ระบุผู้เปิดใช้ วันเวลาเปิด และวันเวลาหมดอายุ จากนั้นกดพิมพ์ โดยไม่สามารถแก้ชื่อหรือ Barcode ของชุดได้</p></div><div class="card help-card"><h3>จัดการชุดน้ำยาเข้าเครื่อง</h3><p>Admin สร้างชุดน้ำยา เพิ่มรายการทีละรายการ กำหนด Barcode จำนวนดวง และเลือกรูปแบบเต็มดวงหรือเว้นขวา 10 mm ได้ รวมทั้งกดปุ่ม “แก้ไข” เพื่อปรับรายละเอียดชุดเดิม หรือคัดลอกเป็นชุดใหม่เมื่อมีการเปลี่ยนชุดน้ำยา</p></div><div class="card help-card"><h3>ตัวชี้วัด</h3><p>Admin เปิดเมนู “ตัวชี้วัด” เลือกช่วงวันที่ ระบบคำนวณ 12 ตัวชี้วัดจากผู้ใช้ วัสดุ Transaction การตรวจวันศุกร์ สติ๊กเกอร์ และ Audit Log อัตโนมัติ ส่วนเหตุการณ์ใช้เกินวันหลังเปิดหรือข้อร้องเรียนฉลาก ให้กด “บันทึกเหตุการณ์” ในหน้าเดียวกัน และส่งออก CSV ได้</p></div><div class="card help-card"><h3>ตั้งค่าผู้ดูแลระบบ</h3><p>หน้า Admin แยกเป็น 3 เมนูย่อย ได้แก่ ภาพรวม ผู้ใช้งาน และวัสดุและผู้ดูแล โดย Admin เพิ่มวัสดุใหม่พร้อมรหัส ชื่อ หน่วย Minimum เกณฑ์ EXP ผู้ดูแลหลัก ผู้ช่วย และอายุหลังเปิดเริ่มต้นได้</p></div><div class="card help-card"><h3>เครื่องพิมพ์สติ๊กเกอร์</h3><p>ฉลากจริง 25 × 20 mm ระบบใช้รูปแบบสติ๊กเกอร์มาตรฐานเดียวกันทุกเครื่อง พร้อม QR ขนาดใหญ่และขอบขาวมาตรฐาน ในหน้าพิมพ์ Chrome ให้เลือกเครื่องพิมพ์และตั้งกระดาษตามเครื่องที่ใช้งาน ใช้ Scale 100% หรือ Actual size ปิด Header/Footer และใช้ Margin None</p></div></div>`;
+  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>สร้างบัญชีครั้งแรก</h3><ol class="help-steps"><li>กรอกเฉพาะชื่อหน้า @mahidol.ac.th ระบบจะเติมโดเมนให้อัตโนมัติ และใช้ได้เฉพาะบัญชีที่ Admin อนุญาตไว้</li><li>ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว</li><li>กด “สร้างบัญชีครั้งแรก” แล้วกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</li></ol></div><div class="card help-card"><h3>ลืมรหัสผ่าน</h3><ol class="help-steps"><li>หน้าเข้าสู่ระบบกด “ลืมรหัสผ่าน” แล้วกรอกเฉพาะชื่อหน้า @mahidol.ac.th</li><li>เปิดลิงก์จากอีเมลและตั้งรหัสผ่านใหม่ด้วยตนเอง</li><li>Admin สามารถกด “ส่งลิงก์รีเซ็ต” จากเมนูผู้ใช้งานได้ แต่จะไม่เห็นหรือกำหนดรหัสผ่านแทนเจ้าหน้าที่</li><li>หากระบบแจ้งว่าส่งอีเมลครบโควตา ให้หยุดกดซ้ำ รอประมาณ 1 ชั่วโมงแล้วลองใหม่ และตรวจทั้ง Inbox กับ Spam</li></ol></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>พิมพ์ชื่อวัสดุบางส่วนแล้วเลือกจากรายการ</li><li>ตรวจชื่อผู้นำเข้าปัจจุบัน ใส่ Lot วันหมดอายุ และจำนวน แล้วบันทึก</li></ol></div><div class="card help-card"><h3>อยู่หน้าเดิมหลังทำรายการ</h3><p>หลังบันทึก แก้ไข ตรวจ หรือรีเฟรชข้อมูล ระบบจะคงอยู่เมนูเดิม แท็บเดิม ตัวกรองเดิม ช่วงวันที่ และตำแหน่งหน้าจอเดิม จนกว่าผู้ใช้งานจะกดเปลี่ยนเมนูหรือแท็บเอง</p></div><div class="card help-card"><h3>นำออก</h3><ol class="help-steps"><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าและวิธีนำออก แล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>หลังบันทึก ระบบคงอยู่ที่หน้า “นำออก” เพื่อสแกนหรือตัดสต๊อกรายการถัดไปได้ทันที ไม่เด้งไปหน้าเมนู</li><li>วัสดุที่ตั้งให้ใช้สติ๊กเกอร์วันเปิด จะไปอยู่ในเมนู “พิมพ์วันเปิดใช้” ให้เลือกพิมพ์เมื่อเปิดใช้จริง โดยรายการล่าสุดอยู่บนสุด</li></ol></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแล</h3><p>แสดงเฉพาะวัสดุที่คุณเป็นผู้ดูแลหลัก โดยมีแท็บภาพรวม ต้องเบิก และตั้งค่าการเตือน ผู้ดูแลหลักเป็นผู้รับผิดชอบวางแผนเบิกและกำหนด Minimum/เกณฑ์แจ้งเตือน</p></div><div class="card help-card"><h3>สต๊อกที่ฉันช่วยดูแล</h3><p>แสดงแยกจากงานหลัก ใช้ติดตามยอดและช่วยเตือนผู้ดูแลหลัก มีแท็บภาพรวมงานช่วยดูแลและช่วยเตือนต้องเบิก โดยไม่มีแท็บตั้งค่าการเตือน</p></div><div class="card help-card"><h3>ตรวจวันศุกร์</h3><p>กด “เปิดหน้าต่างตรวจ Lot” เพื่อกรอกจำนวนจริง หากยอดไม่ตรงให้เลือกเหตุผลและระบุรายละเอียด ผู้ช่วยดูแลตรวจได้จากแท็บ “ฉันช่วยดูแล” แต่ไม่ถูกนับเป็นงานหลักที่รอตรวจ</p></div><div class="card help-card"><h3>สแกนตรวจ Lot</h3><p>เปิดกล้องหรือพิมพ์รหัส QR เพื่อดูยอด Lot ยอดรวม ผู้ดูแล ขั้นต่ำ และยืนยันตรวจหรือปรับยอดได้ทันที</p></div><div class="card help-card"><h3>สถานะผู้ตรวจ</h3><p>เปิดเมนู “สถานะผู้ตรวจ” แล้วกำหนดช่วงวันที่ เพื่อดูว่าแต่ละวันศุกร์ใครตรวจครบหรือยังไม่ครบ</p></div><div class="card help-card"><h3>สติ๊กเกอร์เดิม</h3><p>สติ๊กเกอร์รหัสเดิมยังสแกนได้ ไม่ต้องเปลี่ยนใหม่ทั้งหมด</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบไม่ตัดยอดเอง เปิดตรวจวันศุกร์และกด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์ถัดไป</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมดูได้ในหน้าประวัติและรายงาน</p></div><div class="card help-card"><h3>ประวัติการทำรายการ</h3><p>กรองประวัติตามวันที่ เดือน ปี ช่วงวันที่ ประเภทกิจกรรม และผู้ทำรายการได้ โดยรายการพิมพ์จะแยกให้เห็นว่าเป็น QR Sticker, สติ๊กเกอร์วันเปิดใช้ หรือบาร์โค้ดน้ำยาเข้าเครื่อง พร้อมจำนวนดวง รูปแบบฉลาก และผู้ดำเนินการ</p></div><div class="card help-card"><h3>พิมพ์ QR Sticker ภายหลัง</h3><p>หลังรับเข้าผ่านโทรศัพท์ ให้เปิดเมนู “พิมพ์ QR Sticker” บนคอมพิวเตอร์ที่ต่อเครื่องพิมพ์ รายการรับเข้าจะอยู่ในคิวอัตโนมัติ เลือกจำนวนดวงแล้วกดพิมพ์</p></div><div class="card help-card"><h3>พิมพ์วันเปิดใช้</h3><p>เปิดเมนู “พิมพ์วันเปิดใช้” เลือกรายการนำออก แล้วระบุวัน–เวลาเปิดและอายุหลังเปิด โดยเลือกใช้ถึง EXP ผู้ผลิต, 24 ชั่วโมง, 7 วัน, 28 วัน, 1 เดือน, 3 เดือน, 6 เดือน หรือกำหนดเองได้ ระบบคำนวณวันใช้ได้ถึงให้อัตโนมัติและไม่ให้เกิน EXP ผู้ผลิต</p></div><div class="card help-card"><h3>สร้างสติ๊กเกอร์วันเปิดเอง</h3><p>เลือกวัสดุ กรอก Lot และ EXP ผู้ผลิต ระบุวัน–เวลาเปิดและอายุหลังเปิด ระบบคำนวณวันใช้ได้ถึงและสร้างสติ๊กเกอร์โดยไม่ตัดยอดสต๊อกเพิ่ม</p></div><div class="card help-card"><h3>พิมพ์น้ำยาเข้าเครื่อง</h3><p>Staff เลือกชุดน้ำยาที่ Admin เตรียมไว้ ระบุผู้เปิดใช้ วันเวลาเปิด และวันเวลาหมดอายุ จากนั้นกดพิมพ์ โดยไม่สามารถแก้ชื่อหรือ Barcode ของชุดได้</p></div><div class="card help-card"><h3>จัดการชุดน้ำยาเข้าเครื่อง</h3><p>Admin สร้างชุดน้ำยา เพิ่มรายการทีละรายการ กำหนด Barcode จำนวนดวง และเลือกรูปแบบเต็มดวงหรือเว้นขวา 10 mm ได้ รวมทั้งกดปุ่ม “แก้ไข” เพื่อปรับรายละเอียดชุดเดิม หรือคัดลอกเป็นชุดใหม่เมื่อมีการเปลี่ยนชุดน้ำยา</p></div><div class="card help-card"><h3>ตัวชี้วัด</h3><p>Admin เปิดเมนู “ตัวชี้วัด” เลือกช่วงวันที่ ระบบคำนวณ 12 ตัวชี้วัดจากผู้ใช้ วัสดุ Transaction การตรวจวันศุกร์ สติ๊กเกอร์ และ Audit Log อัตโนมัติ ส่วนเหตุการณ์ใช้เกินวันหลังเปิดหรือข้อร้องเรียนฉลาก ให้กด “บันทึกเหตุการณ์” ในหน้าเดียวกัน และส่งออก CSV ได้</p></div><div class="card help-card"><h3>ตั้งค่าผู้ดูแลระบบ</h3><p>หน้า Admin แยกเป็น 3 เมนูย่อย ได้แก่ ภาพรวม ผู้ใช้งาน และวัสดุและผู้ดูแล โดย Admin เพิ่มวัสดุใหม่พร้อมรหัส ชื่อ หน่วย Minimum เกณฑ์ EXP ผู้ดูแลหลัก ผู้ช่วย และอายุหลังเปิดเริ่มต้นได้</p></div><div class="card help-card"><h3>เครื่องพิมพ์สติ๊กเกอร์</h3><p>ฉลากจริง 25 × 20 mm ระบบใช้รูปแบบสติ๊กเกอร์มาตรฐานเดียวกันทุกเครื่อง พร้อม QR ขนาดใหญ่และขอบขาวมาตรฐาน ในหน้าพิมพ์ Chrome ให้เลือกเครื่องพิมพ์และตั้งกระดาษตามเครื่องที่ใช้งาน ใช้ Scale 100% หรือ Actual size ปิด Header/Footer และใช้ Margin None</p></div></div>`;
   refreshInstallUI();
 }
 

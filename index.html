@@ -9,14 +9,14 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="CNMI Inventory">
-  <link rel="manifest" href="manifest.webmanifest?v=1.4.74">
+  <link rel="manifest" href="manifest.webmanifest?v=1.4.75">
   <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
   <link rel="apple-touch-icon" sizes="76x76" href="icons/icon-76.png">
   <link rel="apple-touch-icon" sizes="120x120" href="icons/icon-120.png">
   <link rel="apple-touch-icon" sizes="152x152" href="icons/icon-152.png">
   <link rel="apple-touch-icon" sizes="167x167" href="icons/icon-167.png">
   <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png">
-  <link rel="stylesheet" href="assets/app.css?v=1.4.74">
+  <link rel="stylesheet" href="assets/app.css?v=1.4.75">
   <title>CNMI Inventory</title>
 </head>
 <body>
@@ -67,8 +67,11 @@
         </div>
       </div>
       <form id="loginForm" class="stack login-form">
-        <label>อีเมล
-          <input id="loginEmail" type="email" autocomplete="username" required placeholder="name@mahidol.ac.th" inputmode="email">
+        <label>อีเมลมหิดล
+          <span class="email-suffix-field">
+            <input id="loginEmail" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required placeholder="ชื่อผู้ใช้" inputmode="email" aria-label="ชื่อผู้ใช้อีเมลมหิดล">
+            <span class="email-domain" aria-hidden="true">@mahidol.ac.th</span>
+          </span>
         </label>
         <label>รหัสผ่าน
           <input id="loginPassword" type="password" autocomplete="current-password" minlength="6" required>
@@ -79,7 +82,7 @@
       </form>
       <div class="login-help">
         <svg class="icon"><use href="#i-help"></use></svg>
-        <span><strong>ครั้งแรก:</strong> ใช้อีเมลมหิดลที่ได้รับสิทธิ์ ตั้งรหัสผ่านสำหรับแอป แล้วกด “สร้างบัญชีครั้งแรก” จากนั้นกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</span>
+        <span><strong>ครั้งแรก:</strong> กรอกเฉพาะชื่อหน้า <strong>@mahidol.ac.th</strong> ระบบจะเติมท้ายอีเมลให้อัตโนมัติ จากนั้นตั้งรหัสผ่านและกด “สร้างบัญชีครั้งแรก”</span>
       </div>
       <section class="install-panel" aria-label="ติดตั้งแอปบนโทรศัพท์">
         <div class="install-panel-head">
@@ -140,7 +143,7 @@
         <button class="side-link" data-open-install type="button"><svg class="nav-icon"><use href="#i-smartphone"></use></svg><span>ติดตั้งแอป</span></button>
         <button class="side-link" data-route="help"><svg class="nav-icon"><use href="#i-help"></use></svg><span>คู่มือ</span></button>
       </nav>
-      <div class="sidebar-version">Version 1.4.74</div>
+      <div class="sidebar-version">Version 1.4.75</div>
     </aside>
 
     <div class="content-shell">
@@ -176,7 +179,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="third_party/jsQR-1.4.0.js?v=1.4.30" data-jsqr-loader="1"></script>
-  <script src="assets/config.js?v=1.4.74"></script>
-  <script src="assets/app.js?v=1.4.74"></script>
+  <script src="assets/config.js?v=1.4.75"></script>
+  <script src="assets/app.js?v=1.4.75"></script>
 </body>
 </html>
