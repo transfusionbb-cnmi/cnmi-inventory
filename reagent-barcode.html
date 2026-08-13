@@ -131,46 +131,40 @@ function encodeCode128(text){
   return codes;
 }
 
-function barcodeRaster203(text){
-  // Render Code 128 on exact 203 dpi printer dots to avoid fractional-width bars,
-  // but keep the original physical width close to v1.4.70 so the preview does not look oversized.
+function addBarcode(svg,text,x,y){
+  // v1.4.74: draw Code 128 as SVG vector bars instead of embedding a PNG/canvas.
+  // The previous raster image could be resampled by Chrome/printer drivers and print as
+  // dotted/jagged vertical bars. Each narrow module below is fixed at exactly 2 printer
+  // dots for a 203 dpi (8 dots/mm) printer: 0.25 mm = 2.5 SVG units.
   const codes=encodeCode128(text);
   const quietModules=10;
-  const moduleDots=2; // 132 modules × 2 dots = 264 dots ≈ 33.0 mm, same feel as the original layout.
+  const moduleDots=2;
+  const moduleUnits=(moduleDots/8)*10; // 2 dots / 8 dots-per-mm × 10 SVG units-per-mm = 2.5
+  const barHeight=95; // 9.5 mm
+  let cursor=quietModules*moduleUnits;
   let symbolModules=0;
-  codes.forEach(code=>{symbolModules+=CODE128_PATTERNS[code].split('').reduce((sum,n)=>sum+Number(n),0);});
+  codes.forEach(code=>{
+    symbolModules+=CODE128_PATTERNS[code].split('').reduce((sum,n)=>sum+Number(n),0);
+  });
   const totalModules=symbolModules+(quietModules*2);
-  const widthDots=totalModules*moduleDots;
-  const heightDots=76; // 9.5 mm
-  const canvas=document.createElement('canvas');
-  canvas.width=widthDots; canvas.height=heightDots;
-  const ctx=canvas.getContext('2d',{alpha:false});
-  ctx.imageSmoothingEnabled=false;
-  ctx.fillStyle='#fff'; ctx.fillRect(0,0,widthDots,heightDots);
-  ctx.fillStyle='#000';
-  let cursor=quietModules*moduleDots;
+  const widthUnits=totalModules*moduleUnits;
+  const group=svgNode('g',{
+    transform:`translate(${x} ${y})`,
+    'shape-rendering':'crispEdges'
+  });
+  group.appendChild(svgNode('rect',{x:0,y:0,width:widthUnits,height:barHeight,fill:'#fff'}));
   codes.forEach(code=>{
     const pattern=CODE128_PATTERNS[code];
     for(let i=0;i<pattern.length;i+=1){
-      const w=Number(pattern[i])*moduleDots;
-      if(i%2===0)ctx.fillRect(cursor,0,w,heightDots);
+      const w=Number(pattern[i])*moduleUnits;
+      if(i%2===0){
+        group.appendChild(svgNode('rect',{x:cursor,y:0,width:w,height:barHeight,fill:'#000'}));
+      }
       cursor+=w;
     }
   });
-  return {dataUrl:canvas.toDataURL('image/png'),widthDots,heightDots,moduleDots,totalModules};
-}
-function addBarcode(svg,text,x,y){
-  const raster=barcodeRaster203(text);
-  const widthUnits=(raster.widthDots/8)*10;
-  const heightUnits=(raster.heightDots/8)*10;
-  const image=svgNode('image',{
-    x,y,width:widthUnits,height:heightUnits,
-    href:raster.dataUrl,
-    preserveAspectRatio:'none'
-  });
-  image.style.imageRendering='pixelated';
-  svg.appendChild(image);
-  return {x,width:widthUnits,height:heightUnits,moduleDots:raster.moduleDots};
+  svg.appendChild(group);
+  return {x,width:widthUnits,height:barHeight,moduleDots};
 }
 function makeLabel(row,payload){
   const page=document.createElement('div'); page.className='label-page';
