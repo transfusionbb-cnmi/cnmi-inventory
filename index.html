@@ -1,182 +1,266 @@
 <!doctype html>
 <html lang="th">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#087b6f">
-  <meta name="description" content="ระบบบริหารจัดการสต๊อกวัสดุและเวชภัณฑ์ หน่วยเวชศาสตร์บริการโลหิต CNMI">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="CNMI Inventory">
-  <link rel="manifest" href="manifest.webmanifest?v=1.4.74">
-  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
-  <link rel="apple-touch-icon" sizes="76x76" href="icons/icon-76.png">
-  <link rel="apple-touch-icon" sizes="120x120" href="icons/icon-120.png">
-  <link rel="apple-touch-icon" sizes="152x152" href="icons/icon-152.png">
-  <link rel="apple-touch-icon" sizes="167x167" href="icons/icon-167.png">
-  <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png">
-  <link rel="stylesheet" href="assets/app.css?v=1.4.74">
-  <title>CNMI Inventory</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Staff Planner | Blood Bank CNMI</title>
+  <meta name="description" content="ระบบจัดตารางเวร ขายเวร เบิก OT และ Export HR ของหน่วยเวชศาสตร์บริการโลหิต CNMI" />
+  <meta name="theme-color" content="#80caff" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Staff Planner" />
+  <link rel="manifest" href="site.webmanifest?v=324" />
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=303" />
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png?v=303" />
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png?v=303" />
+  <link rel="shortcut icon" href="favicon.ico?v=303" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@400;500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css?v=423" />
+  <link rel="stylesheet" href="pwa-install-v303.css?v=305" />
+  <link rel="stylesheet" href="donor-helper-v327.css?v=344" />
 </head>
 <body>
-  <svg class="svg-sprite" aria-hidden="true">
-    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5v9a1.5 1.5 0 0 1-1.5 1.5H15v-7H9v7H4.5A1.5 1.5 0 0 1 3 19.5z"/></symbol>
-    <symbol id="i-box" viewBox="0 0 24 24"><path d="m4 7 8-4 8 4-8 4z"/><path d="M4 7v10l8 4 8-4V7M12 11v10"/></symbol>
-    <symbol id="i-swap" viewBox="0 0 24 24"><path d="M7 7h12l-3-3m3 3-3 3M17 17H5l3 3m-3-3 3-3"/></symbol>
-    <symbol id="i-check" viewBox="0 0 24 24"><path d="M9 11.5 11 14l4.5-5"/><rect x="4" y="3" width="16" height="18" rx="3"/><path d="M8 3.5h8"/></symbol>
-    <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></symbol>
-    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></symbol>
-    <symbol id="i-print" viewBox="0 0 24 24"><path d="M7 9V3h10v6M7 17H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/><path d="M7 14h10v7H7z"/></symbol>
-    <symbol id="i-qr" viewBox="0 0 24 24"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM15 14h2v2h-2zM19 14h2v4h-2zM14 19h4v2h-4zM20 20h1v1h-1z"/></symbol>
-    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
-    <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
-    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.8 1.8 0 0 0 .4 2l.1.1-2.8 2.8-.1-.1a1.8 1.8 0 0 0-2-.4 1.8 1.8 0 0 0-1.1 1.6V21h-4v-.1A1.8 1.8 0 0 0 8.8 19a1.8 1.8 0 0 0-2 .4l-.1.1-2.8-2.8.1-.1a1.8 1.8 0 0 0 .4-2A1.8 1.8 0 0 0 3 13.5H3v-4h.1A1.8 1.8 0 0 0 4.7 8.4a1.8 1.8 0 0 0-.4-2l-.1-.1 2.8-2.8.1.1a1.8 1.8 0 0 0 2 .4A1.8 1.8 0 0 0 10.2 2.4V2h4v.4A1.8 1.8 0 0 0 15.3 4a1.8 1.8 0 0 0 2-.4l.1-.1 2.8 2.8-.1.1a1.8 1.8 0 0 0-.4 2 1.8 1.8 0 0 0 1.6 1.1h.1v4h-.1A1.8 1.8 0 0 0 19.4 15z"/></symbol>
-    <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.8 9a2.3 2.3 0 1 1 3.4 2c-.8.5-1.2 1-1.2 2M12 17h.01"/></symbol>
-    <symbol id="i-logout" viewBox="0 0 24 24"><path d="M14 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2v-3M10 12h11m-4-4 4 4-4 4"/></symbol>
-    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3 2.8 20h18.4z"/><path d="M12 9v5M12 17h.01"/></symbol>
-    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18"/></symbol>
-    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
-    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
-    <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 3h7v7M21 3l-9 9"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
-    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 7h3l1.5-2h7L17 7h3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z"/><circle cx="12" cy="13" r="4"/></symbol>
-    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 6v5h-5"/><path d="M18.5 15a7 7 0 1 1-.5-7l2 3"/></symbol>
-    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m-4-4 4 4 4-4"/><path d="M4 19h16"/></symbol>
-    <symbol id="i-smartphone" viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M10 5h4M11 19h2"/></symbol>
-    <symbol id="i-share" viewBox="0 0 24 24"><path d="M12 16V3m-4 4 4-4 4 4"/><path d="M5 11v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8"/></symbol>
-    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
-    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/><path d="m4 8 6-5 6 8 5-5"/></symbol>
-  </svg>
+  <div id="setupWarning" class="setup-warning hidden">
+    <b>ยังไม่ได้ตั้งค่า config.js</b>
+    <span>กรุณาใส่ SUPABASE_URL และ SUPABASE_ANON_KEY ก่อนใช้งานจริง</span>
+  </div>
 
-  <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <div id="modal" class="modal hidden" aria-hidden="true">
-    <div class="modal-card" role="dialog" aria-modal="true">
-      <button class="icon-button modal-close" aria-label="ปิด"><span aria-hidden="true">×</span></button>
+  <section id="authView" class="auth-view">
+    <div class="auth-card">
+      <div class="brand-mark"><img src="app-icon-1024.png?v=299" alt="CNMI Staff Planner"></div>
+      <h1>ระบบเวรและกิจกรรมหน่วยงาน</h1>
+      <p class="muted">กรอก Username หรือ อีเมล Mahidol และ Password เพื่อเข้าสู่ระบบ</p>
+
+      <div class="auth-tabs hidden" aria-hidden="true">
+        <button class="auth-tab active" data-auth-tab="login" type="button">เข้าสู่ระบบ</button>
+        <button class="auth-tab" data-auth-tab="setupPassword" type="button">Login ครั้งแรก / ลืมรหัสผ่าน</button>
+      </div>
+
+      <form id="loginForm" class="auth-panel active">
+        <label>Username หรือ อีเมล Mahidol
+          <input id="loginEmail" type="text" placeholder="Username หรือ name@mahidol.ac.th" autocomplete="username" required>
+        </label>
+        <label>รหัสผ่าน
+          <span class="password-field">
+            <input id="loginPassword" type="password" placeholder="เช่น CNMI@รหัสพนักงาน" autocomplete="current-password" required>
+            <button class="password-toggle" type="button" data-toggle-password="loginPassword" aria-label="แสดงรหัสผ่าน" aria-pressed="false">👁</button>
+          </span>
+        </label>
+        <button class="primary-btn full-btn" type="submit">เข้าสู่ระบบ</button>
+        <p class="hint login-helper-text">สำหรับการล็อกอินครั้งแรก หรือ ลืมรหัสผ่าน กรุณาใช้อีเมลมหิดล ส่วนรหัสผ่านคือ CNMI@ ตามด้วยรหัสพนักงาน</p>
+      </form>
+
+      <form id="setupPasswordForm" class="auth-panel hidden" aria-hidden="true">
+        <label>อีเมล Mahidol
+          <input id="setupPasswordEmail" type="email" placeholder="name@mahidol.ac.th" autocomplete="username">
+        </label>
+        <button class="primary-btn full-btn" type="submit">ส่งลิงก์ตั้งรหัสผ่าน</button>
+        <p class="hint">ระบบจะส่งลิงก์เฉพาะอีเมลที่อยู่ในรายชื่อเจ้าหน้าที่และเปิดใช้งานแล้วเท่านั้น</p>
+      </form>
+
+      <form id="resetPasswordForm" class="auth-panel reset-panel hidden">
+        <label>ตั้งชื่อผู้ใช้
+          <input id="recoveryLoginName" type="text" placeholder="เช่น user หรือ gift123 หรือ 012345" autocomplete="username" required>
+        </label>
+        <label>รหัสผ่านใหม่
+          <span class="password-field">
+            <input id="newPassword" type="password" placeholder="รหัสผ่านใหม่" autocomplete="new-password" required>
+            <button class="password-toggle" type="button" data-toggle-password="newPassword" aria-label="แสดงรหัสผ่าน" aria-pressed="false">👁</button>
+          </span>
+        </label>
+        <button class="primary-btn full-btn" type="submit">บันทึกชื่อผู้ใช้และรหัสผ่านใหม่</button>
+        <p class="hint">ชื่อผู้ใช้ใช้ตัวอักษรอังกฤษหรือตัวเลขได้ เช่น user, gift123, 012345</p>
+      </form>
+    </div>
+  </section>
+
+  <section id="appView" class="app-view hidden">
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-head">
+        <div class="brand-icon"><img src="app-icon-1024.png?v=299" alt="" aria-hidden="true"></div>
+        <div>
+          <div class="app-title">Staff Planner</div>
+          <div class="app-subtitle">Blood Bank CNMI</div>
+        </div>
+      </div>
+      <nav id="mainNav" class="main-nav"></nav>
+      <div class="sidebar-foot">
+        <a class="inventory-app-link full-btn" href="https://inventory.cnmiblood.com/" rel="external noopener" data-open-installed-app="inventory" aria-label="เปิดแอพคลังวัสดุ Inventory">
+          <span class="inventory-app-link-icon" aria-hidden="true">▦</span>
+          <span><b>คลังวัสดุ Inventory</b><small>เปิดแอพที่ติดตั้งไว้</small></span>
+        </a>
+        <div id="userMini" class="user-mini"></div>
+        <button id="logoutBtn" class="danger-ghost full-btn">Log Out</button>
+      </div>
+    </aside>
+
+    <main class="main-panel">
+      <header class="topbar">
+        <button id="mobileMenuBtn" class="icon-btn">☰</button>
+        <div>
+          <h2 id="pageTitle">Dashboard</h2>
+          <p id="pageSubtitle" class="muted">ภาพรวมวันนี้</p>
+        </div>
+        <div class="topbar-actions">
+          <span id="syncStatus" class="sync-status">พร้อมใช้งาน</span>
+          <button id="reloadBtn" class="ghost-btn">รีเฟรช</button>
+        </div>
+      </header>
+      <div id="pageContent" class="page-content"></div>
+    </main>
+  </section>
+
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <button id="modalClose" class="modal-close">×</button>
       <div id="modalBody"></div>
     </div>
   </div>
 
-  <main id="loginView" class="login-shell">
-    <section class="login-card">
-      <div class="login-brand">
-        <img src="icons/icon-192.png" alt="" class="login-logo">
-        <div>
-          <p class="eyebrow">หน่วยเวชศาสตร์บริการโลหิต</p>
-          <h1>CNMI Inventory</h1>
-          <p class="muted">ระบบบริหารจัดการสต๊อกวัสดุและเวชภัณฑ์</p>
-        </div>
-      </div>
-      <form id="loginForm" class="stack login-form">
-        <label>อีเมล
-          <input id="loginEmail" type="email" autocomplete="username" required placeholder="name@mahidol.ac.th" inputmode="email">
-        </label>
-        <label>รหัสผ่าน
-          <input id="loginPassword" type="password" autocomplete="current-password" minlength="6" required>
-        </label>
-        <button class="primary large" type="submit">เข้าสู่ระบบ</button>
-        <button class="secondary" type="button" id="registerBtn">สร้างบัญชีครั้งแรก</button>
-        <button class="text-button forgot-password-button" type="button" id="forgotPasswordBtn">ลืมรหัสผ่าน</button>
-      </form>
-      <div class="login-help">
-        <svg class="icon"><use href="#i-help"></use></svg>
-        <span><strong>ครั้งแรก:</strong> ใช้อีเมลมหิดลที่ได้รับสิทธิ์ ตั้งรหัสผ่านสำหรับแอป แล้วกด “สร้างบัญชีครั้งแรก” จากนั้นกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</span>
-      </div>
-      <section class="install-panel" aria-label="ติดตั้งแอปบนโทรศัพท์">
-        <div class="install-panel-head">
-          <span class="install-panel-icon"><svg class="icon"><use href="#i-smartphone"></use></svg></span>
-          <div><strong>ติดตั้งเป็นแอปบนโทรศัพท์</strong><small data-install-status>เลือก Android หรือ iPhone/iPad</small></div>
-        </div>
-        <div class="install-actions">
-          <button class="install-platform-btn android" type="button" data-install-platform="android">
-            <svg class="icon"><use href="#i-download"></use></svg><span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span>
-          </button>
-          <button class="install-platform-btn ios" type="button" data-install-platform="ios">
-            <svg class="icon"><use href="#i-share"></use></svg><span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span>
-          </button>
-        </div>
-      </section>
-      <p id="setupWarning" class="notice hidden"></p>
-    </section>
-  </main>
-
-  <div id="appView" class="app hidden">
-    <aside class="desktop-sidebar" aria-label="เมนูหลักสำหรับคอมพิวเตอร์">
-      <div class="sidebar-brand">
-        <img src="icons/icon-72.png" alt="" class="sidebar-logo">
-        <div><strong>CNMI Inventory</strong><small>ระบบบริหารจัดการสต๊อก</small></div>
-      </div>
-
-      <section class="role-switch-card admin-account-only hidden" aria-label="เลือกโหมดการทำงาน">
-        <span>ทำงานในบทบาท</span>
-        <div class="role-segment">
-          <button data-role-mode="staff" type="button">Staff</button>
-          <button data-role-mode="admin" type="button">Admin</button>
-        </div>
-        <small id="roleModeLabel">โหมดเจ้าหน้าที่</small>
-      </section>
-
-      <nav class="side-nav" aria-label="เมนูคอมพิวเตอร์">
-        <button class="side-link" data-route="home"><svg class="nav-icon"><use href="#i-home"></use></svg><span>หน้าหลัก</span></button>
-        <button class="side-link" data-route="stock"><svg class="nav-icon"><use href="#i-box"></use></svg><span>ค้นหาสต๊อกทั้งหมด</span></button>
-        <button class="side-link" data-route="my-stock"><svg class="nav-icon"><use href="#i-user"></use></svg><span>สต๊อกที่ฉันดูแล</span></button>
-        <button class="side-link" data-route="assisted-stock"><svg class="nav-icon"><use href="#i-user"></use></svg><span>สต๊อกที่ฉันช่วยดูแล</span></button>
-        <button class="side-link" data-route="usage"><svg class="nav-icon"><use href="#i-chart"></use></svg><span>วิเคราะห์การใช้</span></button>
-        <button class="side-link urgent-link" data-route="urgent"><svg class="nav-icon"><use href="#i-alert"></use></svg><span>ต้องเบิกด่วน</span><b id="urgentBadge" class="nav-badge hidden">0</b></button>
-        <button class="side-link" data-route="move" data-move-tab="receive"><svg class="nav-icon"><use href="#i-plus"></use></svg><span>นำเข้า</span></button>
-        <button class="side-link" data-route="move" data-move-tab="issue"><svg class="nav-icon"><use href="#i-minus"></use></svg><span>นำออก</span></button>
-        <button class="side-link" data-route="weekly"><svg class="nav-icon"><use href="#i-check"></use></svg><span>ตรวจวันศุกร์</span></button>
-        <button class="side-link" data-route="scan-stock"><svg class="nav-icon"><use href="#i-camera"></use></svg><span>สแกนตรวจ Lot</span></button>
-        <button class="side-link" data-route="weekly-status"><svg class="nav-icon"><use href="#i-user"></use></svg><span>สถานะผู้ตรวจ</span></button>
-        <button class="side-link" data-route="labels"><svg class="nav-icon"><use href="#i-print"></use></svg><span>พิมพ์ QR Sticker</span></button>
-        <button class="side-link" data-route="open-labels"><svg class="nav-icon"><use href="#i-print"></use></svg><span>พิมพ์วันเปิดใช้</span></button>
-        <button class="side-link" data-route="open-label-create"><svg class="nav-icon"><use href="#i-plus"></use></svg><span>สร้างสติ๊กเกอร์วันเปิด</span></button>
-        <button class="side-link" data-route="reagent-print"><svg class="nav-icon"><use href="#i-print"></use></svg><span>พิมพ์น้ำยาเข้าเครื่อง</span></button>
-        <button class="side-link admin-only hidden" data-route="reagent-set-admin"><svg class="nav-icon"><use href="#i-settings"></use></svg><span>จัดการชุดน้ำยาเข้าเครื่อง</span></button>
-        <button class="side-link" data-route="activity"><svg class="nav-icon"><use href="#i-history"></use></svg><span>ประวัติ</span></button>
-        <div class="side-divider"></div>
-        <button class="side-link" data-route="reports"><svg class="nav-icon"><use href="#i-download"></use></svg><span>รายงาน & ส่งออก</span></button>
-        <button class="side-link admin-only hidden" data-route="indicators"><svg class="nav-icon"><use href="#i-chart"></use></svg><span>ตัวชี้วัด</span></button>
-        <button class="side-link admin-only hidden" data-route="admin"><svg class="nav-icon"><use href="#i-settings"></use></svg><span>ตั้งค่า</span></button>
-        <button class="side-link" data-open-install type="button"><svg class="nav-icon"><use href="#i-smartphone"></use></svg><span>ติดตั้งแอป</span></button>
-        <button class="side-link" data-route="help"><svg class="nav-icon"><use href="#i-help"></use></svg><span>คู่มือ</span></button>
-      </nav>
-      <div class="sidebar-version">Version 1.4.74</div>
-    </aside>
-
-    <div class="content-shell">
-      <header class="topbar">
-        <div class="topbar-brand">
-          <img src="icons/icon-72.png" alt="" class="topbar-logo">
-          <div><strong>CNMI Inventory</strong><small id="userBadge"></small></div>
-        </div>
-        <div class="top-actions">
-          <div class="top-role-switch admin-account-only hidden" aria-label="เลือกโหมดการทำงาน">
-            <button data-role-mode="staff" type="button">Staff</button>
-            <button data-role-mode="admin" type="button">Admin</button>
-          </div>
-          <a class="app-switch-link" id="staffPlannerLink" href="https://staff.cnmiblood.com" target="_blank" rel="noopener noreferrer" title="เปิด Staff Planner">
-            <span>Staff Planner</span><svg class="icon"><use href="#i-external"></use></svg>
-          </a>
-          <button class="icon-button admin-only hidden" data-route="admin" title="ตั้งค่า" aria-label="ตั้งค่า"><svg class="icon"><use href="#i-settings"></use></svg></button>
-          <button class="icon-button" data-route="help" title="คู่มือ" aria-label="คู่มือ"><svg class="icon"><use href="#i-help"></use></svg></button>
-          <button class="icon-button" id="logoutBtn" title="ออกจากระบบ" aria-label="ออกจากระบบ"><svg class="icon"><use href="#i-logout"></use></svg></button>
-        </div>
-      </header>
-
-      <main id="page" class="page"></main>
-
-      <nav class="bottom-nav" aria-label="เมนูหลักบนมือถือ">
-        <button data-route="home"><svg class="nav-icon"><use href="#i-home"></use></svg><small>ภาพรวม</small></button>
-        <button data-route="move" data-move-tab="issue"><svg class="nav-icon"><use href="#i-swap"></use></svg><small>ทำรายการ</small></button>
-        <button data-route="urgent" class="mobile-urgent"><svg class="nav-icon"><use href="#i-alert"></use></svg><small>ติดตาม</small></button>
-        <button type="button" data-mobile-menu><svg class="nav-icon"><use href="#i-menu"></use></svg><small>เมนู</small></button>
-      </nav>
-    </div>
-  </div>
+  <div id="toast" class="toast hidden"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="third_party/jsQR-1.4.0.js?v=1.4.30" data-jsqr-loader="1"></script>
-  <script src="assets/config.js?v=1.4.74"></script>
-  <script src="assets/app.js?v=1.4.74"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="config.js?v=422"></script>
+  <script src="patch-v136-preauth.js?v=298"></script>
+  <script src="patch-v315-interaction-preload.js?v=323"></script>
+  <script src="patch-v316-egress-preload.js?v=323"></script>
+  <script src="patch-v316-navigation-preload.js?v=323"></script>
+  <script src="app.js?v=392-leave-wording"></script>
+  <script src="patch-v136-auth-layout-tabs-final.js?v=298"></script>
+  <script src="patch-v137-critical-regression-restore.js?v=298"></script>
+  <script src="patch-v138-password-complete-redirect.js?v=298"></script>
+  <script src="patch-v140-long-leave-balance-admin.js?v=298"></script>
+  <script src="patch-v141-admin-long-leave-ui-force.js?v=298"></script>
+  <script src="patch-v143-neutral-long-leave-label.js?v=298"></script>
+  <script src="patch-v196-no-stale-recovery.js?v=298"></script>
+  <script src="patch-v197-duty-permission-sync.js?v=298"></script>
+  <script src="patch-v204-duty-eligibility-state-fix.js?v=298"></script>
+  <script src="patch-v213-fast-scheduler-daily-position-dedup.js?v=298"></script>
+  <script src="patch-v214-position-management-crud-hard-fix.js?v=298"></script>
+  <script src="patch-v215-weekly-position-copy.js?v=298"></script>
+  <script src="patch-v216-month-position-blank-table.js?v=298"></script>
+  <script src="patch-v217-partial-sell-shift-segments.js?v=425"></script>
+  <script src="patch-v220-ot-approval-position-slots-final.js?v=298"></script>
+  <script src="patch-v221-duty-date-slot-edit-month-ui.js?v=425"></script>
+  <script src="patch-v222-clean-ot-ch4-month-position-ui.js?v=424"></script>
+  <script src="patch-v223-month-plan-source-template-only.js?v=298"></script>
+  <script src="patch-v224-slot-template-crud-month-plan-hard-fix.js?v=298"></script>
+  <script src="patch-v225-weekly-rotation-position-plan.js?v=298"></script>
+  <script src="patch-v227-manual-as-blood-bank-zone.js?v=308"></script>
+  <script src="patch-v230-weekly-leave-aware-position-plan-final.js?v=298"></script>
+  <script src="patch-v231-main-slot-weekly-leave-config.js?v=422"></script>
+  <script src="patch-v232-default-slot-templates.js?v=298"></script>
+  <script src="patch-v233-full-week-leave-no-position.js?v=298"></script>
+  <script src="patch-v234-ot-admin-ch4-hr-cycle.js?v=425"></script>
+  <script src="patch-v237-month-position-compact-week-swap.js?v=298"></script>
+  <script src="patch-v238-ot-summary-hr-export-logic.js?v=298"></script>
+  <script src="patch-v241-ot-single-menu-month-export-fix.js?v=298"></script>
+  <script src="patch-v244-personal-position-permissions-tab.js?v=298"></script>
+  <script src="patch-v245-personal-permission-slot-filter.js?v=298"></script>
+  <script src="patch-v246-mobile-position-menu-fix.js?v=298"></script>
+  <script src="patch-v247-outing-permission-key-and-render-fix.js?v=298"></script>
+  <script src="patch-v248-personal-permission-persist-fix.js?v=298"></script>
+  <script src="patch-v249-mobile-position-compare-compact.js?v=298"></script>
+  <script src="patch-v250-block-no-duty-on-public-holiday.js?v=298"></script>
+  <script src="patch-v252-month-position-slot-identity-fix.js?v=298"></script>
+  <script src="patch-v253-admin-holiday-unrestricted.js?v=298"></script>
+  <script src="patch-v254-leave-status-filter-admin-first.js?v=298"></script>
+  <script src="patch-v255-personal-permission-enforce-plan.js?v=298"></script>
+  <script src="patch-v256-selected-month-data-loader.js?v=298"></script>
+  <script src="patch-v258-personal-permission-isolation-fix.js?v=298"></script>
+  <script src="patch-v259-position-count-daily-month-sync-permission-guard.js?v=298"></script>
+  <script src="patch-v260-supabase-position-source-of-truth.js?v=298"></script>
+  <script src="patch-v261-daily-position-authoritative-sync.js?v=298"></script>
+  <script src="patch-v262-auto-assign-consecutive-rule-clarity.js?v=298"></script>
+  <script src="patch-v265-stability-rule-corrections.js?v=298"></script>
+  <script src="patch-v266-context-aware-auto-assign.js?v=298"></script>
+  <script src="patch-v270-trainee-semi-manual-roster.js?v=298"></script>
+  <script src="patch-v271-semi-manual-assistant-hardening.js?v=298"></script>
+  <script src="patch-v272-weekly-inline-training.js?v=298"></script>
+  <script src="patch-v273-manual-management-tool.js?v=303"></script>
+  <script src="patch-v274-person-matrix-manual-fix.js?v=298"></script>
+  <script src="patch-v275-admin-manual-ui-corrections.js?v=306"></script>
+  <script src="patch-v276-sticky-compact-columns.js?v=298"></script>
+  <script src="patch-v277-contained-scroll-cumulative-balance.js?v=298"></script>
+  <script src="patch-v278-slot-stats-holiday-balance-navigation-fix.js?v=307"></script>
+  <script src="patch-v279-duty-pair-summary.js?v=298"></script>
+  <script src="patch-v281-position-admin-compact-stats-tabs.js?v=298"></script>
+  <script src="patch-v282-position-management-interaction-recovery.js?v=298"></script>
+  <script src="patch-v283-position-matrix-readable-trainee-color.js?v=298"></script>
+  <script src="patch-v284-daily-position-interaction-and-width-fix.js?v=298"></script>
+  <script src="patch-v286-daily-position-stable-route-staff-month-compact.js?v=298"></script>
+  <script src="patch-v287-daily-position-authoritative-date-loader.js?v=298"></script>
+  <script src="patch-v288-position-month-save-scroll-lock.js?v=298"></script>
+  <script src="patch-v289-position-base-bulk-save-timeout.js?v=298"></script>
+  <script src="patch-v290-position-month-ajax-no-rerender.js?v=298"></script>
+  <script src="patch-v291-position-month-always-dropdown-smooth-scroll.js?v=298"></script>
+  <script src="patch-v292-schedule-image-export.js?v=341"></script>
+  <script src="patch-v293-position-month-admin-clean-full-summary-fix.js?v=298"></script>
+  <script src="patch-v301-calendar-leave-approval-interaction-fix.js?v=301"></script>
+  <script src="patch-v296-popup-and-position-details.js?v=301"></script>
+  <script src="patch-v297-position-month-image-export-slot-details.js?v=392"></script>
+  <script src="patch-v298-baseline-balance-after-trade.js?v=298"></script>
+  <script src="patch-v300-mobile-daily-position-card-stack-fix.js?v=301"></script>
+  <script src="patch-v305-mobile-app-scroll-and-position-description.js?v=305"></script>
+  <script src="patch-v311-mobile-popup-daily-summary-fix.js?v=334"></script>
+  <script src="pwa-install-v303.js?v=435"></script>
+  <script src="patch-v313-app-count-filter-pwa-trade-fix.js?v=315"></script>
+  <script src="patch-v314-admin-ot-calendar-ch4-fix.js?v=323"></script>
+  <script src="patch-v316-route-loader.js?v=323"></script>
+  <script src="patch-v318-hr-carry-year-month-filter.js?v=371"></script>
+  <script src="patch-v319-fiscal-year-unlock.js?v=323"></script>
+  <script src="patch-v321-daily-role-options.js?v=323"></script>
+  <script src="patch-v322-daily-baseline-compare.js?v=323"></script>
+  <script src="patch-v323-popup-job-stability.js?v=323"></script>
+  <script src="patch-v326-donor-helper-unit-dropdown.js?v=326"></script>
+  <script src="patch-v327-donor-helper-internal-booking.js?v=344"></script>
+  <script src="patch-v331-ch4-daily-detail-staff-order.js?v=331"></script>
+  <script src="patch-v332-calendar-activity-time-location.js?v=332"></script>
+  <script src="patch-v333-physician-direct-leave.js?v=333"></script>
+  <script src="patch-v335-daily-position-save-route-lock.js?v=335"></script>
+  <script src="patch-v336-continuous-balance-staff-color.js?v=336"></script>
+  <script src="patch-v337-daily-position-single-save-publish.js?v=337"></script>
+  <script src="patch-v338-partial-trade-current-balance-fix.js?v=338"></script>
+  <script src="patch-v339-thai-balance-label-holiday-carry.js?v=339"></script>
+  <script src="patch-v340-baseline-duty-holiday-columns.js?v=340"></script>
+  <script src="patch-v346-ot-carry-in-summary.js?v=346"></script>
+  <script src="patch-v347-ot-claim-details-money.js?v=349"></script>
+  <script src="patch-v348-ot-trade-rate-tabs-popup.js?v=356"></script>
+  <script src="patch-v357-extra-ot-explicit-rate-form.js?v=357"></script>
+  <script src="patch-v359-carry-source-mobile-staff.js?v=359"></script>
+  <script src="patch-v360-carry-rate-mobile-summary-fix.js?v=360"></script>
+  <script src="patch-v366-continuous-ot-carry.js?v=366"></script>
+  <script src="patch-v368-authoritative-continuous-ot-carry.js?v=368"></script>
+  <script src="patch-v369-ot-menu-inventory-app-launch.js?v=369"></script>
+  <script src="patch-v370-ot-mobile-fit.js?v=370"></script>
+  <script src="patch-v372-position-admin-authoritative-mobile-jump.js?v=372c"></script>
+  <script src="patch-v373-position-stat-colors-compact-offdays.js?v=373"></script>
+  <script src="patch-v374-outing-column-and-position-display-restore.js?v=374"></script>
+  <script src="patch-v377-staff-duty-tracking-and-menu-number-fix.js?v=425"></script>
+  <script src="patch-v378-daily-position-details-staff-color-clean.js?v=378"></script>
+  <script src="patch-v379-daily-position-configured-order.js?v=379r2"></script>
+  <script src="patch-v380-compact-ot-detail-text.js?v=380"></script>
+  <script src="patch-v381-daily-position-slot-metadata-source.js?v=381"></script>
+  <script src="patch-v388-outing-color-only.js?v=389"></script>
+  <script src="patch-v396-training-integrated.js?v=428"></script>
+  <script src="patch-v397-activity-dashboard-clarity.js?v=402"></script>
+  <script src="patch-v398-activity-server-filter.js?v=400"></script>
+  <script src="patch-v404-activity-clickable-links.js?v=408"></script>
+  <script src="patch-v406-dashboard-mobile-compact.js?v=406"></script>
+  <script src="patch-v427-mobile-calendar-popup-font-fix.js?v=427"></script>
+  <script src="patch-v429-staff-tracking-hide-completed.js?v=429"></script>
+  <script src="patch-v430-late-leave-after-roster.js?v=430"></script>
+  <script src="patch-v431-leave-sequence.js?v=431"></script>
+  <script src="patch-v432-compact-roster-leave-and-calendar-order.js?v=432"></script>
+  <script src="patch-v433-dashboard-manpower-after-leave.js?v=433"></script>
+  <script src="patch-v434-dashboard-daytime-positions.js?v=434"></script>
+  <script src="patch-v435-dashboard-position-description-popup.js?v=435"></script>
 </body>
 </html>
