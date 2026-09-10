@@ -36,8 +36,12 @@ const p=new URLSearchParams(location.search);
 const safe=(v,f='-')=>v&&v!=='null'?v:f;
 const code=safe(p.get('code'));
 const lot=safe(p.get('lot'));
-const key=safe(p.get('key'),`${code}-${lot}`);
-const qrText=safe(p.get('qr'),key);
+const canonicalKey=`${code}-${lot}`;
+const incomingKey=safe(p.get('key'),canonicalKey);
+const incomingQr=safe(p.get('qr'),canonicalKey);
+const labelDataConsistent=incomingKey===canonicalKey&&incomingQr===canonicalKey&&code!=='-'&&lot!=='-';
+const key=canonicalKey;
+const qrText=canonicalKey;
 const name=safe(p.get('name'));
 const exp=safe(p.get('exp'),'ไม่ระบุ');
 const profile=p.get('profile')==='zebra'?'zebra':'tsc';
@@ -229,15 +233,23 @@ async function prepare(){
 
 async function startPrint(){
   try{
+    if(!labelDataConsistent){
+      statusEl.innerHTML=`ข้อมูล Lot ไม่ตรงกัน จึงยกเลิกการพิมพ์<small>QR และข้อความบนฉลากต้องเป็น ${canonicalKey} ตรงกัน 100%</small>`;
+      return;
+    }
     await prepare();
-    statusEl.innerHTML=`กำลังเปิดหน้าพิมพ์ ${profileName}…<small>${copies} ดวง · QR module ใหญ่ขึ้น · ตัวหนังสือแบบเวกเตอร์ · ไม่เว้นสติ๊กเกอร์เปล่า</small>`;
+    statusEl.innerHTML=`กำลังเปิดหน้าพิมพ์ ${profileName}…<small>${copies} ดวง · QR และข้อความ Lot ใช้รหัสเดียวกัน ${canonicalKey}</small>`;
     await new Promise(resolve=>setTimeout(resolve,180));
     window.focus();window.print();
   }catch(e){statusEl.innerHTML='สร้างสติ๊กเกอร์ไม่สำเร็จ กรุณาปิดหน้านี้แล้วลองใหม่';console.error(e);}
 }
 window.addEventListener('afterprint',()=>setTimeout(()=>window.close(),180));
 window.addEventListener('load',()=>{
-  statusEl.innerHTML=`โปรไฟล์ ${profileName}<small>สติ๊กเกอร์มาตรฐาน 25 × 20 mm · QR ขนาดใหญ่ · Lot / EXP ใต้ QR</small>`;
+  if(!labelDataConsistent){
+    statusEl.innerHTML=`ข้อมูล Lot ไม่ตรงกัน จึงยกเลิกการพิมพ์<small>กรุณาปิดหน้านี้และพิมพ์ใหม่จาก CNMI Inventory</small>`;
+    return;
+  }
+  statusEl.innerHTML=`โปรไฟล์ ${profileName}<small>สติ๊กเกอร์มาตรฐาน 25 × 20 mm · QR = ${canonicalKey}</small>`;
   if(p.get('auto')==='1')startPrint();else prepare();
 },{once:true});
 setTimeout(()=>{if(p.get('auto')==='1'&&!document.hidden)statusEl.innerHTML=`หากหน้าพิมพ์ยังไม่เปิด กรุณากด Ctrl + P<small>เลือก ${profileName} และ Scale 100% / Actual size</small>`;},6000);

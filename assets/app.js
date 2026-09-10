@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.76';
+const APP_VERSION = '1.4.77';
 const WEEKLY_CUTOVER_DATE = '2026-07-24';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const DEFAULT_EXPIRY_ALERT_DAYS = 30;
@@ -2174,29 +2174,48 @@ function normalizedLabelCopies(value, fallback = 1) {
   return Math.max(1, Math.min(100, Number.isFinite(parsed) ? parsed : fallback));
 }
 
+function canonicalLotPrintKey(l) {
+  const code = String(l?.material_code || l?.stock_code || '').trim();
+  const lot = String(l?.lot_no || '').trim();
+  return code && lot ? `${code}-${lot}` : '';
+}
+
 async function launchLabelPrint(lotId, copies = 1) {
   const copyCount = normalizedLabelCopies(copies);
   const popup = window.open('about:blank', 'cnmi_inventory_label', 'width=520,height=430');
   if (!popup) return toast('เบราว์เซอร์บล็อกหน้าพิมพ์ กรุณาอนุญาต Pop-up ของเว็บไซต์นี้', true);
-  popup.document.write(`<!doctype html><meta charset="utf-8"><title>กำลังเปิดหน้าพิมพ์</title><body style="font-family:system-ui;padding:24px"><b>กำลังเตรียมสติ๊กเกอร์</b><br>จำนวน ${copyCount} ดวง…</body>`);
+  popup.document.write(`<!doctype html><meta charset="utf-8"><title>กำลังเปิดหน้าพิมพ์</title><body style="font-family:system-ui;padding:24px"><b>กำลังตรวจสอบ Lot ล่าสุดก่อนพิมพ์</b><br>จำนวน ${copyCount} ดวง…</body>`);
   popup.document.close();
   try {
-    let l = stockCache.find(x => x.lot_id === lotId);
-    if (!l) {
-      const lotRes=await sb.from('v_lot_balances').select('*').eq('lot_id',lotId).maybeSingle();
-      if (lotRes.error) throw lotRes.error;
-      l=lotRes.data;
+    // v1.4.77: พิมพ์จากข้อมูลล่าสุดในฐานข้อมูลทุกครั้ง ห้ามใช้ stockCache ที่อาจค้างจากก่อนแก้ Lot
+    const lotRes = await sb.from('v_lot_balances').select('*').eq('lot_id', lotId).maybeSingle();
+    if (lotRes.error) throw lotRes.error;
+    const l = lotRes.data;
+    if (!l) { popup.close(); return toast('ไม่พบ Lot กรุณารีเฟรชแล้วลองใหม่', true); }
+
+    const canonicalKey = canonicalLotPrintKey(l);
+    if (!canonicalKey) {
+      popup.close();
+      return toast('ข้อมูลรหัสสินค้า/Lot ไม่ครบ จึงยังพิมพ์ไม่ได้', true);
     }
-    if (!l) { popup.close(); return toast('ไม่พบ Lot', true); }
+
+    // ป้องกันข้อมูลใน View ไม่สอดคล้องกัน: ถ้า lot_key ปัจจุบันไม่ตรงกับ code + lot ให้หยุดพิมพ์
+    const databaseKey = String(l.lot_key || '').trim();
+    if (databaseKey && databaseKey !== canonicalKey) {
+      popup.close();
+      return toast(`ข้อมูล Lot ไม่ตรงกัน (${databaseKey} ≠ ${canonicalKey}) กรุณาแจ้ง Admin`, true);
+    }
+
     const params = new URLSearchParams({
-      code:l.material_code,
+      code:String(l.material_code || '').trim(),
       name:l.label_name || l.material_name,
-      lot:l.lot_no,
+      lot:String(l.lot_no || '').trim(),
       exp:l.expiry_date ? d(l.expiry_date) : 'ไม่ระบุ',
-      key:lotKey(l),
-      qr:lotKey(l),
+      key:canonicalKey,
+      qr:canonicalKey,
       copies:String(copyCount),
-      auto:'1'
+      auto:'1',
+      appv:APP_VERSION
     });
     const labelUrl = new URL('label.html', location.href);
     labelUrl.search = params.toString();
