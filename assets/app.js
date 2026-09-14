@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.77';
+const APP_VERSION = '1.4.78';
 const WEEKLY_CUTOVER_DATE = '2026-07-24';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const DEFAULT_EXPIRY_ALERT_DAYS = 30;
@@ -2165,7 +2165,68 @@ async function renderUrgent() {
   const expired = lots.filter(x => requiresExpiryConfirmation(x) && Number(x.balance) > 0);
   const reorder = (summaryRes.data || []).filter(x => Boolean(x.needs_reorder));
   updateUrgentBadge(expired.length + reorder.length);
-  page.innerHTML = `<div class="page-head"><div><h2>ติดตามเร่งด่วน</h2></div><span class="badge danger">${expired.length + reorder.length} รายการ</span></div><section class="urgent-banner"><div>${icon('alert')}<strong>ของหมดอายุต้องยืนยันหลังนำออกจากพื้นที่</strong></div><button class="primary" data-route="weekly">ไปตรวจวันศุกร์</button></section><div class="section-title"><h3>หมดอายุ · รอนำออก (${expired.length})</h3></div><div class="list">${expired.map(lotCard).join('') || '<div class="card empty">ไม่มี Lot หมดอายุค้าง</div>'}</div><div class="section-title"><h3>ถึงรอบเบิก (${reorder.length})</h3></div><div class="table-wrap"><table class="data-table compact-desktop-table"><thead><tr><th>สินค้า</th><th>คงเหลือ</th><th>รูปแบบเตือน</th><th>ผู้ดูแล</th><th>สถานะ</th></tr></thead><tbody>${reorder.map(x => `<tr><td><strong>${esc(x.material_name)}</strong></td><td>${qty(x.total_balance)} ${esc(x.unit)}</td><td>${x.alert_mode==='MONTHLY' ? `รายเดือน · วันที่ ${x.reorder_day}` : x.alert_mode==='LAST_ITEM' ? 'กำลังใช้ชิ้นสุดท้าย' : `${x.alert_mode==='BELOW_MINIMUM'?'น้อยกว่า':'ถึงหรือต่ำกว่า'}ขั้นต่ำ ${qty(x.min_qty)}`}</td><td>${esc(x.responsible_name || '-')}</td><td><span class="badge warn">${reorderStatusLabel(x)}</span></td></tr>`).join('') || '<tr><td colspan="5" class="empty">ไม่มีรายการต้องเบิก</td></tr>'}</tbody></table></div>`;
+  const reorderAlertText = x => x.alert_mode==='MONTHLY'
+    ? `รายเดือน · วันที่ ${x.reorder_day}`
+    : x.alert_mode==='LAST_ITEM'
+      ? 'กำลังใช้ชิ้นสุดท้าย'
+      : `${x.alert_mode==='BELOW_MINIMUM'?'น้อยกว่า':'ถึงหรือต่ำกว่า'}ขั้นต่ำ ${qty(x.min_qty)} ${esc(x.unit || '')}`;
+  const reorderCards = reorder.map(x => `
+    <article class="urgent-item-card">
+      <div class="urgent-item-top">
+        <div>
+          <p class="urgent-item-eyebrow">ถึงรอบเบิก</p>
+          <h4>${esc(x.material_name)}</h4>
+          <p class="urgent-item-note">${reorderAlertText(x)}</p>
+        </div>
+        <span class="badge warn">${reorderStatusLabel(x)}</span>
+      </div>
+      <div class="urgent-item-meta">
+        <span><small>คงเหลือ</small><strong>${qty(x.total_balance)} ${esc(x.unit)}</strong></span>
+        <span><small>ผู้ดูแล</small><strong>${esc(x.responsible_name || '-')}</strong></span>
+      </div>
+    </article>
+  `).join('');
+  page.innerHTML = `
+    <div class="page-head">
+      <div>
+        <h2>ติดตามเร่งด่วน</h2>
+        <p class="muted small">รวมของหมดอายุที่ยังรอยืนยันนำออก และรายการที่ควรเบิกเพิ่ม</p>
+      </div>
+      <span class="badge danger">${expired.length + reorder.length} รายการ</span>
+    </div>
+    <div class="urgent-summary-grid">
+      <article class="urgent-summary-card">
+        <small>ทั้งหมด</small>
+        <strong>${(expired.length + reorder.length).toLocaleString('th-TH')}</strong>
+        <span>รายการที่ต้องติดตาม</span>
+      </article>
+      <article class="urgent-summary-card danger">
+        <small>หมดอายุ · รอนำออก</small>
+        <strong>${expired.length.toLocaleString('th-TH')}</strong>
+        <span>ต้องยืนยันหลังนำออกจากพื้นที่จริง</span>
+      </article>
+      <article class="urgent-summary-card warn">
+        <small>ถึงรอบเบิก</small>
+        <strong>${reorder.length.toLocaleString('th-TH')}</strong>
+        <span>ควรวางแผนเบิกหรือเติมสต๊อก</span>
+      </article>
+    </div>
+    <section class="urgent-banner">
+      <div>
+        ${icon('alert')}
+        <strong>ของหมดอายุจะไม่ถูกตัดยอดอัตโนมัติ</strong>
+        <p>เมื่อย้ายออกจากชั้น/ตู้จริงแล้ว ให้กดตรวจวันศุกร์เพื่อยืนยันนำออกจากพื้นที่</p>
+      </div>
+      <button class="primary" data-route="weekly">ไปตรวจวันศุกร์</button>
+    </section>
+    <section class="urgent-section-block">
+      <div class="section-title compact"><h3>หมดอายุ · รอนำออก (${expired.length})</h3></div>
+      <div class="list">${expired.map(lotCard).join('') || '<div class="card empty">ไม่มี Lot หมดอายุค้าง</div>'}</div>
+    </section>
+    <section class="urgent-section-block">
+      <div class="section-title compact"><h3>ถึงรอบเบิก (${reorder.length})</h3></div>
+      <div class="urgent-card-list">${reorderCards || '<div class="card empty">ไม่มีรายการต้องเบิก</div>'}</div>
+    </section>`;
 }
 
 
@@ -4243,7 +4304,7 @@ function indicatorDetailRowMarkup(x) {
     x.assistant_name?`<span><small>ผู้ช่วยดูแล</small><strong>${esc(x.assistant_name)}</strong></span>`:'',
     (x.actor_name||x.actor_email)?`<span><small>ผู้ทำ/ผู้บันทึก</small><strong>${esc(x.actor_name||x.actor_email)}</strong></span>`:''
   ].filter(Boolean).join('');
-  return `<article class="indicator-detail-row ${passed?'ok':'danger'}"><div class="indicator-detail-row-head"><span class="badge ${passed?'ok':'danger'}">${statusLabel}</span><time>${esc(when)}</time></div><div class="indicator-detail-row-title"><h4>${material}</h4>${lot}</div>${people?`<div class="indicator-detail-people">${people}</div>`:''}<div class="indicator-detail-reason"><p><b>ผล/สาเหตุ:</b> ${esc(x.issue||'-')}</p><p><b>รายละเอียด:</b> ${esc(x.detail||'-')}</p></div></article>`;
+  return `<article class="indicator-detail-row ${passed?'ok':'danger'}"><div class="indicator-detail-row-head"><span class="badge ${passed?'ok':'danger'}">${statusLabel}</span><time>${esc(when)}</time></div><div class="indicator-detail-row-title"><h4>${material}</h4>${lot}</div>${people?`<div class="indicator-detail-people">${people}</div>`:''}<div class="indicator-detail-reason-grid"><div><small>ผล/สาเหตุ</small><p>${esc(x.issue||'-')}</p></div><div><small>รายละเอียด</small><p>${esc(x.detail||'-')}</p></div></div></article>`;
 }
 
 async function openIndicatorDetails(row, from, to) {
@@ -4265,7 +4326,7 @@ async function openIndicatorDetails(row, from, to) {
     currentPage=Math.min(currentPage,pages);
     const shown=filtered.slice((currentPage-1)*pageSize,currentPage*pageSize);
     body.className='indicator-details-body';
-    body.innerHTML=`<div class="indicator-detail-summary"><div><small>ผ่าน</small><strong>${passCount.toLocaleString('th-TH')}</strong></div><div class="danger"><small>ไม่ผ่าน</small><strong>${failCount.toLocaleString('th-TH')}</strong></div><div><small>ทั้งหมด</small><strong>${rows.length.toLocaleString('th-TH')}</strong></div></div><div class="indicator-detail-toolbar"><div class="filters"><button type="button" class="chip ${activeFilter==='FAIL'?'active':''}" data-indicator-detail-filter="FAIL">ไม่ผ่าน (${failCount})</button><button type="button" class="chip ${activeFilter==='PASS'?'active':''}" data-indicator-detail-filter="PASS">ผ่าน (${passCount})</button><button type="button" class="chip ${activeFilter==='ALL'?'active':''}" data-indicator-detail-filter="ALL">ทั้งหมด (${rows.length})</button></div></div>${shown.length?`<div class="indicator-detail-list">${shown.map(indicatorDetailRowMarkup).join('')}</div>`:`<div class="empty indicator-detail-empty">${rows.length?'ไม่มีรายการตามตัวกรอง':'ไม่มีรายการรายละเอียดในช่วงวันที่นี้'}<p>${esc(row.detail||'')}</p></div>`}${filtered.length>pageSize?`<div class="indicator-detail-pagination"><button type="button" class="secondary" data-indicator-detail-prev ${currentPage<=1?'disabled':''}>ก่อนหน้า</button><span>หน้า ${currentPage} / ${pages}</span><button type="button" class="secondary" data-indicator-detail-next ${currentPage>=pages?'disabled':''}>ถัดไป</button></div>`:''}`;
+    body.innerHTML=`<div class="indicator-detail-summary"><div class="danger"><small>ไม่ผ่าน</small><strong>${failCount.toLocaleString('th-TH')}</strong><span>รายการที่ต้องติดตาม</span></div><div class="ok"><small>ผ่าน</small><strong>${passCount.toLocaleString('th-TH')}</strong><span>รายการที่เป็นไปตามเกณฑ์</span></div><div><small>ทั้งหมด</small><strong>${rows.length.toLocaleString('th-TH')}</strong><span>รายการในช่วงวันที่เลือก</span></div></div><div class="indicator-detail-toolbar"><div class="filters"><button type="button" class="chip ${activeFilter==='FAIL'?'active':''}" data-indicator-detail-filter="FAIL">ไม่ผ่าน (${failCount})</button><button type="button" class="chip ${activeFilter==='PASS'?'active':''}" data-indicator-detail-filter="PASS">ผ่าน (${passCount})</button><button type="button" class="chip ${activeFilter==='ALL'?'active':''}" data-indicator-detail-filter="ALL">ทั้งหมด (${rows.length})</button></div><div class="indicator-detail-toolbar-note">กำลังแสดง ${shown.length.toLocaleString('th-TH')} / ${filtered.length.toLocaleString('th-TH')} รายการ</div></div>${shown.length?`<div class="indicator-detail-list">${shown.map(indicatorDetailRowMarkup).join('')}</div>`:`<div class="empty indicator-detail-empty">${rows.length?'ไม่มีรายการตามตัวกรอง':'ไม่มีรายการรายละเอียดในช่วงวันที่นี้'}<p>${esc(row.detail||'')}</p></div>`}${filtered.length>pageSize?`<div class="indicator-detail-pagination"><button type="button" class="secondary" data-indicator-detail-prev ${currentPage<=1?'disabled':''}>ก่อนหน้า</button><span>หน้า ${currentPage} / ${pages}</span><button type="button" class="secondary" data-indicator-detail-next ${currentPage>=pages?'disabled':''}>ถัดไป</button></div>`:''}`;
     $$('[data-indicator-detail-filter]',body).forEach(b=>b.addEventListener('click',()=>{activeFilter=b.dataset.indicatorDetailFilter;currentPage=1;draw();}));
     $('[data-indicator-detail-prev]',body)?.addEventListener('click',()=>{currentPage--;draw();});
     $('[data-indicator-detail-next]',body)?.addEventListener('click',()=>{currentPage++;draw();});
