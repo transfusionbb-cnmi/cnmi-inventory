@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.78';
+const APP_VERSION = '1.4.80';
 const WEEKLY_CUTOVER_DATE = '2026-07-24';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const DEFAULT_EXPIRY_ALERT_DAYS = 30;
@@ -1029,7 +1029,7 @@ async function globalClick(e) {
   if (r) {
     e.preventDefault();
     if (!$('#modal').classList.contains('hidden')) closeModal();
-    navigate(r.dataset.route, {tab:r.dataset.moveTab, filter:r.dataset.stockFilter});
+    navigate(r.dataset.route, {tab:r.dataset.moveTab, filter:r.dataset.stockFilter, reportTab:r.dataset.reportTab});
     return;
   }
   const openLabelPrint = e.target.closest('[data-open-label-print]');
@@ -1246,7 +1246,13 @@ function navActive() {
       return;
     }
     const sameRoute = b.dataset.route === route;
-    const active = sameRoute && (route !== 'move' ? true : ((b.dataset.moveTab || '') === moveTab || !b.dataset.moveTab));
+    const active = sameRoute && (
+      route === 'move'
+        ? ((b.dataset.moveTab || '') === moveTab || !b.dataset.moveTab)
+        : route === 'reports'
+          ? ((b.dataset.reportTab || '') === reportTab || !b.dataset.reportTab)
+          : true
+    );
     b.classList.toggle('active', active);
   });
 }
@@ -1261,6 +1267,7 @@ async function navigate(r, options = {}) {
   route = r;
   if (r === 'move') moveTab = options.tab || moveTab || 'receive';
   if (r === 'usage') usageMaterialCode = options.material || usageMaterialCode || '';
+  if (r === 'reports') reportTab = options.reportTab || reportTab || '';
   if (r === 'my-stock' || r === 'assisted-stock') {
     myStockScope = r === 'assisted-stock' ? 'assistant' : 'primary';
     myStockTab = options.tab || myStockTab || 'overview';
@@ -1495,6 +1502,19 @@ function activityChangedFields(detail={}) {
     .slice(0,8);
 }
 
+function activityActionMeta(action='') {
+  const a = String(action || '').toUpperCase();
+  if (a === 'RECEIVE') return {label:'นำเข้า', cls:'ok'};
+  if (a === 'ISSUE') return {label:'นำออก', cls:'info'};
+  if (ACTIVITY_PRINT_ACTIONS.includes(a)) return {label:'พิมพ์', cls:'print'};
+  if (ACTIVITY_CHECK_ACTIONS.includes(a) || ACTIVITY_DELEGATION_ACTIONS.includes(a)) return {label:'ตรวจ/มอบหมาย', cls:'warn'};
+  if (ACTIVITY_EXPIRED_ACTIONS.includes(a)) return {label:'หมดอายุ', cls:'danger'};
+  if (ACTIVITY_REAGENT_SET_ACTIONS.includes(a) || ACTIVITY_SETTING_ACTIONS.includes(a)) return {label:'ตั้งค่า', cls:'neutral'};
+  if (ACTIVITY_INDICATOR_ACTIONS.includes(a)) return {label:'ตัวชี้วัด', cls:'warn'};
+  if (ACTIVITY_SECURITY_ACTIONS.includes(a)) return {label:'บัญชีผู้ใช้', cls:'neutral'};
+  return {label:'กิจกรรม', cls:'neutral'};
+}
+
 function activityCard(a) {
   const detail = a.summary && typeof a.summary==='object' ? a.summary : {};
   const info = activityMaterialInfo(detail);
@@ -1604,15 +1624,16 @@ function activityCard(a) {
   if(info.code) metaParts.push(`รหัส ${info.code}`);
   metaParts.push(`โดย ${activityActorLabel(a)}`);
   metaParts.push(dt(a.created_at));
+  const tag = activityActionMeta(action);
   const iconName = action==='RECEIVE'?'plus':action==='ISSUE'?'minus':ACTIVITY_PRINT_ACTIONS.includes(action)?'print':ACTIVITY_SETTING_ACTIONS.includes(action)||ACTIVITY_REAGENT_SET_ACTIONS.includes(action)?'settings':action==='PASSWORD_RESET_REQUEST'?'user':'check';
-  return `<article class="activity-row activity-row-rich"><span class="activity-dot">${icon(iconName)}</span><div class="activity-copy"><div class="activity-title-line"><strong class="activity-title">${esc(title)}</strong><code>${esc(action)}</code></div>${badges.length?`<div class="activity-badges">${badges.map(x=>`<span>${esc(x)}</span>`).join('')}</div>`:''}${detailParts.length?`<div class="activity-detail">${detailParts.map(esc).join(' · ')}</div>`:''}<div class="activity-meta">${metaParts.map(esc).join(' · ')}</div></div></article>`;
+  return `<article class="activity-row activity-row-rich"><span class="activity-dot">${icon(iconName)}</span><div class="activity-copy"><div class="activity-title-line"><strong class="activity-title">${esc(title)}</strong><span class="activity-type-pill ${esc(tag.cls)}">${esc(tag.label)}</span></div>${badges.length?`<div class="activity-badges">${badges.map(x=>`<span>${esc(x)}</span>`).join('')}</div>`:''}${detailParts.length?`<div class="activity-detail">${detailParts.map(esc).join(' · ')}</div>`:''}<div class="activity-meta">${metaParts.map(esc).join(' · ')}</div></div></article>`;
 }
 
 async function renderHome() {
   const [summaryRes, checkRes, activityRes, todayTxRes, nearRes] = await Promise.all([
     sb.from('v_inventory_summary').select('*').order('material_code'),
     ensureCheck(),
-    sb.from('v_audit_activity').select('*').limit(12),
+    sb.from('v_audit_activity').select('*').limit(8),
     sb.from('v_transaction_history').select('id,tx_type,created_at').gte('created_at', todayIso()).limit(600),
     sb.from('v_lot_balances').select('lot_id,expiry_date,days_to_expiry,expiry_alert_months,expiry_alert_days').eq('active', true).eq('is_expired', false).gt('balance', 0).not('expiry_date', 'is', null).gte('expiry_date', dateOnlyIso(todayStart())).lte('expiry_date', dateOnlyIso(addCalendarDays(todayStart(), MAX_EXPIRY_ALERT_DAYS)))
   ]);
@@ -1628,13 +1649,10 @@ async function renderHome() {
   const todayTx = todayTxRes.data || [];
   const expiredPendingCount = summaries.reduce((sum,x) => sum + Number(x.expired_pending_lots || 0), 0);
   const reorderMaterials = summaries.filter(x => Boolean(x.needs_reorder));
-  const outMaterials = summaries.filter(x => Boolean(x.needs_reorder) && !['MONTHLY','NONE'].includes(x.alert_mode || 'MINIMUM') && Number(x.total_balance || 0) <= 0);
   const lowMaterials = summaries.filter(x => Boolean(x.needs_reorder) && !['MONTHLY','NONE'].includes(x.alert_mode || 'MINIMUM') && Number(x.total_balance || 0) > 0);
   const nearExpiryCount = (nearRes.data || []).filter(isNearExpiryItem).length;
   const receiveToday = todayTx.filter(x => x.tx_type === 'RECEIVE').length;
   const issueToday = todayTx.filter(x => x.tx_type === 'ISSUE').length;
-  const watchRows = summaries.filter(x => Boolean(x.needs_reorder));
-  const ownerGroups = groupByOwner(watchRows);
   updateUrgentBadge(expiredPendingCount + reorderMaterials.length);
 
   let prog = null;
@@ -1643,66 +1661,51 @@ async function renderHome() {
     prog = q.data;
   }
 
-  const productRows = [...watchRows].sort((a, b) => {
+  const watchRows = [...reorderMaterials].sort((a, b) => {
     const score = x => (x.alert_mode || 'MINIMUM') === 'MONTHLY' ? 3 : Number(x.total_balance || 0) <= 0 ? 2 : 1;
     return score(b) - score(a) || Number(a.total_balance || 0) - Number(b.total_balance || 0) || String(a.material_name || '').localeCompare(String(b.material_name || ''), 'th');
   });
+  const adminHome = isAdminMode();
+  const weeklyPending = prog ? Number(prog.pending_items ?? Math.max(0, Number(prog.total_items||0)-Number(prog.checked_items||0))) : 0;
+
+  const staffTaskStrip = `
+    <section class="home-task-section">
+      <div class="section-title compact"><div><h3>งานที่ต้องดูตอนนี้</h3></div></div>
+      <div class="home-task-grid">
+        <button class="home-task-card danger" data-route="urgent"><span>${icon('box')}</span><div><strong>${reorderMaterials.length}</strong><small>ต้องเบิก</small></div></button>
+        <button class="home-task-card danger" data-route="urgent"><span>${icon('history')}</span><div><strong>${expiredPendingCount}</strong><small>หมดอายุรอนำออก</small></div></button>
+        <button class="home-task-card warn" data-route="stock" data-stock-filter="expiry"><span>${icon('calendar')}</span><div><strong>${nearExpiryCount}</strong><small>ใกล้หมดอายุ</small></div></button>
+        <button class="home-task-card ${weeklyPending ? 'warn' : 'ok'}" data-route="weekly"><span>${icon('check')}</span><div><strong>${weeklyPending}</strong><small>Lot รอตรวจวันศุกร์</small></div></button>
+      </div>
+    </section>`;
+
+  const adminStats = adminHome ? `
+    <div class="grid kpi-grid home-kpi-grid home-kpi-grid-primary admin-home-stats">
+      <button class="card kpi kpi-button" data-route="stock" data-stock-filter="low"><div class="kpi-top"><span class="kpi-icon warn">${icon('alert')}</span><small>ต่ำกว่าขั้นต่ำ</small></div><strong>${lowMaterials.length}</strong><small>รายการ</small></button>
+      <button class="card kpi kpi-button" data-route="move" data-move-tab="receive"><div class="kpi-top"><span class="kpi-icon">${icon('plus')}</span><small>รับเข้า วันนี้</small></div><strong>${receiveToday}</strong><small>รายการ</small></button>
+      <button class="card kpi kpi-button" data-route="move" data-move-tab="issue"><div class="kpi-top"><span class="kpi-icon info">${icon('minus')}</span><small>นำออก วันนี้</small></div><strong>${issueToday}</strong><small>รายการ</small></button>
+    </div>` : '';
+
+  const activityPanel = adminHome ? `<section class="card activity-panel home-activity-panel"><div class="section-title compact"><div><h3>กิจกรรมล่าสุด</h3></div><button class="mini ghost" data-route="activity">ดูทั้งหมด ${icon('arrow')}</button></div><div class="activity-list">${activities.slice(0, 4).map(activityCard).join('') || '<div class="empty">ยังไม่มีกิจกรรม</div>'}</div></section>` : '';
 
   page.innerHTML = `
-    <div class="page-head dashboard-head"><div><h2>หน้าหลัก</h2><p class="muted small">ภาพรวมสถานะสต๊อก วันนี้ ${new Date().toLocaleDateString('th-TH',{day:'numeric',month:'long',year:'numeric'})}</p></div><button class="mini ghost" id="refreshHome">${icon('refresh')} รีเฟรช</button></div>
+    <div class="page-head dashboard-head dashboard-head-compact"><div><h2>หน้าหลัก</h2><p class="muted small">${adminHome ? 'ภาพรวมสำหรับผู้ดูแลระบบ' : 'งานที่ต้องทำและทางลัดหลัก'}</p></div><button class="mini ghost" id="refreshHome">${icon('refresh')} รีเฟรช</button></div>
 
     <section class="home-workflow" aria-label="งานที่ใช้บ่อย"><button data-route="move" data-move-tab="receive">${icon('plus')}<span><strong>รับเข้า</strong></span></button><button data-route="move" data-move-tab="issue">${icon('minus')}<span><strong>นำออก</strong></span></button><button data-route="scan-stock">${icon('camera')}<span><strong>สแกนตรวจ Lot</strong></span></button><button data-route="weekly">${icon('check')}<span><strong>ตรวจวันศุกร์</strong></span></button><button data-route="my-stock">${icon('user')}<span><strong>สต๊อกที่ฉันดูแล</strong></span></button></section>
 
-    <div class="grid kpi-grid kpi-grid-6">
-      <button class="card kpi kpi-button" data-route="urgent"><div class="kpi-top"><span class="kpi-icon danger">${icon('box')}</span><small>ต้องเบิก</small></div><strong>${reorderMaterials.length}</strong><small>รายการ</small></button>
-      <button class="card kpi kpi-button" data-route="stock" data-stock-filter="low"><div class="kpi-top"><span class="kpi-icon warn">${icon('alert')}</span><small>ต่ำกว่าขั้นต่ำ</small></div><strong>${lowMaterials.length}</strong><small>รายการ</small></button>
-      <button class="card kpi kpi-button" data-route="move" data-move-tab="receive"><div class="kpi-top"><span class="kpi-icon">${icon('plus')}</span><small>นำเข้า (วันนี้)</small></div><strong>${receiveToday}</strong><small>รายการ</small></button>
-      <button class="card kpi kpi-button" data-route="move" data-move-tab="issue"><div class="kpi-top"><span class="kpi-icon info">${icon('minus')}</span><small>นำออก (วันนี้)</small></div><strong>${issueToday}</strong><small>รายการ</small></button>
-      <button class="card kpi kpi-button" data-route="urgent"><div class="kpi-top"><span class="kpi-icon danger">${icon('history')}</span><small>หมดอายุ · รอนำออก</small></div><strong>${expiredPendingCount}</strong><small>Lot</small></button>
-      <button class="card kpi kpi-button" data-route="stock" data-stock-filter="expiry"><div class="kpi-top"><span class="kpi-icon warn">${icon('calendar')}</span><small>ใกล้หมดอายุ (ตามเกณฑ์สินค้า)</small></div><strong>${nearExpiryCount}</strong><small>Lot</small></button>
-    </div>
+    ${staffTaskStrip}
+    ${adminStats}
 
-    <div class="overview-grid">
+    <div class="overview-grid overview-grid-home-simple ${adminHome ? '' : 'staff-home-one-column'}">
       <section class="card table-card">
-        <div class="section-title compact"><div><h3>สินค้าที่ต้องเฝ้าระวัง</h3></div><div class="segmented"><button id="homeModeProduct" class="seg active" type="button">ดูตามสินค้า</button><button id="homeModeOwner" class="seg" type="button">ดูตามผู้ดูแล</button></div></div>
-        <div id="homeOverviewPane"></div>
+        <div class="section-title compact"><div><h3>รายการที่ควรดูต่อ</h3></div><button class="mini ghost" data-route="urgent">ดูทั้งหมด ${icon('arrow')}</button></div>
+        <div class="home-watch-list">${watchRows.slice(0, adminHome ? 5 : 4).map(x => `<article class="home-watch-card"><div><strong>${esc(x.material_name)}</strong><div class="home-watch-meta">คงเหลือ ${qty(x.total_balance)} ${esc(x.unit || '')} · ${esc(x.responsible_name || '-')}</div></div><div class="home-watch-actions"><span class="badge warn">${reorderStatusLabel(x)}</span><button class="icon-mini" title="วิเคราะห์การใช้" data-material-usage="${esc(x.material_code)}">${icon('chart')}</button></div></article>`).join('') || '<div class="empty">ไม่มีรายการต้องติดตาม</div>'}</div>
       </section>
-      <section class="card activity-panel">
-        <div class="section-title compact"><div><h3>กิจกรรมล่าสุด</h3></div><button class="mini ghost" data-route="activity">ดูทั้งหมด ${icon('arrow')}</button></div>
-        <div class="activity-list">${activities.slice(0, 6).map(activityCard).join('') || '<div class="empty">ยังไม่มีกิจกรรม</div>'}</div>
-      </section>
+      ${activityPanel}
     </div>
-
-    ${prog ? `<section class="card weekly-summary"><div class="weekly-ring" style="--pct:${Number(prog.percent_complete || 0)}"><div><strong>${prog.checked_items}/${prog.total_items}</strong><span>${prog.percent_complete}%</span></div></div><div><h3>ตรวจสต๊อกวันศุกร์ ${d(prog.week_friday)}</h3><p class="muted">${prog.status === 'COMPLETED' ? 'ปิดรอบแล้ว' : `ยังเหลือ ${prog.pending_items ?? (prog.total_items-prog.checked_items)} Lot`}</p><button class="mini" data-route="weekly">ดูรายการตรวจทั้งหมด ${icon('arrow')}</button></div></section>` : ''}
   `;
 
-  const HOME_PAGE_SIZE = 7;
-  let homeProductPage = 1;
-  let homeMode = 'product';
-  const ownerHtml = `<div class="owner-summary-grid">${ownerGroups.map(g => `<button class="owner-box owner-box-button" type="button" data-owner-detail="${esc(g.responsible_email || 'unassigned')}"><span class="owner-avatar">${esc((g.responsible_name || '?').trim().charAt(0))}</span><span class="owner-box-copy"><strong>${esc(g.responsible_name)}</strong><small>${esc(g.responsible_email || 'ยังไม่กำหนด')}</small><span class="owner-stats"><span>ต้องเบิก ${g.materials} รายการ</span><span>ต่ำกว่าขั้นต่ำ/ถึงรอบ ${g.low_count}</span><span>สินค้าหมด ${g.out_count}</span></span><em>กดเพื่อดูรายการที่ดูแล ${icon('arrow')}</em></span></button>`).join('') || '<div class="empty">ไม่มีสินค้าที่ต้องเฝ้าระวัง</div>'}</div>`;
-  const pane = $('#homeOverviewPane');
-  const productTable = rows => `<div class="table-wrap quiet-table"><table class="data-table"><thead><tr><th>รายการสินค้า</th><th>คงเหลือ</th><th>ขั้นต่ำ</th><th>ผู้ดูแล</th><th>สถานะ</th><th></th></tr></thead><tbody>${rows.map(x => `<tr><td><button class="table-name-link" data-material-detail="${esc(x.material_code)}"><span>${esc(x.material_name)}</span></button></td><td><span class="table-number">${qty(x.total_balance)}</span> ${esc(x.unit)}</td><td>${qty(x.min_qty)}</td><td><button class="owner-inline-link" data-owner-detail="${esc(x.responsible_email || 'unassigned')}">${esc(x.responsible_name || 'ยังไม่กำหนด')}</button></td><td><span class="badge warn">${reorderStatusLabel(x)}</span></td><td><button class="icon-mini" title="วิเคราะห์การใช้" data-material-usage="${esc(x.material_code)}">${icon('chart')}</button></td></tr>`).join('') || '<tr><td colspan="6" class="empty">ไม่มีสินค้าที่ต้องเบิกหรือต่ำกว่าขั้นต่ำ</td></tr>'}</tbody></table></div>`;
-  const renderProductPage = () => {
-    const pageCount = Math.max(1, Math.ceil(productRows.length / HOME_PAGE_SIZE));
-    homeProductPage = Math.min(Math.max(1, homeProductPage), pageCount);
-    const begin = (homeProductPage - 1) * HOME_PAGE_SIZE;
-    const rows = productRows.slice(begin, begin + HOME_PAGE_SIZE);
-    const pagination = productRows.length > HOME_PAGE_SIZE ? `<div class="home-pagination"><span>หน้า ${homeProductPage} / ${pageCount} · ทั้งหมด ${productRows.length} รายการ</span><div><button type="button" class="mini ghost" data-home-page="prev" ${homeProductPage===1?'disabled':''}>ก่อนหน้า</button><button type="button" class="mini" data-home-page="next" ${homeProductPage===pageCount?'disabled':''}>หน้าถัดไป</button></div></div>` : (productRows.length ? `<div class="home-pagination single"><span>ทั้งหมด ${productRows.length} รายการ</span></div>` : '');
-    pane.innerHTML = productTable(rows) + pagination;
-    queueResponsiveTables(pane);
-    $$('[data-home-page]', pane).forEach(btn => btn.addEventListener('click', () => { homeProductPage += btn.dataset.homePage === 'next' ? 1 : -1; renderProductPage(); }));
-  };
-  const setMode = mode => {
-    homeMode = mode;
-    $('#homeModeProduct').classList.toggle('active', mode === 'product');
-    $('#homeModeOwner').classList.toggle('active', mode === 'owner');
-    if (mode === 'owner') pane.innerHTML = ownerHtml;
-    else { homeProductPage = 1; renderProductPage(); }
-  };
-  $('#homeModeProduct').onclick = () => setMode('product');
-  $('#homeModeOwner').onclick = () => setMode('owner');
   $('#refreshHome').onclick = e => refreshCurrentData(e.currentTarget);
-  setMode('product');
 }
 
 function lotCard(l) {
@@ -2165,68 +2168,46 @@ async function renderUrgent() {
   const expired = lots.filter(x => requiresExpiryConfirmation(x) && Number(x.balance) > 0);
   const reorder = (summaryRes.data || []).filter(x => Boolean(x.needs_reorder));
   updateUrgentBadge(expired.length + reorder.length);
+  const PAGE_SIZE = window.innerWidth <= 699 ? 3 : 5;
+  let activeTab = expired.length ? 'expired' : 'reorder';
+  let expiredPage = 1;
+  let reorderPage = 1;
   const reorderAlertText = x => x.alert_mode==='MONTHLY'
     ? `รายเดือน · วันที่ ${x.reorder_day}`
     : x.alert_mode==='LAST_ITEM'
       ? 'กำลังใช้ชิ้นสุดท้าย'
       : `${x.alert_mode==='BELOW_MINIMUM'?'น้อยกว่า':'ถึงหรือต่ำกว่า'}ขั้นต่ำ ${qty(x.min_qty)} ${esc(x.unit || '')}`;
-  const reorderCards = reorder.map(x => `
-    <article class="urgent-item-card">
-      <div class="urgent-item-top">
-        <div>
-          <p class="urgent-item-eyebrow">ถึงรอบเบิก</p>
-          <h4>${esc(x.material_name)}</h4>
-          <p class="urgent-item-note">${reorderAlertText(x)}</p>
-        </div>
-        <span class="badge warn">${reorderStatusLabel(x)}</span>
-      </div>
-      <div class="urgent-item-meta">
-        <span><small>คงเหลือ</small><strong>${qty(x.total_balance)} ${esc(x.unit)}</strong></span>
-        <span><small>ผู้ดูแล</small><strong>${esc(x.responsible_name || '-')}</strong></span>
-      </div>
-    </article>
-  `).join('');
+
   page.innerHTML = `
-    <div class="page-head">
-      <div>
-        <h2>ติดตามเร่งด่วน</h2>
-        <p class="muted small">รวมของหมดอายุที่ยังรอยืนยันนำออก และรายการที่ควรเบิกเพิ่ม</p>
-      </div>
-      <span class="badge danger">${expired.length + reorder.length} รายการ</span>
+    <div class="page-head urgent-page-head-compact"><div><h2>ติดตามเร่งด่วน</h2><p class="muted small">เลือกดูทีละกลุ่มเพื่อไม่ให้หน้ายาว</p></div><span class="badge danger">${expired.length + reorder.length} รายการ</span></div>
+    <div class="urgent-summary-grid compact-summary">
+      <article class="urgent-summary-card"><small>ทั้งหมด</small><strong>${expired.length + reorder.length}</strong><span>รายการ</span></article>
+      <article class="urgent-summary-card danger"><small>หมดอายุ · รอนำออก</small><strong>${expired.length}</strong><span>Lot</span></article>
+      <article class="urgent-summary-card warn"><small>ถึงรอบเบิก</small><strong>${reorder.length}</strong><span>รายการ</span></article>
     </div>
-    <div class="urgent-summary-grid">
-      <article class="urgent-summary-card">
-        <small>ทั้งหมด</small>
-        <strong>${(expired.length + reorder.length).toLocaleString('th-TH')}</strong>
-        <span>รายการที่ต้องติดตาม</span>
-      </article>
-      <article class="urgent-summary-card danger">
-        <small>หมดอายุ · รอนำออก</small>
-        <strong>${expired.length.toLocaleString('th-TH')}</strong>
-        <span>ต้องยืนยันหลังนำออกจากพื้นที่จริง</span>
-      </article>
-      <article class="urgent-summary-card warn">
-        <small>ถึงรอบเบิก</small>
-        <strong>${reorder.length.toLocaleString('th-TH')}</strong>
-        <span>ควรวางแผนเบิกหรือเติมสต๊อก</span>
-      </article>
-    </div>
-    <section class="urgent-banner">
-      <div>
-        ${icon('alert')}
-        <strong>ของหมดอายุจะไม่ถูกตัดยอดอัตโนมัติ</strong>
-        <p>เมื่อย้ายออกจากชั้น/ตู้จริงแล้ว ให้กดตรวจวันศุกร์เพื่อยืนยันนำออกจากพื้นที่</p>
-      </div>
-      <button class="primary" data-route="weekly">ไปตรวจวันศุกร์</button>
-    </section>
-    <section class="urgent-section-block">
-      <div class="section-title compact"><h3>หมดอายุ · รอนำออก (${expired.length})</h3></div>
-      <div class="list">${expired.map(lotCard).join('') || '<div class="card empty">ไม่มี Lot หมดอายุค้าง</div>'}</div>
-    </section>
-    <section class="urgent-section-block">
-      <div class="section-title compact"><h3>ถึงรอบเบิก (${reorder.length})</h3></div>
-      <div class="urgent-card-list">${reorderCards || '<div class="card empty">ไม่มีรายการต้องเบิก</div>'}</div>
-    </section>`;
+    <div class="tabs urgent-tabs premium-tabs"><button type="button" data-urgent-tab="expired">หมดอายุ (${expired.length})</button><button type="button" data-urgent-tab="reorder">ถึงรอบเบิก (${reorder.length})</button></div>
+    <div id="urgentTabPane"></div>`;
+
+  const pagerMarkup = (page,pageCount,kind) => pageCount > 1 ? `<div class="home-pagination urgent-pagination"><span>หน้า ${page} / ${pageCount}</span><div><button type="button" class="mini ghost" data-urgent-page="${kind}:prev" ${page===1?'disabled':''}>ก่อนหน้า</button><button type="button" class="mini" data-urgent-page="${kind}:next" ${page===pageCount?'disabled':''}>หน้าถัดไป</button></div></div>` : '';
+
+  const paint = () => {
+    $$('[data-urgent-tab]').forEach(btn => btn.classList.toggle('active', btn.dataset.urgentTab === activeTab));
+    const pane = $('#urgentTabPane');
+    if (activeTab === 'expired') {
+      const pageCount=Math.max(1,Math.ceil(expired.length/PAGE_SIZE));
+      expiredPage=Math.min(Math.max(1,expiredPage),pageCount);
+      const rows=expired.slice((expiredPage-1)*PAGE_SIZE,expiredPage*PAGE_SIZE);
+      pane.innerHTML=`<section class="urgent-panel"><div class="urgent-inline-note">${icon('alert')}<span>หลังนำของหมดอายุออกจากพื้นที่จริง ให้ยืนยันใน “ตรวจวันศุกร์”</span><button class="mini" data-route="weekly">ไปตรวจวันศุกร์</button></div><div class="urgent-expired-list">${rows.map(lotCard).join('') || '<div class="card empty">ไม่มี Lot หมดอายุค้าง</div>'}</div>${pagerMarkup(expiredPage,pageCount,'expired')}</section>`;
+    } else {
+      const pageCount=Math.max(1,Math.ceil(reorder.length/PAGE_SIZE));
+      reorderPage=Math.min(Math.max(1,reorderPage),pageCount);
+      const rows=reorder.slice((reorderPage-1)*PAGE_SIZE,reorderPage*PAGE_SIZE);
+      pane.innerHTML=`<section class="urgent-panel"><div class="urgent-card-list">${rows.map(x => `<article class="urgent-item-card compact"><div class="urgent-item-top"><div><h4>${esc(x.material_name)}</h4><p class="urgent-item-note">${reorderAlertText(x)}</p></div><span class="badge warn">${reorderStatusLabel(x)}</span></div><div class="urgent-item-meta"><span><small>คงเหลือ</small><strong>${qty(x.total_balance)} ${esc(x.unit)}</strong></span><span><small>ผู้ดูแล</small><strong>${esc(x.responsible_name || '-')}</strong></span></div></article>`).join('') || '<div class="card empty">ไม่มีรายการต้องเบิก</div>'}</div>${pagerMarkup(reorderPage,pageCount,'reorder')}</section>`;
+    }
+    $$('[data-urgent-page]',pane).forEach(btn=>btn.addEventListener('click',()=>{const [kind,dir]=String(btn.dataset.urgentPage).split(':');if(kind==='expired')expiredPage+=dir==='next'?1:-1;else reorderPage+=dir==='next'?1:-1;paint();window.scrollTo({top:0,behavior:'smooth'});}));
+  };
+  $$('[data-urgent-tab]').forEach(btn=>btn.addEventListener('click',()=>{activeTab=btn.dataset.urgentTab;paint();}));
+  paint();
 }
 
 
@@ -2803,7 +2784,7 @@ function moveHistoryMarkup(txType, result) {
 }
 
 async function renderScanStock() {
-  page.innerHTML = `<div class="page-head"><div><h2>สแกนตรวจ Lot</h2><p class="muted small">สแกน QR แล้วตรวจข้อมูล Lot และบันทึกผลตรวจได้ทันที</p></div><button class="mini ghost" data-route="weekly">ดูรายการตรวจทั้งหมด</button></div><div class="scan-stock-layout"><section class="card scan-stock-hero"><div class="scan-stock-icon">${icon('camera')}</div><div><h3>เปิดกล้องตรวจสต๊อก</h3><p>รองรับ QR ใหม่ รหัสเดิม และการพิมพ์รหัสเมื่อกล้องมีปัญหา</p></div><button class="primary camera-primary" type="button" data-camera-scan data-scan-mode="inspect">${icon('camera')} เปิดกล้องสแกน</button></section><section class="card"><form id="manualStockScanForm" class="form-grid"><label>พิมพ์รหัส QR / รหัสล็อต<div class="toolbar issue-code-row" style="margin:0"><input id="stockScanCode" autocomplete="off" placeholder="เช่น BB319-09062026" required><button type="submit" class="secondary">ตรวจสอบ</button></div></label></form><div class="scan-stock-help"><strong>หลังสแกน ระบบจะแสดง</strong><span>ชื่อวัสดุ · Lot · วันหมดอายุ · ยอด Lot และยอดรวม · ผู้ดูแล · ขั้นต่ำ · สถานะ</span></div></section></div>`;
+  page.innerHTML = `<div class="page-head"><div><h2>สแกนตรวจ Lot</h2><p class="muted small">สแกนหรือพิมพ์รหัสเพื่อตรวจ Lot</p></div><button class="mini ghost" data-route="weekly">ดูรายการตรวจทั้งหมด</button></div><div class="scan-stock-layout"><section class="card scan-stock-hero"><div class="scan-stock-icon">${icon('camera')}</div><div><h3>เปิดกล้องตรวจสต๊อก</h3><p>รองรับ QR ใหม่ รหัสเดิม และการพิมพ์รหัสเมื่อกล้องมีปัญหา</p></div><button class="primary camera-primary" type="button" data-camera-scan data-scan-mode="inspect">${icon('camera')} เปิดกล้องสแกน</button></section><section class="card"><form id="manualStockScanForm" class="form-grid"><label>พิมพ์รหัส QR / รหัสล็อต<div class="toolbar issue-code-row" style="margin:0"><input id="stockScanCode" autocomplete="off" placeholder="เช่น BB319-09062026" required><button type="submit" class="secondary">ตรวจสอบ</button></div></label></form><div class="scan-stock-help"><strong>หลังสแกน ระบบจะแสดง</strong><span>ชื่อวัสดุ · Lot · วันหมดอายุ · ยอด Lot และยอดรวม · ผู้ดูแล · ขั้นต่ำ · สถานะ</span></div></section></div>`;
   $('#manualStockScanForm').addEventListener('submit', e => { e.preventDefault(); const code=$('#stockScanCode').value.trim(); if(!code)return toast('กรุณาพิมพ์รหัส QR หรือรหัสล็อต',true); resolveStockCheckCode(code); });
 }
 
@@ -2956,42 +2937,12 @@ function openIssueLookupNotFound(code, source = 'manual') {
 }
 
 async function renderMove(defaultTab = 'receive') {
-  page.innerHTML = `<div class="page-head move-page-head"><div><p class="eyebrow">Stock movement</p><h2>นำเข้า–นำออก</h2><p class="muted small">บันทึกรายการด้วยบัญชีปัจจุบัน และเปิดประวัติทีละหน้าเพื่อลดการโหลดข้อมูล</p></div></div><div class="tabs move-tabs premium-tabs"><button data-tab="receive">${icon('plus')} นำเข้า</button><button data-tab="issue">${icon('minus')} นำออก</button></div><div id="movePane"></div>`;
+  page.innerHTML = `<div class="page-head move-page-head"><div><p class="eyebrow">Stock movement</p><h2>นำเข้า–นำออก</h2><p class="muted small">เลือกนำเข้า หรือนำออก</p></div></div><div class="tabs move-tabs premium-tabs"><button data-tab="receive">${icon('plus')} นำเข้า</button><button data-tab="issue">${icon('minus')} นำออก</button></div><div id="movePane"></div>`;
 
-  const bindHistory = txType => {
-    const container = $('#moveHistory');
-    if (!container) return;
-    container.querySelectorAll('[data-move-history-page]').forEach(button => button.addEventListener('click', async () => {
-      const targetPage = Number(button.dataset.moveHistoryPage || 1);
-      if (targetPage < 1) return;
-      button.disabled = true;
-      container.classList.add('loading-soft');
-      try {
-        const result = await fetchTransactionPage(txType, targetPage);
-        container.innerHTML = moveHistoryMarkup(txType, result);
-        queueResponsiveTables(container);
-        bindHistory(txType);
-        container.scrollIntoView({behavior:'smooth', block:'start'});
-      } catch (e) {
-        container.innerHTML = `<div class="notice">${esc(errMsg(e))}</div>`;
-      } finally {
-        container.classList.remove('loading-soft');
-      }
-    }));
-    container.querySelector('[data-open-report]')?.addEventListener('click', () => {
-      reportTab = container.querySelector('[data-open-report]').dataset.openReport || '';
-      navigate('reports');
-    });
-  };
-
-  const loadHistory = async txType => {
-    const container = $('#moveHistory');
-    if (!container) return;
-    container.innerHTML = '<div class="usage-loading">กำลังโหลด 7 รายการล่าสุด…</div>';
-    const result = await fetchTransactionPage(txType, 1);
-    container.innerHTML = moveHistoryMarkup(txType, result);
-    queueResponsiveTables(container);
-    bindHistory(txType);
+  const miniHistoryMarkup = (txType, rows) => {
+    const title = txType === 'ISSUE' ? 'ประวัตินำออก' : 'ประวัตินำเข้า';
+    const target = txType === 'ISSUE' ? 'issue' : 'receive';
+    return `<section class="card move-history-shortcut"><div class="section-title compact"><div><h3>${title}</h3><p class="muted small">ย้ายไปดูแบบเต็มในเมนูรายงาน</p></div><button class="mini ghost" data-route="reports" data-report-tab="${target}">เปิดเมนูประวัติ ${icon('arrow')}</button></div><div class="move-mini-history-list">${rows.map(x => `<article class="move-mini-history-item"><div><strong>${esc(x.material_name)}</strong><small>${esc(x.lot_key)} · ${dt(x.created_at)}</small></div><span>${x.tx_type === 'RECEIVE' ? '+' : ''}${qty(x.quantity_delta)} ${esc(x.unit)}</span></article>`).join('') || '<div class="empty">ยังไม่มีรายการ</div>'}</div></section>`;
   };
 
   const draw = async tab => {
@@ -3000,24 +2951,35 @@ async function renderMove(defaultTab = 'receive') {
     $$('[data-tab]').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
     $('#movePane').innerHTML='<div class="card usage-loading">กำลังเปิดเมนูที่เลือก…</div>';
     if (tab === 'receive') {
-      const [rawMats, staffRes] = await Promise.all([
+      const [rawMats, staffRes, historyRes] = await Promise.all([
         loadMaterials(),
-        sb.from('staff_directory').select('email,display_name').eq('active',true).order('display_name')
+        sb.from('staff_directory').select('email,display_name').eq('active',true).order('display_name'),
+        fetchTransactionPage('RECEIVE', 1, 3)
       ]);
       if(staffRes.error) throw staffRes.error;
       const staffMap=new Map((staffRes.data||[]).map(x=>[x.email,x.display_name]));
       const mats=rawMats.map(m=>({...m,responsible_name:staffMap.get(m.responsible_email)||m.responsible_email||'ยังไม่กำหนด'}));
-      $('#movePane').innerHTML = `<div class="move-layout move-layout-v145"><form id="receiveForm" class="card form-card form-grid move-action-card"><div class="form-title"><span>${icon('plus')}</span><div><p class="eyebrow">Receive stock</p><h3>บันทึกนำเข้า</h3></div></div>${currentOperatorMarkup('ผู้นำเข้า')}${materialComboboxMarkup({id:'rMat',label:'วัสดุ',placeholder:'พิมพ์ชื่อวัสดุ เช่น Panel, Papain',materials:mats})}<div class="form-grid two"><label>Lot<input id="rLot" autocomplete="off" autocapitalize="characters" maxlength="60" inputmode="latin" pattern="[A-Za-z0-9]*" placeholder="เช่น 8A145 หรือเว้นว่างเพื่อใช้วันที่นำเข้า"><small id="lotRule" class="field-hint lot-rule">กรอกได้เฉพาะตัวเลข 0–9 และภาษาอังกฤษ A–Z · ถ้าว่าง ระบบจะใช้วันที่นำเข้า</small></label><label>วันหมดอายุ<input id="rExp" type="date"><small class="field-hint">ถ้าไม่มีวันหมดอายุ สามารถเว้นว่างได้</small></label></div><label>จำนวน<input id="rQty" type="number" min="0.01" step="0.01" required inputmode="decimal"></label><button class="primary large" type="submit">${icon('plus')} บันทึกนำเข้า</button></form><aside class="card move-side-card"><div class="move-side-icon">${icon('box')}</div><div><p class="eyebrow">ขั้นตอนสั้น ๆ</p><h3>รับเข้าให้ครบในครั้งเดียว</h3><p>เลือกวัสดุ กรอก Lot วันหมดอายุ และจำนวน จากนั้นระบบจะบันทึกชื่อผู้ใช้งานปัจจุบันให้อัตโนมัติ</p></div><div class="move-side-points"><span><b>1</b> เลือกวัสดุ</span><span><b>2</b> ตรวจ Lot และ EXP</span><span><b>3</b> บันทึกและพิมพ์ QR</span></div></aside><section id="moveHistory" class="card history-card move-history-wide"></section></div>`;
+      $('#movePane').innerHTML = `<div class="move-layout move-layout-lite"><form id="receiveForm" class="card form-card form-grid move-action-card"><div class="form-title"><span>${icon('plus')}</span><div><p class="eyebrow">Receive stock</p><h3>บันทึกนำเข้า</h3></div></div>${currentOperatorMarkup('ผู้นำเข้า')}${materialComboboxMarkup({id:'rMat',label:'วัสดุ',placeholder:'พิมพ์ชื่อวัสดุ เช่น Panel, Papain',materials:mats})}<div class="form-grid two"><label>Lot<input id="rLot" autocomplete="off" autocapitalize="characters" maxlength="60" inputmode="latin" pattern="[A-Za-z0-9]*" placeholder="เช่น 8A145 หรือเว้นว่างเพื่อใช้วันที่นำเข้า"><small id="lotRule" class="field-hint lot-rule">กรอกได้เฉพาะ 0–9 และ A–Z</small></label><label>วันหมดอายุ<input id="rExp" type="date"><small class="field-hint">เว้นว่างได้ถ้าไม่มี</small></label></div><label>จำนวน<input id="rQty" type="number" min="0.01" step="0.01" required inputmode="decimal"></label><button class="primary large" type="submit">${icon('plus')} บันทึกนำเข้า</button></form><aside class="card move-side-card move-side-card-lite"><div class="move-side-icon">${icon('box')}</div><div><h3>ทำ 3 อย่างพอ</h3><p>เลือกวัสดุ · ตรวจ Lot/EXP · กดบันทึก</p></div><div class="move-side-points"><span><b>1</b> เลือกวัสดุ</span><span><b>2</b> ใส่ Lot และวันหมดอายุ</span><span><b>3</b> บันทึกแล้วพิมพ์ QR</span></div></aside>${miniHistoryMarkup('RECEIVE', historyRes.rows || [])}</div>`;
       setupMaterialCombobox('rMat',mats,{maxResults:20});
       const lotInput=$('#rLot');
       lotInput.addEventListener('input',()=>prepareLotInput(lotInput));
       lotInput.addEventListener('blur',()=>prepareLotInput(lotInput,{autoFillBlank:true,showFallbackHint:true}));
       $('#receiveForm').addEventListener('submit', receive);
-      await loadHistory('RECEIVE');
     } else {
-      $('#movePane').innerHTML = `<div class="move-layout move-layout-v145"><section class="card issue-scan-simple move-action-card"><div class="form-title"><span>${icon('qr')}</span><div><p class="eyebrow">Issue stock</p><h3>นำออกด้วย QR Sticker</h3></div></div>${currentOperatorMarkup('ผู้นำออก')}<button class="primary camera-primary large" type="button" data-camera-scan>${icon('camera')} เปิดกล้องสแกน</button><div class="issue-or"><span>หรือพิมพ์รหัสเอง</span></div><form id="manualIssueForm" class="form-grid"><label>รหัส QR / รหัสล็อต<div class="toolbar issue-code-row" style="margin:0"><input id="issueCode" autocomplete="off" placeholder="เช่น BB020-69020" required><button type="submit" class="secondary">ค้นหา</button></div></label></form></section><aside class="card move-side-card issue-method-guide"><div class="move-side-icon">${icon('history')}</div><div><p class="eyebrow">บันทึกวิธีอัตโนมัติ</p><h3>ระบบแยกสแกนกับพิมพ์เอง</h3><p>รายการใหม่จะแสดงวิธีนำออกชัดเจนในประวัติและรายงาน ส่วนข้อมูลเดิมจะแสดงว่าไม่ระบุ</p></div><div class="method-preview"><span class="badge ok">สแกน QR</span><span class="badge info">พิมพ์รหัสเอง</span><span class="badge">ไม่ระบุ — ข้อมูลเดิม</span></div></aside><section id="moveHistory" class="card history-card move-history-wide"></section></div>`;
-      $('#manualIssueForm').addEventListener('submit',e=>{e.preventDefault();const code=$('#issueCode').value.trim();if(!code)return toast('กรุณาพิมพ์รหัส QR หรือรหัสล็อต',true);resolveIssueCode(code);});
-      await loadHistory('ISSUE');
+      const historyRes = await fetchTransactionPage('ISSUE', 1, 3);
+      $('#movePane').innerHTML = `<div class="move-layout move-layout-lite"><section class="card issue-scan-simple move-action-card"><div class="form-title"><span>${icon('qr')}</span><div><p class="eyebrow">Issue stock</p><h3>นำออกจากสต๊อก</h3></div></div>${currentOperatorMarkup('ผู้นำออก')}<div class="issue-method-selector"><button class="issue-method-card active" type="button" data-issue-mode="scan">${icon('camera')}<span><strong>สแกน QR</strong><small>เร็วสุดสำหรับหน้างาน</small></span></button><button class="issue-method-card" type="button" data-issue-mode="manual">${icon('search')}<span><strong>พิมพ์รหัส</strong><small>ใช้เมื่อกล้องมีปัญหา</small></span></button></div><div id="issueModePane"></div></section><aside class="card move-side-card move-side-card-lite"><div class="move-side-icon">${icon('history')}</div><div><h3>ประวัติแยกไปอีกเมนู</h3><p>เปิดดูรายการย้อนหลังแบบเต็มได้ที่ “ประวัตินำออก” หรือเมนูรายงาน</p></div><div class="method-preview"><span class="badge ok">สแกน QR</span><span class="badge info">พิมพ์รหัสเอง</span><span class="badge">ข้อมูลเดิม</span></div></aside>${miniHistoryMarkup('ISSUE', historyRes.rows || [])}</div>`;
+
+      const renderIssueMode = mode => {
+        $$('.issue-method-card').forEach(btn => btn.classList.toggle('active', btn.dataset.issueMode === mode));
+        if (mode === 'scan') {
+          $('#issueModePane').innerHTML = `<div class="issue-mode-block"><button class="primary camera-primary large" type="button" data-camera-scan>${icon('camera')} เปิดกล้องสแกน</button><p class="muted small issue-mode-help">สแกนแล้วระบบจะเปิดหน้าต่างยืนยันให้อัตโนมัติ</p></div>`;
+        } else {
+          $('#issueModePane').innerHTML = `<form id="manualIssueForm" class="form-grid issue-mode-block"><label>รหัส QR / รหัสล็อต<div class="toolbar issue-code-row" style="margin:0"><input id="issueCode" autocomplete="off" placeholder="เช่น BB020-69020" required><button type="submit" class="secondary">ค้นหา</button></div></label><p class="muted small issue-mode-help">ใช้เมื่อสติ๊กเกอร์อ่านยาก หรือเปิดกล้องไม่ได้</p></form>`;
+          $('#manualIssueForm').addEventListener('submit',e=>{e.preventDefault();const code=$('#issueCode').value.trim();if(!code)return toast('กรุณาพิมพ์รหัส QR หรือรหัสล็อต',true);resolveIssueCode(code);});
+        }
+      };
+      renderIssueMode('scan');
+      $$('[data-issue-mode]').forEach(btn => btn.addEventListener('click', () => renderIssueMode(btn.dataset.issueMode)));
     }
   };
   $$('[data-tab]').forEach(b => b.addEventListener('click', () => draw(b.dataset.tab).catch(e=>{ $('#movePane').innerHTML=`<div class="card notice">${esc(errMsg(e))}</div>`; })));
@@ -3897,7 +3859,7 @@ async function renderActivity() {
   const today=dateInputValue(now);
   const currentMonth=today.slice(0,7);
   const currentYear=String(now.getFullYear());
-  page.innerHTML = `<div class="page-head activity-page-head"><div><p class="eyebrow">Audit trail</p><h2>ประวัติการทำรายการ</h2><p class="muted small">กรองตามวันที่ เดือน ปี ประเภท และผู้ทำรายการ พร้อมดูรายละเอียดการพิมพ์สติ๊กเกอร์แต่ละแบบ</p></div></div>
+  page.innerHTML = `<div class="page-head activity-page-head"><div><p class="eyebrow">Audit trail</p><h2>ประวัติการทำรายการ</h2><p class="muted small">ค้นหาและกรองประวัติการทำรายการ</p></div></div>
   <section class="card activity-filter-card">
     <div class="activity-filter-grid">
       <label>ช่วงเวลา<select id="activityPeriodMode"><option value="day">วันที่</option><option value="month" selected>เดือน</option><option value="year">ปี</option><option value="range">ช่วงวันที่</option><option value="all">ทั้งหมด</option></select></label>
@@ -4209,7 +4171,7 @@ async function exportReport(kind) {
 }
 
 async function renderReports(defaultTab = '') {
-  page.innerHTML = `<div class="page-head report-page-head"><div><p class="eyebrow">Reports</p><h2>รายงาน & ส่งออก</h2><p class="muted small">เลือกประเภทและกรองข้อมูลก่อน ระบบจะแสดงครั้งละ 10 รายการ</p></div></div><div class="tabs report-tabs premium-tabs"><button data-report-tab="receive">นำเข้า</button><button data-report-tab="issue">นำออก</button><button data-report-tab="expired">หมดอายุ</button><button data-report-tab="stock">สต๊อกคงเหลือ</button></div><div id="reportPane"><div class="card select-first-state">${icon('download')}<div><strong>กรุณาเลือกประเภทรายงาน</strong><span>ยังไม่มีการโหลดข้อมูล</span></div></div></div>`;
+  page.innerHTML = `<div class="page-head report-page-head"><div><p class="eyebrow">Reports</p><h2>รายงาน & ส่งออก</h2><p class="muted small">เลือกประเภทรายงานและตัวกรอง</p></div></div><div class="tabs report-tabs premium-tabs"><button data-report-tab="receive">นำเข้า</button><button data-report-tab="issue">นำออก</button><button data-report-tab="expired">หมดอายุ</button><button data-report-tab="stock">สต๊อกคงเหลือ</button></div><div id="reportPane"><div class="card select-first-state">${icon('download')}<div><strong>กรุณาเลือกประเภทรายงาน</strong><span>ยังไม่มีการโหลดข้อมูล</span></div></div></div>`;
   const draw = async tab => {
     reportTab = tab;
     $$('[data-report-tab]').forEach(x => x.classList.toggle('active', x.dataset.reportTab === tab));
@@ -4805,9 +4767,9 @@ function reagentPrintItemMarkup(row, setCount = 1) {
 }
 
 async function renderReagentPrint() {
-  page.innerHTML=`<div class="page-head"><div><p class="eyebrow">Instrument reagent label</p><h2>พิมพ์น้ำยาเข้าเครื่อง</h2><p class="muted small">เลือกชุดน้ำยาที่ Admin เตรียมไว้ กรอกข้อมูลการเปิดใช้ แล้วพิมพ์ได้ทันที</p></div></div>
+  page.innerHTML=`<div class="page-head"><div><p class="eyebrow">Instrument reagent label</p><h2>พิมพ์น้ำยาเข้าเครื่อง</h2><p class="muted small">เลือกชุด ใส่วันเวลา แล้วพิมพ์</p></div></div>
   <section class="card reagent-staff-card">
-    <div class="reagent-staff-heading"><span>${icon('print')}</span><div><h3>ข้อมูลสำหรับพิมพ์</h3><p>ชื่อและ Barcode ถูกล็อกจากชุดที่ Admin บันทึกไว้</p></div></div>
+    <div class="reagent-staff-heading"><span>${icon('print')}</span><div><h3>ข้อมูลสำหรับพิมพ์</h3><p>ชื่อและ Barcode ดึงจากชุดที่ตั้งไว้</p></div></div>
     <div id="reagentStaffNotice" class="hidden"></div>
     <div class="form-grid two reagent-staff-form">
       <label class="wide-field">ชุดน้ำยา<select id="reagentPrintSet" disabled><option>กำลังโหลดชุดน้ำยา…</option></select></label>
@@ -4819,7 +4781,7 @@ async function renderReagentPrint() {
   </section>
   <section id="reagentPrintPreview" class="card reagent-print-preview hidden"></section>
   <section class="card reagent-print-confirm">
-    <div><small>สรุปการพิมพ์</small><strong id="reagentPrintSummary">กรุณาเลือกชุดน้ำยา</strong><span id="reagentPrintFormat">ระบบจะใช้รูปแบบฉลากที่ Admin กำหนด</span></div>
+    <div><small>สรุป</small><strong id="reagentPrintSummary">กรุณาเลือกชุดน้ำยา</strong><span id="reagentPrintFormat">ใช้รูปแบบฉลากที่ตั้งไว้</span></div>
     <button type="button" class="primary" id="reagentConfirmPrint" disabled>${icon('print')} ยืนยันและพิมพ์ชุดน้ำยา</button>
   </section>`;
 
@@ -4857,7 +4819,7 @@ async function renderReagentPrint() {
     if(!selectedSet){
       preview.classList.add('hidden');
       $('#reagentPrintSummary').textContent='กรุณาเลือกชุดน้ำยา';
-      $('#reagentPrintFormat').textContent='ระบบจะใช้รูปแบบฉลากที่ Admin กำหนด';
+      $('#reagentPrintFormat').textContent='ใช้รูปแบบฉลากที่ตั้งไว้';
       $('#reagentConfirmPrint').disabled=true;
       return;
     }
