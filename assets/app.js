@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.80';
+const APP_VERSION = '1.4.81';
 const WEEKLY_CUTOVER_DATE = '2026-07-24';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const DEFAULT_EXPIRY_ALERT_DAYS = 30;
@@ -191,7 +191,7 @@ function rankMaterials(materials, query = '', ownerEmail = '') {
 }
 
 function mobileMaterialPicker({materials, selectedCode = '', ownerEmail = '', onChoose}) {
-  openModal(`<section class="mobile-material-picker"><header class="mobile-material-picker-head"><div><p class="eyebrow">Material search</p><h3>เลือกวัสดุ</h3><p>พิมพ์ชื่อหรือรหัสอย่างน้อย 2 ตัวอักษร</p></div><button class="icon-button" id="materialPickerClose" type="button" aria-label="ปิด">×</button></header><div class="mobile-material-picker-search">${icon('search')}<input id="mobileMaterialSearch" type="search" inputmode="search" enterkeyhint="search" autocomplete="off" spellcheck="false" placeholder="เช่น กระดาษ A4 หรือ BB020"></div><div class="mobile-material-picker-results" id="mobileMaterialResults"></div><footer class="mobile-material-picker-footer"><button class="secondary" type="button" id="mobileMaterialClear">ล้างรายการที่เลือก</button></footer></section>`);
+  openModal(`<section class="mobile-material-picker"><header class="mobile-material-picker-head"><div><p class="eyebrow">ค้นหาวัสดุ</p><h3>เลือกวัสดุ</h3><p>พิมพ์ชื่อหรือรหัสอย่างน้อย 2 ตัวอักษร</p></div><button class="icon-button" id="materialPickerClose" type="button" aria-label="ปิด">×</button></header><div class="mobile-material-picker-search">${icon('search')}<input id="mobileMaterialSearch" type="search" inputmode="search" enterkeyhint="search" autocomplete="off" spellcheck="false" placeholder="เช่น กระดาษ A4 หรือ BB020"></div><div class="mobile-material-picker-results" id="mobileMaterialResults"></div><footer class="mobile-material-picker-footer"><button class="secondary" type="button" id="mobileMaterialClear">ล้างรายการที่เลือก</button></footer></section>`);
   $('#modal').classList.add('material-picker-open');
   const search = $('#mobileMaterialSearch');
   const results = $('#mobileMaterialResults');
@@ -485,8 +485,15 @@ function showIosInstallGuide() {
 
 
 function openMobileMenu() {
-  const adminItem = isAdminMode() ? `<button type="button" data-route="reagent-set-admin">${icon('settings')}<span><strong>จัดการชุดน้ำยาเข้าเครื่อง</strong><small>สร้างชุด กำหนด Barcode และรูปแบบฉลาก</small></span></button><button type="button" data-route="indicators">${icon('chart')}<span><strong>ตัวชี้วัด</strong><small>คำนวณอัตโนมัติและบันทึกเหตุการณ์</small></span></button><button type="button" data-route="admin">${icon('settings')}<span><strong>ตั้งค่าระบบ</strong><small>ผู้ใช้ ผู้ดูแล และข้อมูลสินค้า</small></span></button>` : '';
-  openModal(`<div class="mobile-menu-sheet"><div class="mobile-menu-head"><span class="owner-avatar">${esc((profile?.display_name || '?').trim().charAt(0))}</span><div><h3>เมนูทั้งหมด</h3><p>${esc(profile?.display_name || '')}</p></div></div><div class="mobile-menu-grid"><button type="button" data-route="stock">${icon('box')}<span><strong>ค้นหาสต๊อกทั้งหมด</strong><small>ค้นหาสินค้าและ Lot</small></span></button><button type="button" data-route="my-stock">${icon('user')}<span><strong>สต๊อกที่ฉันดูแล</strong><small>งานหลัก: ต้องเบิกและตั้งค่าการเตือน</small></span></button><button type="button" data-route="assisted-stock">${icon('user')}<span><strong>สต๊อกที่ฉันช่วยดูแล</strong><small>ช่วยติดตามและเตือนผู้ดูแลหลัก</small></span></button><button type="button" data-route="usage">${icon('chart')}<span><strong>วิเคราะห์การใช้</strong><small>การใช้และแนวโน้มหมดอายุ</small></span></button><button type="button" data-route="labels">${icon('print')}<span><strong>พิมพ์ QR Sticker</strong><small>คิวสติ๊กเกอร์จากรายการรับเข้า</small></span></button><button type="button" data-route="open-labels">${icon('print')}<span><strong>พิมพ์วันเปิดใช้</strong><small>รายการนำออกวันนี้และย้อนหลัง</small></span></button><button type="button" data-route="open-label-create">${icon('plus')}<span><strong>สร้างสติ๊กเกอร์วันเปิด</strong><small>เลือกวัสดุและกำหนดวันที่เอง</small></span></button><button type="button" data-route="reagent-print">${icon('print')}<span><strong>พิมพ์น้ำยาเข้าเครื่อง</strong><small>เลือกชุด กรอกวันเปิดและวันหมดอายุ</small></span></button><button type="button" data-route="weekly">${icon('check')}<span><strong>ตรวจวันศุกร์</strong><small>ตรวจนับและปรับยอดจริง</small></span></button><button type="button" data-route="scan-stock">${icon('camera')}<span><strong>สแกนตรวจ Lot</strong><small>ดูยอดคงเหลือและตรวจด้วยกล้อง</small></span></button><button type="button" data-route="weekly-status">${icon('user')}<span><strong>สถานะผู้ตรวจ</strong><small>ดูย้อนหลังตามช่วงวันที่</small></span></button><button type="button" data-route="activity">${icon('history')}<span><strong>ประวัติ</strong><small>รายการที่ทำในระบบ</small></span></button><button type="button" data-route="reports">${icon('download')}<span><strong>รายงานและส่งออก</strong><small>CSV และข้อมูลย้อนหลัง</small></span></button>${adminItem}<button type="button" data-route="help">${icon('help')}<span><strong>คู่มือใช้งาน</strong><small>ขั้นตอนทำงาน</small></span></button><button type="button" data-open-install>${icon('smartphone')}<span><strong>ติดตั้งแอป</strong><small>Android และ iPhone/iPad</small></span></button></div></div>`);
+  const adminSection = isAdminMode() ? `<div class="mobile-menu-section"><h4>ผู้ดูแลระบบ</h4><div class="mobile-menu-grid compact"><button type="button" data-route="reagent-set-admin">${icon('settings')}<span><strong>จัดการชุดน้ำยา</strong></span></button><button type="button" data-route="indicators">${icon('chart')}<span><strong>ตัวชี้วัด</strong></span></button><button type="button" data-route="admin">${icon('settings')}<span><strong>ตั้งค่าระบบ</strong></span></button></div></div>` : '';
+  openModal(`<div class="mobile-menu-sheet">
+    <div class="mobile-menu-head"><span class="owner-avatar">${esc((profile?.display_name || '?').trim().charAt(0))}</span><div><h3>เมนูทั้งหมด</h3><p>${esc(profile?.display_name || '')}</p></div></div>
+    <div class="mobile-menu-section"><h4>สต๊อก</h4><div class="mobile-menu-grid compact"><button type="button" data-route="stock">${icon('box')}<span><strong>ค้นหาสต๊อก</strong></span></button><button type="button" data-route="my-stock">${icon('user')}<span><strong>สต๊อกที่ฉันดูแล</strong></span></button><button type="button" data-route="assisted-stock">${icon('user')}<span><strong>สต๊อกที่ช่วยดูแล</strong></span></button><button type="button" data-route="urgent">${icon('alert')}<span><strong>ต้องเบิกด่วน</strong></span></button></div></div>
+    <div class="mobile-menu-section"><h4>ตรวจและพิมพ์</h4><div class="mobile-menu-grid compact"><button type="button" data-route="weekly">${icon('check')}<span><strong>ตรวจวันศุกร์</strong></span></button><button type="button" data-route="scan-stock">${icon('camera')}<span><strong>สแกนตรวจ Lot</strong></span></button><button type="button" data-route="weekly-status">${icon('user')}<span><strong>สถานะผู้ตรวจ</strong></span></button><button type="button" data-route="labels">${icon('print')}<span><strong>พิมพ์ QR Sticker</strong></span></button><button type="button" data-route="open-labels">${icon('print')}<span><strong>พิมพ์วันเปิดใช้</strong></span></button><button type="button" data-route="open-label-create">${icon('plus')}<span><strong>สร้างสติ๊กเกอร์วันเปิด</strong></span></button><button type="button" data-route="reagent-print">${icon('print')}<span><strong>พิมพ์น้ำยาเข้าเครื่อง</strong></span></button></div></div>
+    <div class="mobile-menu-section"><h4>ประวัติและรายงาน</h4><div class="mobile-menu-grid compact"><button type="button" data-route="activity">${icon('history')}<span><strong>ประวัติทั้งหมด</strong></span></button><button type="button" data-route="reports" data-report-tab="receive">${icon('history')}<span><strong>ประวัตินำเข้า</strong></span></button><button type="button" data-route="reports" data-report-tab="issue">${icon('history')}<span><strong>ประวัตินำออก</strong></span></button><button type="button" data-route="usage">${icon('chart')}<span><strong>วิเคราะห์การใช้</strong></span></button><button type="button" data-route="reports">${icon('download')}<span><strong>รายงาน & ส่งออก</strong></span></button></div></div>
+    ${adminSection}
+    <div class="mobile-menu-section"><h4>ช่วยเหลือ</h4><div class="mobile-menu-grid compact"><button type="button" data-route="help">${icon('help')}<span><strong>คู่มือ</strong></span></button><button type="button" data-open-install>${icon('smartphone')}<span><strong>ติดตั้งแอป</strong></span></button></div></div>
+  </div>`);
 }
 
 function loading() {
@@ -779,7 +786,7 @@ async function register() {
 function openForgotPassword() {
   if (!configured) return toast('กรุณาตั้งค่า Supabase ก่อน', true);
   const currentEmail = mahidolUsernameFromInput($('#loginEmail')?.value || '');
-  openModal(`<section class="password-reset-request"><div class="auth-modal-head"><span>${icon('help')}</span><div><p class="eyebrow">Password reset</p><h3>ลืมรหัสผ่าน</h3><p>กรอกเฉพาะชื่อหน้า @mahidol.ac.th ระบบจะเติมท้ายอีเมลให้อัตโนมัติ</p></div></div><form id="forgotPasswordForm" class="form-grid"><label>อีเมลมหิดล<span class="email-suffix-field"><input id="forgotPasswordEmail" type="text" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" value="${esc(currentEmail)}" placeholder="ชื่อผู้ใช้" required><span class="email-domain" aria-hidden="true">@mahidol.ac.th</span></span></label><div class="auth-security-note"><strong>เพื่อความปลอดภัย</strong><span>Admin จะไม่เห็นรหัสผ่านเดิมหรือรหัสผ่านใหม่ เจ้าหน้าที่ต้องเปิดลิงก์จากอีเมลและตั้งรหัสผ่านด้วยตนเอง</span></div><div class="auth-security-note password-email-limit-note"><strong>ข้อจำกัดการส่งอีเมล</strong><span>ระบบส่งอีเมลรีเซ็ตรหัสผ่านได้จำกัดในแต่ละช่วงเวลา หากมีผู้ขอพร้อมกันหลายคน อาจส่งไม่ได้ชั่วคราว กรุณาไม่กดซ้ำ และลองใหม่หลังประมาณ 1 ชั่วโมง</span></div><button class="primary large" type="submit">ส่งลิงก์รีเซ็ตรหัสผ่าน</button><button class="secondary" type="button" data-modal-close>ยกเลิก</button></form></section>`);
+  openModal(`<section class="password-reset-request"><div class="auth-modal-head"><span>${icon('help')}</span><div><p class="eyebrow">รีเซ็ตรหัสผ่าน</p><h3>ลืมรหัสผ่าน</h3><p>กรอกเฉพาะชื่อหน้า @mahidol.ac.th ระบบจะเติมท้ายอีเมลให้อัตโนมัติ</p></div></div><form id="forgotPasswordForm" class="form-grid"><label>อีเมลมหิดล<span class="email-suffix-field"><input id="forgotPasswordEmail" type="text" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" value="${esc(currentEmail)}" placeholder="ชื่อผู้ใช้" required><span class="email-domain" aria-hidden="true">@mahidol.ac.th</span></span></label><div class="auth-security-note"><strong>เพื่อความปลอดภัย</strong><span>Admin จะไม่เห็นรหัสผ่านเดิมหรือรหัสผ่านใหม่ เจ้าหน้าที่ต้องเปิดลิงก์จากอีเมลและตั้งรหัสผ่านด้วยตนเอง</span></div><div class="auth-security-note password-email-limit-note"><strong>ข้อจำกัดการส่งอีเมล</strong><span>ระบบส่งอีเมลรีเซ็ตรหัสผ่านได้จำกัดในแต่ละช่วงเวลา หากมีผู้ขอพร้อมกันหลายคน อาจส่งไม่ได้ชั่วคราว กรุณาไม่กดซ้ำ และลองใหม่หลังประมาณ 1 ชั่วโมง</span></div><button class="primary large" type="submit">ส่งลิงก์รีเซ็ตรหัสผ่าน</button><button class="secondary" type="button" data-modal-close>ยกเลิก</button></form></section>`);
   $('#forgotPasswordForm').addEventListener('submit', async event => {
     event.preventDefault();
     const button = event.submitter || $('#forgotPasswordForm button[type="submit"]');
@@ -843,7 +850,7 @@ function showPasswordResetForm() {
   if (!sb || !passwordRecoveryMode || !session) return;
   appView.classList.add('hidden');
   loginView.classList.remove('hidden');
-  openModal(`<section class="password-recovery-form"><div class="auth-modal-head"><span>${icon('settings')}</span><div><p class="eyebrow">Set new password</p><h3>กำหนดรหัสผ่านใหม่</h3><p>ตั้งรหัสผ่านใหม่สำหรับ CNMI Inventory แล้วเข้าสู่ระบบอีกครั้ง</p></div></div><form id="newPasswordForm" class="form-grid"><label>รหัสผ่านใหม่<input id="newPassword" type="password" autocomplete="new-password" minlength="6" required><small class="field-hint">อย่างน้อย 6 ตัวอักษร และไม่ควรใช้รหัสเดียวกับบัญชีอื่น</small></label><label>ยืนยันรหัสผ่านใหม่<input id="confirmNewPassword" type="password" autocomplete="new-password" minlength="6" required></label><div class="auth-security-note"><strong>รหัสผ่านเป็นข้อมูลส่วนบุคคล</strong><span>ไม่ต้องแจ้งรหัสผ่านให้ Admin หรือบุคคลอื่น</span></div><button class="primary large" type="submit">บันทึกรหัสผ่านใหม่</button><button class="secondary" type="button" id="cancelPasswordRecovery">ยกเลิกและกลับหน้าเข้าสู่ระบบ</button></form></section>`);
+  openModal(`<section class="password-recovery-form"><div class="auth-modal-head"><span>${icon('settings')}</span><div><p class="eyebrow">ตั้งรหัสผ่านใหม่</p><h3>กำหนดรหัสผ่านใหม่</h3><p>ตั้งรหัสผ่านใหม่สำหรับ CNMI Inventory แล้วเข้าสู่ระบบอีกครั้ง</p></div></div><form id="newPasswordForm" class="form-grid"><label>รหัสผ่านใหม่<input id="newPassword" type="password" autocomplete="new-password" minlength="6" required><small class="field-hint">อย่างน้อย 6 ตัวอักษร และไม่ควรใช้รหัสเดียวกับบัญชีอื่น</small></label><label>ยืนยันรหัสผ่านใหม่<input id="confirmNewPassword" type="password" autocomplete="new-password" minlength="6" required></label><div class="auth-security-note"><strong>รหัสผ่านเป็นข้อมูลส่วนบุคคล</strong><span>ไม่ต้องแจ้งรหัสผ่านให้ Admin หรือบุคคลอื่น</span></div><button class="primary large" type="submit">บันทึกรหัสผ่านใหม่</button><button class="secondary" type="button" id="cancelPasswordRecovery">ยกเลิกและกลับหน้าเข้าสู่ระบบ</button></form></section>`);
   $('#modal').classList.add('password-recovery-open');
   $('#cancelPasswordRecovery').addEventListener('click', () => cancelPasswordRecovery());
   $('#newPasswordForm').addEventListener('submit', async event => {
@@ -889,7 +896,7 @@ async function cancelPasswordRecovery(showMessage = true) {
 
 function openAdminPasswordReset(email, displayName) {
   if (!isAdminMode()) return toast('ต้องอยู่ในโหมด Admin', true);
-  openModal(`<section class="admin-password-reset"><div class="auth-modal-head"><span>${icon('user')}</span><div><p class="eyebrow">Admin assistance</p><h3>ส่งลิงก์รีเซ็ตรหัสผ่าน</h3><p>ยืนยันตัวบุคคลก่อนส่งลิงก์ไปยังอีเมลของเจ้าหน้าที่</p></div></div><div class="admin-reset-user"><strong>${esc(displayName || email)}</strong><span>${esc(email)}</span></div><div class="auth-security-note"><strong>Admin ไม่ได้เปลี่ยนรหัสให้เจ้าหน้าที่</strong><span>ระบบจะส่งลิงก์ให้เจ้าหน้าที่ตั้งรหัสผ่านใหม่ด้วยตนเอง และ Admin จะไม่เห็นรหัสผ่านใหม่</span></div><div class="auth-security-note password-email-limit-note"><strong>ระบบอีเมลมีโควตาจำกัด</strong><span>ส่งครั้งละ 1 คนและรอผลก่อนส่งคนถัดไป หากระบบแจ้งว่าเต็ม ให้แจ้งเจ้าหน้าที่ว่าคำขอยังไม่ถูกส่ง และลองใหม่หลังประมาณ 1 ชั่วโมง</span></div><div class="form-actions"><button class="secondary" type="button" data-modal-close>ยกเลิก</button><button class="primary" type="button" id="confirmAdminPasswordReset">ยืนยันส่งลิงก์</button></div></section>`);
+  openModal(`<section class="admin-password-reset"><div class="auth-modal-head"><span>${icon('user')}</span><div><p class="eyebrow">สำหรับ Admin</p><h3>ส่งลิงก์รีเซ็ตรหัสผ่าน</h3><p>ยืนยันตัวบุคคลก่อนส่งลิงก์ไปยังอีเมลของเจ้าหน้าที่</p></div></div><div class="admin-reset-user"><strong>${esc(displayName || email)}</strong><span>${esc(email)}</span></div><div class="auth-security-note"><strong>Admin ไม่ได้เปลี่ยนรหัสให้เจ้าหน้าที่</strong><span>ระบบจะส่งลิงก์ให้เจ้าหน้าที่ตั้งรหัสผ่านใหม่ด้วยตนเอง และ Admin จะไม่เห็นรหัสผ่านใหม่</span></div><div class="auth-security-note password-email-limit-note"><strong>ระบบอีเมลมีโควตาจำกัด</strong><span>ส่งครั้งละ 1 คนและรอผลก่อนส่งคนถัดไป หากระบบแจ้งว่าเต็ม ให้แจ้งเจ้าหน้าที่ว่าคำขอยังไม่ถูกส่ง และลองใหม่หลังประมาณ 1 ชั่วโมง</span></div><div class="form-actions"><button class="secondary" type="button" data-modal-close>ยกเลิก</button><button class="primary" type="button" id="confirmAdminPasswordReset">ยืนยันส่งลิงก์</button></div></section>`);
   $('#confirmAdminPasswordReset').addEventListener('click', async event => {
     const button = event.currentTarget;
     button.disabled = true;
@@ -1029,7 +1036,10 @@ async function globalClick(e) {
   if (r) {
     e.preventDefault();
     if (!$('#modal').classList.contains('hidden')) closeModal();
-    navigate(r.dataset.route, {tab:r.dataset.moveTab, filter:r.dataset.stockFilter, reportTab:r.dataset.reportTab});
+    const reportTabOption = r.dataset.route === 'reports'
+      ? (r.hasAttribute('data-report-tab') ? r.dataset.reportTab : '')
+      : undefined;
+    navigate(r.dataset.route, {tab:r.dataset.moveTab, filter:r.dataset.stockFilter, reportTab:reportTabOption});
     return;
   }
   const openLabelPrint = e.target.closest('[data-open-label-print]');
@@ -1250,7 +1260,7 @@ function navActive() {
       route === 'move'
         ? ((b.dataset.moveTab || '') === moveTab || !b.dataset.moveTab)
         : route === 'reports'
-          ? ((b.dataset.reportTab || '') === reportTab || !b.dataset.reportTab)
+          ? (b.hasAttribute('data-report-tab') ? b.dataset.reportTab === reportTab : !reportTab)
           : true
     );
     b.classList.toggle('active', active);
@@ -1267,7 +1277,7 @@ async function navigate(r, options = {}) {
   route = r;
   if (r === 'move') moveTab = options.tab || moveTab || 'receive';
   if (r === 'usage') usageMaterialCode = options.material || usageMaterialCode || '';
-  if (r === 'reports') reportTab = options.reportTab || reportTab || '';
+  if (r === 'reports') reportTab = Object.prototype.hasOwnProperty.call(options, 'reportTab') && options.reportTab !== undefined ? (options.reportTab || '') : (reportTab || '');
   if (r === 'my-stock' || r === 'assisted-stock') {
     myStockScope = r === 'assisted-stock' ? 'assistant' : 'primary';
     myStockTab = options.tab || myStockTab || 'overview';
@@ -1903,7 +1913,7 @@ async function renderStock(initialFilter = 'select') {
   const nearCount = groups.filter(g => isNearExpiryDate(g.nearest_expiry, expiryAlertDays(g))).length;
   const outCount = groups.filter(g => materialGroupStatus(g).key === 'out').length;
   const selectedFilter = initialFilter && initialFilter !== 'select' ? initialFilter : '';
-  page.innerHTML = `<div class="page-head stock-page-head"><div><h2>สต๊อกคงเหลือ</h2><p class="muted small">เลือกสถานะ หรือพิมพ์ชื่อสินค้าบางส่วน ระบบจึงจะแสดงรายการ</p></div><button class="mini" data-route="usage">${icon('chart')} วิเคราะห์การใช้</button></div><div class="stock-summary-strip"><div><span>สินค้า</span><strong>${groups.length}</strong><small>รายการ</small></div><div><span>Lot ใช้งาน</span><strong>${activeLots}</strong><small>Lot</small></div><div><span>ต้องเบิก</span><strong>${reorderCount}</strong><small>รายการ</small></div><div><span>สินค้าหมด</span><strong>${outCount}</strong><small>รายการ</small></div><div><span>ใกล้หมดอายุ</span><strong>${nearCount}</strong><small>ตามเกณฑ์ 1/8 เดือน</small></div></div><section class="card stock-choice-card four"><label>เลือกผู้ดูแล<select id="stockOwnerFilter">${stockOwnerOptions}</select></label><label>ดูในบทบาท<select id="stockOwnerRole"><option value="both">หลักและผู้ช่วย</option><option value="primary">ผู้ดูแลหลัก</option><option value="assistant">ผู้ช่วยดูแล</option></select></label><label>เลือกสถานะ<select id="stockStatusSelect"><option value="">กรุณาเลือกสถานะ</option><option value="all">ทั้งหมด</option><option value="positive">คงเหลือปกติ</option><option value="reorder">ถึงรอบเบิก</option><option value="low">ต่ำกว่าขั้นต่ำ</option><option value="out">สินค้าหมด</option><option value="current-use">ใช้ชุดปัจจุบันอยู่</option><option value="notrack">ไม่เปิดแจ้งเตือน</option><option value="expiry">ใกล้หมดอายุ (ตามเกณฑ์สินค้า)</option><option value="expired">หมดอายุรอนำออก</option><option value="negative">ยอดติดลบ</option></select></label>${materialComboboxMarkup({id:'stockMaterialCode',label:'หรือค้นหาสินค้า',placeholder:'พิมพ์ชื่อสินค้าบางส่วน',materials:materialOptions})}</section><div id="materialStockList" class="material-stock-list"></div>`;
+  page.innerHTML = `<div class="page-head stock-page-head"><div><h2>สต๊อกคงเหลือ</h2><p class="muted small">เลือกสถานะ หรือค้นหาชื่อสินค้า</p></div><button class="mini" data-route="usage">${icon('chart')} วิเคราะห์การใช้</button></div><div class="stock-summary-strip"><div><span>สินค้า</span><strong>${groups.length}</strong><small>รายการ</small></div><div><span>Lot ใช้งาน</span><strong>${activeLots}</strong><small>Lot</small></div><div><span>ต้องเบิก</span><strong>${reorderCount}</strong><small>รายการ</small></div><div><span>สินค้าหมด</span><strong>${outCount}</strong><small>รายการ</small></div><div><span>ใกล้หมดอายุ</span><strong>${nearCount}</strong><small>ตามเกณฑ์ 1/8 เดือน</small></div></div><section class="card stock-choice-card four"><label>เลือกผู้ดูแล<select id="stockOwnerFilter">${stockOwnerOptions}</select></label><label>ดูในบทบาท<select id="stockOwnerRole"><option value="both">หลักและผู้ช่วย</option><option value="primary">ผู้ดูแลหลัก</option><option value="assistant">ผู้ช่วยดูแล</option></select></label><label>เลือกสถานะ<select id="stockStatusSelect"><option value="">กรุณาเลือกสถานะ</option><option value="all">ทั้งหมด</option><option value="positive">คงเหลือปกติ</option><option value="reorder">ถึงรอบเบิก</option><option value="low">ต่ำกว่าขั้นต่ำ</option><option value="out">สินค้าหมด</option><option value="current-use">ใช้ชุดปัจจุบันอยู่</option><option value="notrack">ไม่เปิดแจ้งเตือน</option><option value="expiry">ใกล้หมดอายุ (ตามเกณฑ์สินค้า)</option><option value="expired">หมดอายุรอนำออก</option><option value="negative">ยอดติดลบ</option></select></label>${materialComboboxMarkup({id:'stockMaterialCode',label:'หรือค้นหาสินค้า',placeholder:'พิมพ์ชื่อสินค้าบางส่วน',materials:materialOptions})}</section><div id="materialStockList" class="material-stock-list"></div>`;
   const statusSelect=$('#stockStatusSelect');
   statusSelect.value=selectedFilter;
   const draw = () => {
@@ -2138,7 +2148,7 @@ async function renderUsage(selectedCode = '') {
   const usageOwnerOptions='<option value="">ทุกคน</option>'+usageOwners.map(([email,name])=>`<option value="${esc(email)}">${esc(name)}</option>`).join('');
   const today=new Date(), start=new Date(today); start.setFullYear(start.getFullYear()-1); start.setDate(start.getDate()+1);
   const initial=selectedCode && mats.some(m=>m.code===selectedCode) ? selectedCode : '';
-  page.innerHTML = `<div class="page-head"><div><h2>วิเคราะห์การใช้สินค้า</h2><p class="muted small">พิมพ์ชื่อสินค้าบางส่วน แล้วเลือกช่วงวันที่ก่อนคำนวณ</p></div></div><form id="usageFilterForm" class="card usage-filter-card"><label>กรองผู้ดูแล<select id="usageOwnerFilter">${usageOwnerOptions}</select></label>${materialComboboxMarkup({id:'usageMaterial',label:'สินค้า',placeholder:'พิมพ์ชื่อสินค้าบางส่วน',materials:mats,initialCode:initial})}<div class="form-grid two"><label>ตั้งแต่วันที่<input id="usageFrom" type="date" value="${dateInputValue(start)}" required></label><label>ถึงวันที่<input id="usageTo" type="date" value="${dateInputValue(today)}" required></label></div><div class="usage-filter-actions"><div class="preset-group"><button type="button" data-usage-days="30">30 วัน</button><button type="button" data-usage-days="90">90 วัน</button><button type="button" data-usage-days="365" class="active">1 ปี</button><button type="button" data-usage-all>ทั้งหมด</button></div><button class="primary" type="submit">${icon('chart')} คำนวณ</button></div></form><div id="usageResult"><div class="card select-first-state">${icon('chart')}<div><strong>กรุณาค้นหาและเลือกสินค้า</strong><span>ยังไม่มีการโหลดประวัติ จนกว่าจะเลือกสินค้าและกดคำนวณ</span></div></div></div>`;
+  page.innerHTML = `<div class="page-head"><div><h2>วิเคราะห์การใช้สินค้า</h2><p class="muted small">เลือกสินค้าและช่วงวันที่</p></div></div><form id="usageFilterForm" class="card usage-filter-card"><label>กรองผู้ดูแล<select id="usageOwnerFilter">${usageOwnerOptions}</select></label>${materialComboboxMarkup({id:'usageMaterial',label:'สินค้า',placeholder:'พิมพ์ชื่อสินค้าบางส่วน',materials:mats,initialCode:initial})}<div class="form-grid two"><label>ตั้งแต่วันที่<input id="usageFrom" type="date" value="${dateInputValue(start)}" required></label><label>ถึงวันที่<input id="usageTo" type="date" value="${dateInputValue(today)}" required></label></div><div class="usage-filter-actions"><div class="preset-group"><button type="button" data-usage-days="30">30 วัน</button><button type="button" data-usage-days="90">90 วัน</button><button type="button" data-usage-days="365" class="active">1 ปี</button><button type="button" data-usage-all>ทั้งหมด</button></div><button class="primary" type="submit">${icon('chart')} คำนวณ</button></div></form><div id="usageResult"><div class="card select-first-state">${icon('chart')}<div><strong>กรุณาค้นหาและเลือกสินค้า</strong><span>ยังไม่มีการโหลดประวัติ จนกว่าจะเลือกสินค้าและกดคำนวณ</span></div></div></div>`;
   const resetResult=()=>{$('#usageResult').innerHTML='<div class="card select-first-state">'+icon('chart')+'<div><strong>กรุณาค้นหาและเลือกสินค้า</strong><span>พิมพ์ชื่อบางส่วนได้ ไม่ต้องเลื่อนหารายการยาว ๆ</span></div></div>';};
   const load = async () => {
     const code=$('#usageMaterial').value, from=$('#usageFrom').value, to=$('#usageTo').value;
@@ -2429,7 +2439,7 @@ function labelQueueCard(row) {
 }
 
 async function renderLabels() {
-  page.innerHTML = `<div class="page-head label-page-head"><div><p class="eyebrow">Label printing</p><h2>พิมพ์สติ๊กเกอร์</h2><p class="muted small">เลือกรายการและจำนวนดวง แล้วกดพิมพ์สติ๊กเกอร์ จากนั้นเลือกเครื่องพิมพ์และปรับกระดาษในหน้าพิมพ์ของ Chrome</p></div><button class="mini ghost" type="button" id="refreshLabelQueue">${icon('refresh')} รีเฟรช</button></div><section class="card label-queue-filter"><div class="search-box">${icon('search')}<input id="labelQueueSearch" type="search" placeholder="ค้นหาชื่อวัสดุ รหัส หรือ Lot"></div><div class="label-filter-tabs"><button type="button" class="active" data-label-filter="unprinted">ยังไม่พิมพ์</button><button type="button" data-label-filter="all">ทั้งหมด</button></div></section><div id="labelQueueList"><div class="card usage-loading">กำลังโหลดรายการรับเข้าล่าสุด…</div></div>`;
+  page.innerHTML = `<div class="page-head label-page-head"><div><p class="eyebrow">QR Sticker</p><h2>พิมพ์ QR Sticker</h2><p class="muted small">เลือกรายการ จำนวนดวง แล้วกดพิมพ์</p></div><button class="mini ghost" type="button" id="refreshLabelQueue">${icon('refresh')} รีเฟรช</button></div><section class="card label-queue-filter"><div class="search-box">${icon('search')}<input id="labelQueueSearch" type="search" placeholder="ค้นหาชื่อวัสดุ รหัส หรือ Lot"></div><div class="label-filter-tabs"><button type="button" class="active" data-label-filter="unprinted">ยังไม่พิมพ์</button><button type="button" data-label-filter="all">ทั้งหมด</button></div></section><div id="labelQueueList"><div class="card usage-loading">กำลังโหลดรายการรับเข้าล่าสุด…</div></div>`;
   const [receiveRes, printRes] = await Promise.all([
     sb.from('v_transaction_history').select('*').eq('tx_type','RECEIVE').order('created_at',{ascending:false}).order('id',{ascending:false}).limit(150),
     sb.from('v_audit_activity').select('entity_id,created_at,summary,actor_name,actor_email').eq('action','LABEL_PRINT').order('created_at',{ascending:false}).limit(500)
@@ -2580,7 +2590,7 @@ async function printOpenLabelIssue(transactionId) {
 
 async function renderOpenLabels() {
   const today = dateInputValue(new Date());
-  page.innerHTML = `<div class="page-head open-label-page-head"><div><p class="eyebrow">Opened reagent label</p><h2>พิมพ์สติ๊กเกอร์วันเปิดใช้</h2><p class="muted small">แสดงวัสดุทุกชิ้นที่นำออก โดยเรียงรายการล่าสุดไว้บนสุด เจ้าหน้าที่เลือกพิมพ์เมื่อเปิดใช้จริง ขนาดสติ๊กเกอร์เดิม 25 × 20 mm</p></div><button class="mini ghost" type="button" id="refreshOpenLabelQueue">${icon('refresh')} รีเฟรช</button></div>
+  page.innerHTML = `<div class="page-head open-label-page-head"><div><p class="eyebrow">สติ๊กเกอร์วันเปิด</p><h2>พิมพ์สติ๊กเกอร์วันเปิดใช้</h2><p class="muted small">เลือกรายการที่เปิดใช้จริง แล้วพิมพ์สติ๊กเกอร์</p></div><button class="mini ghost" type="button" id="refreshOpenLabelQueue">${icon('refresh')} รีเฟรช</button></div>
   <section class="open-label-mode-tabs" aria-label="เลือกวิธีค้นหารายการ"><button type="button" class="active" data-open-label-tab="today">รายการวันนี้</button><button type="button" data-open-label-tab="history">พิมพ์ย้อนหลัง</button></section>
   <section id="openLabelTodayPanel"><div class="section-title compact"><div><h3>รายการนำออกวันนี้</h3><p class="muted small">${d(today)} · เรียงรายการล่าสุดไว้บนสุด</p></div><a class="mini secondary" href="#open-label-create" data-route="open-label-create">${icon('plus')} สร้างสติ๊กเกอร์เอง</a></div><div id="openLabelTodayList"><div class="card usage-loading">กำลังโหลดรายการวันนี้…</div></div></section>
   <section id="openLabelHistoryPanel" class="hidden"><section class="card open-label-history-filter"><div><h3>ค้นหารายการย้อนหลัง</h3><p class="muted small">เลือกวันที่ แล้วกรองวัสดุหรือผู้นำออกเพิ่มเติมได้</p></div><div class="open-label-history-grid"><label>วันที่นำออก<input id="openLabelHistoryDate" type="date" value="${today}" max="${today}"></label><label>วัสดุ<select id="openLabelHistoryMaterial"><option value="">ทุกวัสดุ</option></select></label><label>ผู้นำออก<select id="openLabelHistoryOperator"><option value="">ทุกคน</option></select></label><button type="button" class="primary" id="searchOpenLabelHistory">${icon('search')} ค้นหา</button></div></section><div id="openLabelHistoryList"><div class="card empty">เลือกตัวกรองแล้วกดค้นหา</div></div></section>`;
@@ -2937,44 +2947,58 @@ function openIssueLookupNotFound(code, source = 'manual') {
 }
 
 async function renderMove(defaultTab = 'receive') {
-  page.innerHTML = `<div class="page-head move-page-head"><div><p class="eyebrow">Stock movement</p><h2>นำเข้า–นำออก</h2><p class="muted small">เลือกนำเข้า หรือนำออก</p></div></div><div class="tabs move-tabs premium-tabs"><button data-tab="receive">${icon('plus')} นำเข้า</button><button data-tab="issue">${icon('minus')} นำออก</button></div><div id="movePane"></div>`;
+  page.innerHTML = `<div class="page-head move-page-head"><div><h2>นำเข้า / นำออก</h2><p class="muted small">เลือกงานที่ต้องการทำ</p></div></div><div class="tabs move-tabs premium-tabs"><button data-tab="receive">${icon('plus')} นำเข้า</button><button data-tab="issue">${icon('minus')} นำออก</button></div><div id="movePane"></div>`;
 
-  const miniHistoryMarkup = (txType, rows) => {
-    const title = txType === 'ISSUE' ? 'ประวัตินำออก' : 'ประวัตินำเข้า';
-    const target = txType === 'ISSUE' ? 'issue' : 'receive';
-    return `<section class="card move-history-shortcut"><div class="section-title compact"><div><h3>${title}</h3><p class="muted small">ย้ายไปดูแบบเต็มในเมนูรายงาน</p></div><button class="mini ghost" data-route="reports" data-report-tab="${target}">เปิดเมนูประวัติ ${icon('arrow')}</button></div><div class="move-mini-history-list">${rows.map(x => `<article class="move-mini-history-item"><div><strong>${esc(x.material_name)}</strong><small>${esc(x.lot_key)} · ${dt(x.created_at)}</small></div><span>${x.tx_type === 'RECEIVE' ? '+' : ''}${qty(x.quantity_delta)} ${esc(x.unit)}</span></article>`).join('') || '<div class="empty">ยังไม่มีรายการ</div>'}</div></section>`;
-  };
+  const historyButton = tab => `<button type="button" class="mini ghost move-history-link" data-route="reports" data-report-tab="${tab}">${icon('history')} ดูประวัติ${tab==='receive'?'นำเข้า':'นำออก'}</button>`;
 
   const draw = async tab => {
     moveTab = tab;
     navActive();
     $$('[data-tab]').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
-    $('#movePane').innerHTML='<div class="card usage-loading">กำลังเปิดเมนูที่เลือก…</div>';
+    $('#movePane').innerHTML='<div class="card usage-loading">กำลังเปิดเมนู…</div>';
     if (tab === 'receive') {
-      const [rawMats, staffRes, historyRes] = await Promise.all([
+      const [rawMats, staffRes] = await Promise.all([
         loadMaterials(),
-        sb.from('staff_directory').select('email,display_name').eq('active',true).order('display_name'),
-        fetchTransactionPage('RECEIVE', 1, 3)
+        sb.from('staff_directory').select('email,display_name').eq('active',true).order('display_name')
       ]);
       if(staffRes.error) throw staffRes.error;
       const staffMap=new Map((staffRes.data||[]).map(x=>[x.email,x.display_name]));
       const mats=rawMats.map(m=>({...m,responsible_name:staffMap.get(m.responsible_email)||m.responsible_email||'ยังไม่กำหนด'}));
-      $('#movePane').innerHTML = `<div class="move-layout move-layout-lite"><form id="receiveForm" class="card form-card form-grid move-action-card"><div class="form-title"><span>${icon('plus')}</span><div><p class="eyebrow">Receive stock</p><h3>บันทึกนำเข้า</h3></div></div>${currentOperatorMarkup('ผู้นำเข้า')}${materialComboboxMarkup({id:'rMat',label:'วัสดุ',placeholder:'พิมพ์ชื่อวัสดุ เช่น Panel, Papain',materials:mats})}<div class="form-grid two"><label>Lot<input id="rLot" autocomplete="off" autocapitalize="characters" maxlength="60" inputmode="latin" pattern="[A-Za-z0-9]*" placeholder="เช่น 8A145 หรือเว้นว่างเพื่อใช้วันที่นำเข้า"><small id="lotRule" class="field-hint lot-rule">กรอกได้เฉพาะ 0–9 และ A–Z</small></label><label>วันหมดอายุ<input id="rExp" type="date"><small class="field-hint">เว้นว่างได้ถ้าไม่มี</small></label></div><label>จำนวน<input id="rQty" type="number" min="0.01" step="0.01" required inputmode="decimal"></label><button class="primary large" type="submit">${icon('plus')} บันทึกนำเข้า</button></form><aside class="card move-side-card move-side-card-lite"><div class="move-side-icon">${icon('box')}</div><div><h3>ทำ 3 อย่างพอ</h3><p>เลือกวัสดุ · ตรวจ Lot/EXP · กดบันทึก</p></div><div class="move-side-points"><span><b>1</b> เลือกวัสดุ</span><span><b>2</b> ใส่ Lot และวันหมดอายุ</span><span><b>3</b> บันทึกแล้วพิมพ์ QR</span></div></aside>${miniHistoryMarkup('RECEIVE', historyRes.rows || [])}</div>`;
+      $('#movePane').innerHTML = `<div class="move-layout move-layout-friendly">
+        <form id="receiveForm" class="card form-card form-grid move-action-card">
+          <div class="form-title"><span>${icon('plus')}</span><div><p class="eyebrow">นำเข้า</p><h3>บันทึกรับเข้าสต๊อก</h3></div></div>
+          ${currentOperatorMarkup('ผู้นำเข้า')}
+          ${materialComboboxMarkup({id:'rMat',label:'วัสดุ',placeholder:'พิมพ์ชื่อวัสดุ',materials:mats})}
+          <div class="form-grid two"><label>Lot<input id="rLot" autocomplete="off" autocapitalize="characters" maxlength="60" inputmode="latin" pattern="[A-Za-z0-9]*" placeholder="เช่น 8A145"><small id="lotRule" class="field-hint lot-rule">0–9 และ A–Z เท่านั้น · เว้นว่างได้</small></label><label>วันหมดอายุ<input id="rExp" type="date"><small class="field-hint">เว้นว่างได้ถ้าไม่มี</small></label></div>
+          <label>จำนวน<input id="rQty" type="number" min="0.01" step="0.01" required inputmode="decimal"></label>
+          <button class="primary large" type="submit">${icon('plus')} บันทึกนำเข้า</button>
+          <div class="move-card-footer">${historyButton('receive')}</div>
+        </form>
+        <aside class="card move-quick-guide"><div class="move-guide-head"><span>${icon('box')}</span><strong>ขั้นตอน</strong></div><ol><li>เลือกวัสดุ</li><li>ใส่ Lot / วันหมดอายุ</li><li>ใส่จำนวนแล้วบันทึก</li></ol><p>หลังบันทึก เลือกพิมพ์ QR ได้ทันที</p></aside>
+      </div>`;
       setupMaterialCombobox('rMat',mats,{maxResults:20});
       const lotInput=$('#rLot');
       lotInput.addEventListener('input',()=>prepareLotInput(lotInput));
       lotInput.addEventListener('blur',()=>prepareLotInput(lotInput,{autoFillBlank:true,showFallbackHint:true}));
       $('#receiveForm').addEventListener('submit', receive);
     } else {
-      const historyRes = await fetchTransactionPage('ISSUE', 1, 3);
-      $('#movePane').innerHTML = `<div class="move-layout move-layout-lite"><section class="card issue-scan-simple move-action-card"><div class="form-title"><span>${icon('qr')}</span><div><p class="eyebrow">Issue stock</p><h3>นำออกจากสต๊อก</h3></div></div>${currentOperatorMarkup('ผู้นำออก')}<div class="issue-method-selector"><button class="issue-method-card active" type="button" data-issue-mode="scan">${icon('camera')}<span><strong>สแกน QR</strong><small>เร็วสุดสำหรับหน้างาน</small></span></button><button class="issue-method-card" type="button" data-issue-mode="manual">${icon('search')}<span><strong>พิมพ์รหัส</strong><small>ใช้เมื่อกล้องมีปัญหา</small></span></button></div><div id="issueModePane"></div></section><aside class="card move-side-card move-side-card-lite"><div class="move-side-icon">${icon('history')}</div><div><h3>ประวัติแยกไปอีกเมนู</h3><p>เปิดดูรายการย้อนหลังแบบเต็มได้ที่ “ประวัตินำออก” หรือเมนูรายงาน</p></div><div class="method-preview"><span class="badge ok">สแกน QR</span><span class="badge info">พิมพ์รหัสเอง</span><span class="badge">ข้อมูลเดิม</span></div></aside>${miniHistoryMarkup('ISSUE', historyRes.rows || [])}</div>`;
+      $('#movePane').innerHTML = `<div class="move-layout move-layout-friendly">
+        <section class="card issue-scan-simple move-action-card">
+          <div class="form-title"><span>${icon('qr')}</span><div><p class="eyebrow">นำออก</p><h3>นำออกจากสต๊อก</h3></div></div>
+          ${currentOperatorMarkup('ผู้นำออก')}
+          <div class="issue-method-selector"><button class="issue-method-card active" type="button" data-issue-mode="scan">${icon('camera')}<span><strong>สแกน QR</strong><small>แนะนำ · เร็วที่สุด</small></span></button><button class="issue-method-card" type="button" data-issue-mode="manual">${icon('search')}<span><strong>พิมพ์รหัส</strong><small>ใช้เมื่อสแกนไม่ได้</small></span></button></div>
+          <div id="issueModePane"></div>
+          <div class="move-card-footer">${historyButton('issue')}</div>
+        </section>
+        <aside class="card move-quick-guide"><div class="move-guide-head"><span>${icon('check')}</span><strong>เลือกวิธีเดียว</strong></div><div class="move-guide-choice"><b>สแกน QR</b><span>ใช้เป็นวิธีหลัก</span></div><div class="move-guide-choice"><b>พิมพ์รหัส</b><span>ใช้เมื่อกล้องหรือ QR มีปัญหา</span></div></aside>
+      </div>`;
 
       const renderIssueMode = mode => {
         $$('.issue-method-card').forEach(btn => btn.classList.toggle('active', btn.dataset.issueMode === mode));
         if (mode === 'scan') {
-          $('#issueModePane').innerHTML = `<div class="issue-mode-block"><button class="primary camera-primary large" type="button" data-camera-scan>${icon('camera')} เปิดกล้องสแกน</button><p class="muted small issue-mode-help">สแกนแล้วระบบจะเปิดหน้าต่างยืนยันให้อัตโนมัติ</p></div>`;
+          $('#issueModePane').innerHTML = `<div class="issue-mode-block"><button class="primary camera-primary large" type="button" data-camera-scan>${icon('camera')} เปิดกล้องสแกน</button></div>`;
         } else {
-          $('#issueModePane').innerHTML = `<form id="manualIssueForm" class="form-grid issue-mode-block"><label>รหัส QR / รหัสล็อต<div class="toolbar issue-code-row" style="margin:0"><input id="issueCode" autocomplete="off" placeholder="เช่น BB020-69020" required><button type="submit" class="secondary">ค้นหา</button></div></label><p class="muted small issue-mode-help">ใช้เมื่อสติ๊กเกอร์อ่านยาก หรือเปิดกล้องไม่ได้</p></form>`;
+          $('#issueModePane').innerHTML = `<form id="manualIssueForm" class="form-grid issue-mode-block"><label>รหัส QR / รหัสล็อต<div class="toolbar issue-code-row" style="margin:0"><input id="issueCode" autocomplete="off" placeholder="เช่น BB020-69020" required><button type="submit" class="secondary">ค้นหา</button></div></label></form>`;
           $('#manualIssueForm').addEventListener('submit',e=>{e.preventDefault();const code=$('#issueCode').value.trim();if(!code)return toast('กรุณาพิมพ์รหัส QR หรือรหัสล็อต',true);resolveIssueCode(code);});
         }
       };
@@ -3016,7 +3040,7 @@ async function receive(e) {
   inventorySummaryCache=[];
   toast('รับเข้าสต๊อกแล้ว');
   const row = Array.isArray(data) ? data[0] : data;
-  openModal(`<h3>รับเข้าเรียบร้อย</h3><p class="muted">ยอดใหม่ ${qty(row?.quantity_after)}</p><div class="receive-print-later-note">${icon('print')}<span><strong>พิมพ์ตอนนี้หรือพิมพ์ภายหลังก็ได้</strong><small>รายการนี้อยู่ในเมนู “พิมพ์สติ๊กเกอร์” แล้ว สามารถเปิดจากคอมพิวเตอร์ที่ต่อเครื่องพิมพ์สติ๊กเกอร์</small></span></div><div class="actions receive-success-actions"><button class="primary" data-print="${esc(row?.lot_id || '')}" data-print-copies="${normalizedLabelCopies(Number($('#rQty')?.value || 1))}">${icon('print')} พิมพ์สติ๊กเกอร์</button><button class="secondary" data-route="labels">ไปคิวพิมพ์</button><button class="ghost modal-close">ปิด</button></div>`);
+  openModal(`<h3>รับเข้าเรียบร้อย</h3><p class="muted">ยอดคงเหลือ ${qty(row?.quantity_after)}</p><div class="receive-print-later-note compact">${icon('print')}<span><strong>พิมพ์ QR ตอนนี้ หรือพิมพ์ภายหลังก็ได้</strong><small>รายการถูกเก็บไว้ในเมนู “พิมพ์ QR Sticker” อัตโนมัติ</small></span></div><div class="actions receive-success-actions"><button class="primary" data-print="${esc(row?.lot_id || '')}" data-print-copies="${normalizedLabelCopies(Number($('#rQty')?.value || 1))}">${icon('print')} พิมพ์ QR ตอนนี้</button><button class="secondary modal-close">ปิด</button></div>`);
 }
 
 function findLotByCode(raw, lots = stockCache) {
@@ -3055,9 +3079,9 @@ function openIssueModal(l, source = 'manual') {
   const issueOriginOptions = issueOriginRoute === 'move' ? {tab:moveTab} : issueOriginRoute === 'usage' ? {material:usageMaterialCode} : (issueOriginRoute === 'my-stock' || issueOriginRoute === 'assisted-stock') ? {tab:myStockTab} : issueOriginRoute === 'reports' ? {tab:reportTab} : {};
   const issueMethod = source === 'scan' ? 'QR_SCAN' : 'MANUAL_ENTRY';
   const openLabelNote = l.open_label_required
-    ? `<div class="receive-print-later-note">${icon('print')}<span><strong>รายการนี้ใช้สติ๊กเกอร์วันเปิด</strong><small>หลังบันทึกแล้ว รายการจะอยู่ในเมนู “พิมพ์วันเปิดใช้” โดยรายการล่าสุดอยู่บนสุด เจ้าหน้าที่เลือกพิมพ์เมื่อเปิดใช้จริง</small></span></div>`
+    ? `<div class="receive-print-later-note compact">${icon('print')}<span><strong>รายการนี้ใช้สติ๊กเกอร์วันเปิด</strong><small>หลังนำออก จะไปอยู่ในเมนู “พิมพ์วันเปิดใช้”</small></span></div>`
     : '';
-  openModal(`<h3>ยืนยันนำออก</h3><div class="selected-lot"><div><strong>${esc(l.material_name)}</strong><small>${esc(lotKey(l))} · EXP ${d(l.expiry_date)}</small></div><span class="badge info">เหลือ ${qty(l.balance)} ${esc(l.unit)}</span></div><div class="notice">วิธีนำออก: <b>${esc(issueMethodLabel(issueMethod))}</b><br>ระบบล็อกให้ตัดออกครั้งละ 1 หน่วยต่อ 1 ครั้ง</div><form id="quickIssueForm" class="form-grid" style="margin-top:15px">${openLabelNote}<label>หมายเหตุ<textarea id="quickIssueReason" rows="2" placeholder="ระบุเมื่อต้องการ"></textarea></label><button class="primary" type="submit">${icon('minus')} ยืนยันนำออก 1 หน่วย</button></form>`);
+  openModal(`<h3>ยืนยันนำออก</h3><div class="selected-lot"><div><strong>${esc(l.material_name)}</strong><small>${esc(lotKey(l))} · EXP ${d(l.expiry_date)}</small></div><span class="badge info">เหลือ ${qty(l.balance)} ${esc(l.unit)}</span></div><div class="issue-confirm-strip"><span class="badge info">${esc(issueMethodLabel(issueMethod))}</span><small>ตัดออกครั้งละ 1 หน่วย</small></div><form id="quickIssueForm" class="form-grid" style="margin-top:15px">${openLabelNote}<label>หมายเหตุ<textarea id="quickIssueReason" rows="2" placeholder="ระบุเมื่อต้องการ"></textarea></label><button class="primary" type="submit">${icon('minus')} ยืนยันนำออก 1 หน่วย</button></form>`);
   $('#quickIssueForm').addEventListener('submit', async e => {
     e.preventDefault();
     const btn = e.submitter;
@@ -3859,7 +3883,7 @@ async function renderActivity() {
   const today=dateInputValue(now);
   const currentMonth=today.slice(0,7);
   const currentYear=String(now.getFullYear());
-  page.innerHTML = `<div class="page-head activity-page-head"><div><p class="eyebrow">Audit trail</p><h2>ประวัติการทำรายการ</h2><p class="muted small">ค้นหาและกรองประวัติการทำรายการ</p></div></div>
+  page.innerHTML = `<div class="page-head activity-page-head"><div><p class="eyebrow">ประวัติระบบ</p><h2>ประวัติการทำรายการ</h2><p class="muted small">ค้นหาและกรองประวัติการทำรายการ</p></div></div>
   <section class="card activity-filter-card">
     <div class="activity-filter-grid">
       <label>ช่วงเวลา<select id="activityPeriodMode"><option value="day">วันที่</option><option value="month" selected>เดือน</option><option value="year">ปี</option><option value="range">ช่วงวันที่</option><option value="all">ทั้งหมด</option></select></label>
@@ -4171,7 +4195,7 @@ async function exportReport(kind) {
 }
 
 async function renderReports(defaultTab = '') {
-  page.innerHTML = `<div class="page-head report-page-head"><div><p class="eyebrow">Reports</p><h2>รายงาน & ส่งออก</h2><p class="muted small">เลือกประเภทรายงานและตัวกรอง</p></div></div><div class="tabs report-tabs premium-tabs"><button data-report-tab="receive">นำเข้า</button><button data-report-tab="issue">นำออก</button><button data-report-tab="expired">หมดอายุ</button><button data-report-tab="stock">สต๊อกคงเหลือ</button></div><div id="reportPane"><div class="card select-first-state">${icon('download')}<div><strong>กรุณาเลือกประเภทรายงาน</strong><span>ยังไม่มีการโหลดข้อมูล</span></div></div></div>`;
+  page.innerHTML = `<div class="page-head report-page-head"><div><p class="eyebrow">รายงาน</p><h2>รายงาน & ส่งออก</h2><p class="muted small">เลือกประเภทรายงานและตัวกรอง</p></div></div><div class="tabs report-tabs premium-tabs"><button data-report-tab="receive">นำเข้า</button><button data-report-tab="issue">นำออก</button><button data-report-tab="expired">หมดอายุ</button><button data-report-tab="stock">สต๊อกคงเหลือ</button></div><div id="reportPane"><div class="card select-first-state">${icon('download')}<div><strong>กรุณาเลือกประเภทรายงาน</strong><span>ยังไม่มีการโหลดข้อมูล</span></div></div></div>`;
   const draw = async tab => {
     reportTab = tab;
     $$('[data-report-tab]').forEach(x => x.classList.toggle('active', x.dataset.reportTab === tab));
@@ -4272,7 +4296,7 @@ function indicatorDetailRowMarkup(x) {
 async function openIndicatorDetails(row, from, to) {
   if(!row) return;
   const meta=indicatorStatusMeta(row.status);
-  openModal(`<section class="indicator-details-modal"><div class="indicator-details-head"><div><p class="eyebrow">Indicator details</p><h3>${esc(row.title)}</h3><p>${d(from)} – ${d(to)}</p></div><span class="indicator-status ${meta.cls}">${icon(meta.icon)} ${meta.label}</span></div><div id="indicatorDetailsBody" class="usage-loading">กำลังโหลดรายละเอียด…</div></section>`);
+  openModal(`<section class="indicator-details-modal"><div class="indicator-details-head"><div><p class="eyebrow">รายละเอียดตัวชี้วัด</p><h3>${esc(row.title)}</h3><p>${d(from)} – ${d(to)}</p></div><span class="indicator-status ${meta.cls}">${icon(meta.icon)} ${meta.label}</span></div><div id="indicatorDetailsBody" class="usage-loading">กำลังโหลดรายละเอียด…</div></section>`);
   const body=$('#indicatorDetailsBody');
   const {data,error}=await sb.rpc('fn_inventory_indicator_details',{p_indicator_code:row.indicator_code,p_from:from,p_to:to});
   if(error){body.className='notice';body.innerHTML=`${esc(errMsg(error))}<br><small>กรุณารัน SQL หมายเลข 28 ของ v1.4.50 ก่อนใช้งานรายละเอียดตัวชี้วัด</small>`;return;}
@@ -4306,7 +4330,7 @@ async function openIndicatorEventModal(eventRow = null, onSaved = null) {
   const eventType = eventRow?.event_type || 'OPENED_REAGENT_EXPIRED_USE';
   const occurred = eventRow?.occurred_on || dateInputValue(new Date());
   const materialCode = eventRow?.material_code || '';
-  openModal(`<div class="indicator-event-modal"><p class="eyebrow">Indicator event</p><h3>${eventRow ? 'แก้ไขเหตุการณ์ตัวชี้วัด' : 'บันทึกเหตุการณ์ตัวชี้วัด'}</h3><p class="muted small">ใช้เฉพาะเหตุการณ์ที่ระบบคำนวณจาก Transaction ไม่ได้ เพื่อไม่ต้องเก็บทะเบียนแยกนอกแอป</p><form id="indicatorEventForm" class="form-grid">
+  openModal(`<div class="indicator-event-modal"><p class="eyebrow">เหตุการณ์ตัวชี้วัด</p><h3>${eventRow ? 'แก้ไขเหตุการณ์ตัวชี้วัด' : 'บันทึกเหตุการณ์ตัวชี้วัด'}</h3><p class="muted small">ใช้เฉพาะเหตุการณ์ที่ระบบคำนวณจาก Transaction ไม่ได้ เพื่อไม่ต้องเก็บทะเบียนแยกนอกแอป</p><form id="indicatorEventForm" class="form-grid">
     <label>ประเภทเหตุการณ์<select id="indicatorEventType"><option value="OPENED_REAGENT_EXPIRED_USE" ${eventType==='OPENED_REAGENT_EXPIRED_USE'?'selected':''}>ใช้วัสดุ/น้ำยาเกินวันใช้ได้ถึงหลังเปิด</option><option value="LABEL_COMPLAINT" ${eventType==='LABEL_COMPLAINT'?'selected':''}>ข้อร้องเรียนฉลากผิด Lot หรือวันเปิดใช้ผิด</option></select></label>
     <label>วันที่เกิดเหตุ<input id="indicatorOccurredOn" type="date" value="${esc(occurred)}" required></label>
     ${materialComboboxMarkup({id:'indicatorMaterial',label:'วัสดุ (ถ้ามี)',placeholder:'พิมพ์ชื่อวัสดุ',materials,initialCode:materialCode,hint:'เว้นว่างได้หากเหตุการณ์ไม่ระบุวัสดุ'})}
@@ -4341,7 +4365,7 @@ async function renderIndicators() {
   if (!isAdminMode()) { page.innerHTML='<div class="card notice">กรุณาสลับเป็นโหมดผู้ดูแลระบบก่อนดูตัวชี้วัด</div>'; return; }
   const today=new Date();
   const monthStart=new Date(today.getFullYear(),today.getMonth(),1);
-  page.innerHTML=`<div class="page-head indicator-page-head"><div><p class="eyebrow">Quality indicators</p><h2>ตัวชี้วัดระบบ Inventory</h2><p class="muted small">ระบบคำนวณจากฐานข้อมูลจริงอัตโนมัติ ส่วนเหตุการณ์ใช้เกินวันหลังเปิดและข้อร้องเรียนให้บันทึกในหน้านี้</p></div><div class="actions"><button class="secondary" id="indicatorAddEvent">${icon('plus')} บันทึกเหตุการณ์</button><button class="primary" id="indicatorExport">${icon('download')} ส่งออก CSV</button></div></div>
+  page.innerHTML=`<div class="page-head indicator-page-head"><div><p class="eyebrow">ตัวชี้วัดคุณภาพ</p><h2>ตัวชี้วัดระบบ Inventory</h2><p class="muted small">ดูผลตัวชี้วัดและบันทึกเหตุการณ์ที่ต้องติดตาม</p></div><div class="actions"><button class="secondary" id="indicatorAddEvent">${icon('plus')} บันทึกเหตุการณ์</button><button class="primary" id="indicatorExport">${icon('download')} ส่งออก CSV</button></div></div>
   <form id="indicatorFilterForm" class="card indicator-filter"><div class="form-grid two"><label>ตั้งแต่วันที่<input id="indicatorFrom" type="date" value="${dateInputValue(monthStart)}" required></label><label>ถึงวันที่<input id="indicatorTo" type="date" value="${dateInputValue(today)}" required></label></div><div class="indicator-filter-actions"><div class="preset-group"><button type="button" data-indicator-preset="month" class="active">เดือนนี้</button><button type="button" data-indicator-preset="previous">เดือนก่อน</button><button type="button" data-indicator-preset="six">6 เดือนล่าสุด</button><button type="button" data-indicator-preset="year">ปีนี้</button></div><button class="primary" type="submit">${icon('chart')} คำนวณใหม่</button></div></form>
   <section id="indicatorSummary" class="indicator-summary"></section><section id="indicatorGrid" class="indicator-grid"><div class="card usage-loading">กำลังคำนวณตัวชี้วัด…</div></section>
   <section class="card indicator-events-card"><div class="section-title compact"><div><h3>ทะเบียนเหตุการณ์ที่ต้องบันทึก</h3><p class="muted small">ใช้สำหรับ 2 ตัวชี้วัดที่ระบบไม่สามารถรู้จากการเบิกจ่ายโดยอัตโนมัติ</p></div><button class="mini" id="indicatorAddEventInline">${icon('plus')} เพิ่มเหตุการณ์</button></div><div id="indicatorEventList"><div class="usage-loading">กำลังโหลดเหตุการณ์…</div></div></section>`;
@@ -4767,7 +4791,7 @@ function reagentPrintItemMarkup(row, setCount = 1) {
 }
 
 async function renderReagentPrint() {
-  page.innerHTML=`<div class="page-head"><div><p class="eyebrow">Instrument reagent label</p><h2>พิมพ์น้ำยาเข้าเครื่อง</h2><p class="muted small">เลือกชุด ใส่วันเวลา แล้วพิมพ์</p></div></div>
+  page.innerHTML=`<div class="page-head"><div><p class="eyebrow">ฉลากน้ำยาเข้าเครื่อง</p><h2>พิมพ์น้ำยาเข้าเครื่อง</h2><p class="muted small">เลือกชุด ใส่วันเวลา แล้วพิมพ์</p></div></div>
   <section class="card reagent-staff-card">
     <div class="reagent-staff-heading"><span>${icon('print')}</span><div><h3>ข้อมูลสำหรับพิมพ์</h3><p>ชื่อและ Barcode ดึงจากชุดที่ตั้งไว้</p></div></div>
     <div id="reagentStaffNotice" class="hidden"></div>
@@ -4881,14 +4905,14 @@ async function renderReagentSetAdmin() {
   let editingSetId='';
   const draft=loadReagentGeneratorDraft();
 
-  page.innerHTML=`<div class="page-head"><div><p class="eyebrow">Reagent set management</p><h2>จัดการชุดน้ำยาเข้าเครื่อง</h2><p class="muted small">Admin สร้างชุดและกำหนด Barcode ไว้ล่วงหน้า ส่วน Staff เลือกชุดแล้วพิมพ์โดยไม่ต้องแก้เลข</p></div><button type="button" class="primary" id="reagentAdminNew">${icon('plus')} สร้างชุดใหม่</button></div>
+  page.innerHTML=`<div class="page-head"><div><p class="eyebrow">จัดการชุดน้ำยา</p><h2>จัดการชุดน้ำยาเข้าเครื่อง</h2><p class="muted small">สร้างหรือแก้ชุดน้ำยาที่ Staff ใช้พิมพ์</p></div><button type="button" class="primary" id="reagentAdminNew">${icon('plus')} สร้างชุดใหม่</button></div>
   <section class="card reagent-admin-library">
     <div class="reagent-admin-library-toolbar"><div class="search-box">${icon('search')}<input id="reagentAdminSearch" type="search" placeholder="ค้นหาชื่อชุด เครื่อง หรือประเภท"></div><div class="label-filter-tabs"><button type="button" class="active" data-reagent-admin-filter="ACTIVE">กำลังใช้</button><button type="button" data-reagent-admin-filter="ALL">ประวัติทั้งหมด</button></div></div>
     <div id="reagentAdminSetList"><div class="usage-loading">กำลังโหลดชุดน้ำยา…</div></div>
   </section>
   <section id="reagentAdminSelected" class="card reagent-admin-selected hidden"></section>
   <section id="reagentAdminEditor" class="card reagent-admin-editor hidden">
-    <div class="reagent-admin-editor-head"><div><p class="eyebrow">Admin only</p><h3 id="reagentAdminEditorTitle">สร้างชุดน้ำยาใหม่</h3><p id="reagentAdminEditorHint">กรอกข้อมูลชุดและรายการน้ำยา แล้วบันทึกให้ Staff เลือกใช้</p></div><button type="button" class="icon-button" id="reagentAdminEditorClose" aria-label="ปิด">×</button></div>
+    <div class="reagent-admin-editor-head"><div><p class="eyebrow">สำหรับ Admin</p><h3 id="reagentAdminEditorTitle">สร้างชุดน้ำยาใหม่</h3><p id="reagentAdminEditorHint">กรอกข้อมูลชุดและรายการน้ำยา แล้วบันทึกให้ Staff เลือกใช้</p></div><button type="button" class="icon-button" id="reagentAdminEditorClose" aria-label="ปิด">×</button></div>
     <div class="form-grid two reagent-admin-meta">
       <label class="wide-field">ชื่อชุดน้ำยา<input id="reagentAdminSetName" placeholder="เช่น IH-500 Iden สิงหาคม 2569" maxlength="160"></label>
       <label>เครื่องที่ใช้<input id="reagentAdminInstrument" placeholder="เช่น IH-500 หรือ Ortho Erytra" maxlength="120"></label>
