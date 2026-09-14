@@ -9,14 +9,14 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="CNMI Inventory">
-  <link rel="manifest" href="manifest.webmanifest?v=1.4.78">
+  <link rel="manifest" href="manifest.webmanifest?v=1.4.81">
   <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
   <link rel="apple-touch-icon" sizes="76x76" href="icons/icon-76.png">
   <link rel="apple-touch-icon" sizes="120x120" href="icons/icon-120.png">
   <link rel="apple-touch-icon" sizes="152x152" href="icons/icon-152.png">
   <link rel="apple-touch-icon" sizes="167x167" href="icons/icon-167.png">
   <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png">
-  <link rel="stylesheet" href="assets/app.css?v=1.4.78">
+  <link rel="stylesheet" href="assets/app.css?v=1.4.81">
   <title>CNMI Inventory</title>
 </head>
 <body>
@@ -119,33 +119,45 @@
       </section>
 
       <nav class="side-nav" aria-label="เมนูคอมพิวเตอร์">
+        <div class="side-group-label">ภาพรวม</div>
         <button class="side-link" data-route="home"><svg class="nav-icon"><use href="#i-home"></use></svg><span>หน้าหลัก</span></button>
         <button class="side-link" data-route="stock"><svg class="nav-icon"><use href="#i-box"></use></svg><span>ค้นหาสต๊อกทั้งหมด</span></button>
         <button class="side-link" data-route="my-stock"><svg class="nav-icon"><use href="#i-user"></use></svg><span>สต๊อกที่ฉันดูแล</span></button>
         <button class="side-link" data-route="assisted-stock"><svg class="nav-icon"><use href="#i-user"></use></svg><span>สต๊อกที่ฉันช่วยดูแล</span></button>
-        <button class="side-link" data-route="usage"><svg class="nav-icon"><use href="#i-chart"></use></svg><span>วิเคราะห์การใช้</span></button>
         <button class="side-link urgent-link" data-route="urgent"><svg class="nav-icon"><use href="#i-alert"></use></svg><span>ต้องเบิกด่วน</span><b id="urgentBadge" class="nav-badge hidden">0</b></button>
+
+        <div class="side-group-label">ทำรายการ</div>
         <button class="side-link" data-route="move" data-move-tab="receive"><svg class="nav-icon"><use href="#i-plus"></use></svg><span>นำเข้า</span></button>
         <button class="side-link" data-route="move" data-move-tab="issue"><svg class="nav-icon"><use href="#i-minus"></use></svg><span>นำออก</span></button>
-        <button class="side-link side-link-sub" data-route="reports" data-report-tab="receive"><svg class="nav-icon"><use href="#i-history"></use></svg><span>ประวัตินำเข้า</span></button>
-        <button class="side-link side-link-sub" data-route="reports" data-report-tab="issue"><svg class="nav-icon"><use href="#i-history"></use></svg><span>ประวัตินำออก</span></button>
+
+        <div class="side-group-label">ตรวจสต๊อก</div>
         <button class="side-link" data-route="weekly"><svg class="nav-icon"><use href="#i-check"></use></svg><span>ตรวจวันศุกร์</span></button>
         <button class="side-link" data-route="scan-stock"><svg class="nav-icon"><use href="#i-camera"></use></svg><span>สแกนตรวจ Lot</span></button>
         <button class="side-link" data-route="weekly-status"><svg class="nav-icon"><use href="#i-user"></use></svg><span>สถานะผู้ตรวจ</span></button>
+
+        <div class="side-group-label">พิมพ์ฉลาก</div>
         <button class="side-link" data-route="labels"><svg class="nav-icon"><use href="#i-print"></use></svg><span>พิมพ์ QR Sticker</span></button>
         <button class="side-link" data-route="open-labels"><svg class="nav-icon"><use href="#i-print"></use></svg><span>พิมพ์วันเปิดใช้</span></button>
         <button class="side-link" data-route="open-label-create"><svg class="nav-icon"><use href="#i-plus"></use></svg><span>สร้างสติ๊กเกอร์วันเปิด</span></button>
         <button class="side-link" data-route="reagent-print"><svg class="nav-icon"><use href="#i-print"></use></svg><span>พิมพ์น้ำยาเข้าเครื่อง</span></button>
-        <button class="side-link admin-only hidden" data-route="reagent-set-admin"><svg class="nav-icon"><use href="#i-settings"></use></svg><span>จัดการชุดน้ำยาเข้าเครื่อง</span></button>
-        <button class="side-link" data-route="activity"><svg class="nav-icon"><use href="#i-history"></use></svg><span>ประวัติ</span></button>
-        <div class="side-divider"></div>
+        <button class="side-link admin-only hidden" data-route="reagent-set-admin"><svg class="nav-icon"><use href="#i-settings"></use></svg><span>จัดการชุดน้ำยา</span></button>
+
+        <div class="side-group-label">ประวัติและรายงาน</div>
+        <button class="side-link" data-route="activity"><svg class="nav-icon"><use href="#i-history"></use></svg><span>ประวัติทั้งหมด</span></button>
+        <button class="side-link" data-route="reports" data-report-tab="receive"><svg class="nav-icon"><use href="#i-history"></use></svg><span>ประวัตินำเข้า</span></button>
+        <button class="side-link" data-route="reports" data-report-tab="issue"><svg class="nav-icon"><use href="#i-history"></use></svg><span>ประวัตินำออก</span></button>
+        <button class="side-link" data-route="usage"><svg class="nav-icon"><use href="#i-chart"></use></svg><span>วิเคราะห์การใช้</span></button>
         <button class="side-link" data-route="reports"><svg class="nav-icon"><use href="#i-download"></use></svg><span>รายงาน & ส่งออก</span></button>
+
+        <div class="side-group-label admin-only hidden">ผู้ดูแลระบบ</div>
         <button class="side-link admin-only hidden" data-route="indicators"><svg class="nav-icon"><use href="#i-chart"></use></svg><span>ตัวชี้วัด</span></button>
         <button class="side-link admin-only hidden" data-route="admin"><svg class="nav-icon"><use href="#i-settings"></use></svg><span>ตั้งค่า</span></button>
+
+        <div class="side-group-label">ช่วยเหลือ</div>
         <button class="side-link" data-open-install type="button"><svg class="nav-icon"><use href="#i-smartphone"></use></svg><span>ติดตั้งแอป</span></button>
         <button class="side-link" data-route="help"><svg class="nav-icon"><use href="#i-help"></use></svg><span>คู่มือ</span></button>
       </nav>
-      <div class="sidebar-footer"><div class="sidebar-version">Version 1.4.80</div></div>
+      <div class="sidebar-footer"><div class="sidebar-version">Version 1.4.81</div></div>
     </aside>
 
     <div class="content-shell">
@@ -181,7 +193,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="third_party/jsQR-1.4.0.js?v=1.4.30" data-jsqr-loader="1"></script>
-  <script src="assets/config.js?v=1.4.78"></script>
-  <script src="assets/app.js?v=1.4.78"></script>
+  <script src="assets/config.js?v=1.4.81"></script>
+  <script src="assets/app.js?v=1.4.81"></script>
 </body>
 </html>
