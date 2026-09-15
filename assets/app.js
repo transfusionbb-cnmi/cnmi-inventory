@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.81';
+const APP_VERSION = '1.4.82';
 const WEEKLY_CUTOVER_DATE = '2026-07-24';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const DEFAULT_EXPIRY_ALERT_DAYS = 30;
@@ -72,6 +72,36 @@ const normalizeMahidolUsernameField = input => {
   const normalized = mahidolUsernameFromInput(input.value);
   if (normalized !== input.value) input.value = normalized;
 };
+
+function syncPasswordToggleButton(button, input) {
+  if (!button || !input) return;
+  const visible = input.type === 'text';
+  button.setAttribute('aria-label', visible ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน');
+  button.setAttribute('title', visible ? 'ซ่อนรหัสผ่าน' : 'ดูรหัสผ่าน');
+  button.setAttribute('aria-pressed', visible ? 'true' : 'false');
+  button.innerHTML = `${icon(visible ? 'eye-off' : 'eye')}<span>${visible ? 'ซ่อน' : 'ดู'}</span>`;
+}
+
+function initPasswordToggles(root = document) {
+  $$('[data-password-toggle]', root).forEach(button => {
+    const targetId = button.dataset.passwordToggle;
+    const input = document.getElementById(targetId);
+    if (!input) return;
+    syncPasswordToggleButton(button, input);
+    if (button.dataset.bound === '1') return;
+    button.dataset.bound = '1';
+    button.addEventListener('click', () => {
+      const nextVisible = input.type === 'password';
+      input.type = nextVisible ? 'text' : 'password';
+      syncPasswordToggleButton(button, input);
+      try {
+        input.focus({preventScroll:true});
+        const pos = input.value.length;
+        if (typeof input.setSelectionRange === 'function') input.setSelectionRange(pos, pos);
+      } catch (_) {}
+    });
+  });
+}
 
 
 function passwordResetRedirectUrl() {
@@ -693,6 +723,7 @@ async function init() {
   $('#loginForm').addEventListener('submit', login);
   ['input','change','blur'].forEach(eventName => $('#loginEmail').addEventListener(eventName, () => normalizeMahidolUsernameField($('#loginEmail'))));
   requestAnimationFrame(() => normalizeMahidolUsernameField($('#loginEmail')));
+  initPasswordToggles(loginView);
   $('#registerBtn').addEventListener('click', register);
   $('#forgotPasswordBtn').addEventListener('click', openForgotPassword);
   $('#logoutBtn').addEventListener('click', logout);
@@ -850,8 +881,9 @@ function showPasswordResetForm() {
   if (!sb || !passwordRecoveryMode || !session) return;
   appView.classList.add('hidden');
   loginView.classList.remove('hidden');
-  openModal(`<section class="password-recovery-form"><div class="auth-modal-head"><span>${icon('settings')}</span><div><p class="eyebrow">ตั้งรหัสผ่านใหม่</p><h3>กำหนดรหัสผ่านใหม่</h3><p>ตั้งรหัสผ่านใหม่สำหรับ CNMI Inventory แล้วเข้าสู่ระบบอีกครั้ง</p></div></div><form id="newPasswordForm" class="form-grid"><label>รหัสผ่านใหม่<input id="newPassword" type="password" autocomplete="new-password" minlength="6" required><small class="field-hint">อย่างน้อย 6 ตัวอักษร และไม่ควรใช้รหัสเดียวกับบัญชีอื่น</small></label><label>ยืนยันรหัสผ่านใหม่<input id="confirmNewPassword" type="password" autocomplete="new-password" minlength="6" required></label><div class="auth-security-note"><strong>รหัสผ่านเป็นข้อมูลส่วนบุคคล</strong><span>ไม่ต้องแจ้งรหัสผ่านให้ Admin หรือบุคคลอื่น</span></div><button class="primary large" type="submit">บันทึกรหัสผ่านใหม่</button><button class="secondary" type="button" id="cancelPasswordRecovery">ยกเลิกและกลับหน้าเข้าสู่ระบบ</button></form></section>`);
+  openModal(`<section class="password-recovery-form"><div class="auth-modal-head"><span>${icon('settings')}</span><div><p class="eyebrow">ตั้งรหัสผ่านใหม่</p><h3>กำหนดรหัสผ่านใหม่</h3><p>ตั้งรหัสผ่านใหม่สำหรับ CNMI Inventory แล้วเข้าสู่ระบบอีกครั้ง</p></div></div><form id="newPasswordForm" class="form-grid"><label>รหัสผ่านใหม่<span class="password-field"><input id="newPassword" type="password" autocomplete="new-password" minlength="6" required><button class="password-toggle" type="button" data-password-toggle="newPassword" aria-label="แสดงรหัสผ่าน" aria-controls="newPassword"></button></span><small class="field-hint">อย่างน้อย 6 ตัวอักษร และไม่ควรใช้รหัสเดียวกับบัญชีอื่น</small></label><label>ยืนยันรหัสผ่านใหม่<span class="password-field"><input id="confirmNewPassword" type="password" autocomplete="new-password" minlength="6" required><button class="password-toggle" type="button" data-password-toggle="confirmNewPassword" aria-label="แสดงรหัสผ่าน" aria-controls="confirmNewPassword"></button></span></label><div class="auth-security-note"><strong>รหัสผ่านเป็นข้อมูลส่วนบุคคล</strong><span>ไม่ต้องแจ้งรหัสผ่านให้ Admin หรือบุคคลอื่น</span></div><button class="primary large" type="submit">บันทึกรหัสผ่านใหม่</button><button class="secondary" type="button" id="cancelPasswordRecovery">ยกเลิกและกลับหน้าเข้าสู่ระบบ</button></form></section>`);
   $('#modal').classList.add('password-recovery-open');
+  initPasswordToggles($('#modalBody'));
   $('#cancelPasswordRecovery').addEventListener('click', () => cancelPasswordRecovery());
   $('#newPasswordForm').addEventListener('submit', async event => {
     event.preventDefault();

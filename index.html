@@ -9,14 +9,14 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="CNMI Inventory">
-  <link rel="manifest" href="manifest.webmanifest?v=1.4.81">
+  <link rel="manifest" href="manifest.webmanifest?v=1.4.82">
   <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
   <link rel="apple-touch-icon" sizes="76x76" href="icons/icon-76.png">
   <link rel="apple-touch-icon" sizes="120x120" href="icons/icon-120.png">
   <link rel="apple-touch-icon" sizes="152x152" href="icons/icon-152.png">
   <link rel="apple-touch-icon" sizes="167x167" href="icons/icon-167.png">
   <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png">
-  <link rel="stylesheet" href="assets/app.css?v=1.4.81">
+  <link rel="stylesheet" href="assets/app.css?v=1.4.82">
   <title>CNMI Inventory</title>
 </head>
 <body>
@@ -33,6 +33,8 @@
     <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
     <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.8 1.8 0 0 0 .4 2l.1.1-2.8 2.8-.1-.1a1.8 1.8 0 0 0-2-.4 1.8 1.8 0 0 0-1.1 1.6V21h-4v-.1A1.8 1.8 0 0 0 8.8 19a1.8 1.8 0 0 0-2 .4l-.1.1-2.8-2.8.1-.1a1.8 1.8 0 0 0 .4-2A1.8 1.8 0 0 0 3 13.5H3v-4h.1A1.8 1.8 0 0 0 4.7 8.4a1.8 1.8 0 0 0-.4-2l-.1-.1 2.8-2.8.1.1a1.8 1.8 0 0 0 2 .4A1.8 1.8 0 0 0 10.2 2.4V2h4v.4A1.8 1.8 0 0 0 15.3 4a1.8 1.8 0 0 0 2-.4l.1-.1 2.8 2.8-.1.1a1.8 1.8 0 0 0-.4 2 1.8 1.8 0 0 0 1.6 1.1h.1v4h-.1A1.8 1.8 0 0 0 19.4 15z"/></symbol>
     <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.8 9a2.3 2.3 0 1 1 3.4 2c-.8.5-1.2 1-1.2 2M12 17h.01"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z"/><circle cx="12" cy="12" r="3.2"/></symbol>
+    <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M3 3l18 18"/><path d="M10.7 6.3A10.7 10.7 0 0 1 12 6c6 0 9.5 6 9.5 6a17.2 17.2 0 0 1-3.2 3.9"/><path d="M6.8 6.9C4.2 8.6 2.5 12 2.5 12s3.5 6 9.5 6c1.7 0 3.2-.5 4.5-1.2"/><path d="M9.9 9.9A3.2 3.2 0 0 0 9 12a3 3 0 0 0 3 3c.8 0 1.5-.3 2.1-.9"/></symbol>
     <symbol id="i-logout" viewBox="0 0 24 24"><path d="M14 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2v-3M10 12h11m-4-4 4 4-4 4"/></symbol>
     <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3 2.8 20h18.4z"/><path d="M12 9v5M12 17h.01"/></symbol>
     <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18"/></symbol>
@@ -57,13 +59,18 @@
   </div>
 
   <main id="loginView" class="login-shell">
-    <section class="login-card">
+    <section class="login-card professional-auth">
       <div class="login-brand">
         <img src="icons/icon-192.png" alt="" class="login-logo">
-        <div>
+        <div class="login-brand-copy">
           <p class="eyebrow">หน่วยเวชศาสตร์บริการโลหิต</p>
           <h1>CNMI Inventory</h1>
-          <p class="muted">ระบบบริหารจัดการสต๊อกวัสดุและเวชภัณฑ์</p>
+          <p class="muted">ระบบบริหารจัดการสต๊อกวัสดุและเวชภัณฑ์ สำหรับงานประจำวันของหน่วยเวชศาสตร์บริการโลหิต</p>
+          <div class="login-chip-row" aria-label="ข้อมูลเบื้องต้น">
+            <span class="login-chip">ใช้บัญชี @mahidol.ac.th</span>
+            <span class="login-chip">Staff / Admin</span>
+            <span class="login-chip">ใช้ได้ทั้งคอมและมือถือ</span>
+          </div>
         </div>
       </div>
       <form id="loginForm" class="stack login-form">
@@ -74,17 +81,24 @@
           </span>
         </label>
         <label>รหัสผ่าน
-          <input id="loginPassword" type="password" autocomplete="current-password" minlength="6" required>
+          <span class="password-field">
+            <input id="loginPassword" type="password" autocomplete="current-password" minlength="6" required>
+            <button class="password-toggle" type="button" data-password-toggle="loginPassword" aria-label="แสดงรหัสผ่าน" aria-controls="loginPassword"></button>
+          </span>
         </label>
-        <button class="primary large" type="submit">เข้าสู่ระบบ</button>
-        <button class="secondary" type="button" id="registerBtn">สร้างบัญชีครั้งแรก</button>
-        <button class="text-button forgot-password-button" type="button" id="forgotPasswordBtn">ลืมรหัสผ่าน</button>
+        <div class="auth-action-stack">
+          <button class="primary large" type="submit">เข้าสู่ระบบ</button>
+          <button class="secondary" type="button" id="registerBtn">สร้างบัญชีครั้งแรก</button>
+        </div>
+        <div class="auth-inline-actions">
+          <button class="text-button forgot-password-button" type="button" id="forgotPasswordBtn">ลืมรหัสผ่าน</button>
+        </div>
       </form>
-      <div class="login-help">
+      <div class="login-help compact">
         <svg class="icon"><use href="#i-help"></use></svg>
-        <span><strong>ครั้งแรก:</strong> กรอกเฉพาะชื่อหน้า <strong>@mahidol.ac.th</strong> ระบบจะเติมท้ายอีเมลให้อัตโนมัติ จากนั้นตั้งรหัสผ่านและกด “สร้างบัญชีครั้งแรก”</span>
+        <span><strong>เริ่มใช้งานครั้งแรก:</strong> กรอกเฉพาะชื่อหน้า <strong>@mahidol.ac.th</strong> ระบบจะเติมท้ายอีเมลให้อัตโนมัติ จากนั้นตั้งรหัสผ่านและกด “สร้างบัญชีครั้งแรก”</span>
       </div>
-      <section class="install-panel" aria-label="ติดตั้งแอปบนโทรศัพท์">
+      <section class="install-panel compact" aria-label="ติดตั้งแอปบนโทรศัพท์">
         <div class="install-panel-head">
           <span class="install-panel-icon"><svg class="icon"><use href="#i-smartphone"></use></svg></span>
           <div><strong>ติดตั้งเป็นแอปบนโทรศัพท์</strong><small data-install-status>เลือก Android หรือ iPhone/iPad</small></div>
@@ -157,7 +171,7 @@
         <button class="side-link" data-open-install type="button"><svg class="nav-icon"><use href="#i-smartphone"></use></svg><span>ติดตั้งแอป</span></button>
         <button class="side-link" data-route="help"><svg class="nav-icon"><use href="#i-help"></use></svg><span>คู่มือ</span></button>
       </nav>
-      <div class="sidebar-footer"><div class="sidebar-version">Version 1.4.81</div></div>
+      <div class="sidebar-footer"><div class="sidebar-version">Version 1.4.82</div></div>
     </aside>
 
     <div class="content-shell">
@@ -194,6 +208,6 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="third_party/jsQR-1.4.0.js?v=1.4.30" data-jsqr-loader="1"></script>
   <script src="assets/config.js?v=1.4.81"></script>
-  <script src="assets/app.js?v=1.4.81"></script>
+  <script src="assets/app.js?v=1.4.82"></script>
 </body>
 </html>

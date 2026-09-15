@@ -913,3 +913,54 @@ input,select,textarea,button{min-width:0}
 @media(max-width:420px){.mobile-menu-grid.compact{grid-template-columns:1fr}.mobile-menu-grid.compact button{min-height:48px}}
 
 .receive-print-later-note.compact{margin:12px 0;padding:11px 12px;border-radius:13px}.receive-print-later-note.compact small{font-size:.74rem}.issue-confirm-strip{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid #dce8e5;border-radius:13px;background:#f7fbfa}.issue-confirm-strip small{color:var(--muted);font-weight:700}
+
+
+/* v1.4.82 — clean professional auth + password visibility */
+.login-shell{padding:36px 18px}
+.login-card.professional-auth{width:min(560px,100%);background:#fff;border:1px solid #dbe7e4;border-radius:24px;padding:34px 34px 28px;box-shadow:0 16px 38px rgba(15,61,56,.08);backdrop-filter:none}
+.login-brand{align-items:flex-start;gap:16px;margin-bottom:20px}
+.login-brand-copy{display:grid;gap:6px}
+.login-logo{width:88px;height:88px;border-radius:20px;border:1px solid #dbe7e4;box-shadow:none;background:#fff;padding:6px}
+.login-brand .muted{margin:0;max-width:none;font-size:.92rem;line-height:1.55}
+.login-chip-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+.login-chip{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;border:1px solid #dbe7e4;background:#f7fbfa;color:#315f5b;font-size:.75rem;font-weight:800;line-height:1.2}
+.login-form{gap:13px;margin-top:8px}
+.auth-action-stack{display:grid;gap:10px;margin-top:4px}
+.auth-inline-actions{display:flex;justify-content:flex-end}
+.password-field{position:relative;display:block}
+.password-field input{padding-right:96px}
+.password-toggle{position:absolute;top:50%;right:8px;transform:translateY(-50%);height:38px;min-width:74px;padding:0 10px;border:1px solid #dbe7e4;border-radius:10px;background:#f7fbfa;color:#355956;font-size:.82rem;font-weight:800;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.password-toggle:hover{background:#eef6f4;border-color:#cbded9}
+.password-toggle:focus-visible{outline:0;box-shadow:0 0 0 3px rgba(8,123,111,.12)}
+.password-toggle .icon{width:16px;height:16px}
+.forgot-password-button{margin-top:0;justify-self:end;font-size:.87rem;text-decoration:none;padding:0}
+.forgot-password-button:hover{text-decoration:underline}
+.login-help.compact{margin-top:14px;padding:12px 14px;border-radius:15px;border:1px solid #dce9e6;background:#f7fbfa;color:#48605d}
+.install-panel.compact{margin-top:14px;padding:13px 14px;border-radius:16px;border:1px solid #dce9e6;background:#fbfdfd}
+.install-panel.compact .install-panel-icon,.auth-modal-head>span,.quick .quick-icon,.kpi-icon,.icon-button{box-shadow:none}
+.install-panel.compact .install-panel-icon,.auth-modal-head>span{background:#f2f8f7;border:1px solid #dbe7e4;color:var(--brand-strong)}
+.login-card.professional-auth .primary,.password-reset-request .primary,.password-recovery-form .primary{background:var(--brand);box-shadow:0 10px 20px rgba(8,123,111,.12)}
+.login-card.professional-auth .primary:hover,.password-reset-request .primary:hover,.password-recovery-form .primary:hover{background:var(--brand-strong)}
+.login-card.professional-auth .secondary,.password-reset-request .secondary,.password-recovery-form .secondary{background:#f5faf9;color:var(--brand-strong);border:1px solid #dbe7e4}
+.login-card.professional-auth .secondary:hover,.password-reset-request .secondary:hover,.password-recovery-form .secondary:hover{background:#eef6f4}
+.auth-modal-head{gap:12px}
+.auth-modal-head h3{font-size:1.2rem}
+.auth-security-note{border-radius:13px;background:#f7fbfa}
+.icon-button{border:1px solid #dbe7e4;background:#fff;color:var(--brand-strong)}
+.icon-button:hover{background:#f7fbfa}
+.app-switch-link{background:#fff;border:1px solid var(--line)}
+.app-switch-link:hover{background:#f7fbfa}
+.side-link .nav-icon,.bottom-nav .nav-icon{stroke-width:1.85}
+@media(min-width:700px){
+  .login-card.professional-auth{padding:36px 38px 30px}
+  .login-brand{grid-template-columns:auto 1fr;justify-items:start;text-align:left}
+}
+@media(max-width:640px){
+  .login-card.professional-auth{padding:24px 18px 22px;border-radius:22px}
+  .login-logo{width:78px;height:78px}
+  .login-chip-row{gap:6px}
+  .login-chip{font-size:.71rem}
+  .auth-inline-actions{justify-content:center}
+  .password-field input{padding-right:90px}
+  .password-toggle{min-width:68px;height:36px;padding:0 8px;font-size:.78rem}
+}
