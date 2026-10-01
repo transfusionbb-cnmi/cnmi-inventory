@@ -962,3 +962,7 @@ input,select,textarea,button{min-width:0}
   .password-field input{padding-right:90px}
   .password-toggle{min-width:68px;height:36px;padding:0 8px;font-size:.78rem}
 }
+
+/* v1.4.84 — admin direct temporary password reset */
+.admin-password-reset .admin-reset-user{margin:12px 0 16px}
+.admin-password-reset .form-actions{margin-top:4px}

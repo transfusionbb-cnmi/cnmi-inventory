@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.83';
+const APP_VERSION = '1.4.84';
 const WEEKLY_CUTOVER_DATE = '2026-07-24';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const DEFAULT_EXPIRY_ALERT_DAYS = 30;
@@ -928,32 +928,54 @@ async function cancelPasswordRecovery(showMessage = true) {
 
 function openAdminPasswordReset(email, displayName) {
   if (!isAdminMode()) return toast('ต้องอยู่ในโหมด Admin', true);
-  openModal(`<section class="admin-password-reset"><div class="auth-modal-head"><span>${icon('user')}</span><div><p class="eyebrow">สำหรับ Admin</p><h3>ส่งลิงก์รีเซ็ตรหัสผ่าน</h3><p>ยืนยันตัวบุคคลก่อนส่งลิงก์ไปยังอีเมลของเจ้าหน้าที่</p></div></div><div class="admin-reset-user"><strong>${esc(displayName || email)}</strong><span>${esc(email)}</span></div><div class="auth-security-note"><strong>Admin ไม่ได้เปลี่ยนรหัสให้เจ้าหน้าที่</strong><span>ระบบจะส่งลิงก์ให้เจ้าหน้าที่ตั้งรหัสผ่านใหม่ด้วยตนเอง และ Admin จะไม่เห็นรหัสผ่านใหม่</span></div><div class="auth-security-note password-email-limit-note"><strong>ระบบอีเมลมีโควตาจำกัด</strong><span>ส่งครั้งละ 1 คนและรอผลก่อนส่งคนถัดไป หากระบบแจ้งว่าเต็ม ให้แจ้งเจ้าหน้าที่ว่าคำขอยังไม่ถูกส่ง และลองใหม่หลังประมาณ 1 ชั่วโมง</span></div><div class="form-actions"><button class="secondary" type="button" data-modal-close>ยกเลิก</button><button class="primary" type="button" id="confirmAdminPasswordReset">ยืนยันส่งลิงก์</button></div></section>`);
-  $('#confirmAdminPasswordReset').addEventListener('click', async event => {
-    const button = event.currentTarget;
+  openModal(`<section class="admin-password-reset"><div class="auth-modal-head"><span>${icon('user')}</span><div><p class="eyebrow">สำหรับ Admin</p><h3>ตั้ง / รีเซ็ตรหัสชั่วคราว</h3><p>Admin กำหนดรหัสชั่วคราวให้เจ้าหน้าที่ได้ทันที โดยไม่ต้องรออีเมลรีเซ็ต</p></div></div><div class="admin-reset-user"><strong>${esc(displayName || email)}</strong><span>${esc(email)}</span></div><form id="adminDirectPasswordResetForm" class="form-grid"><label>รหัสชั่วคราว<span class="password-field"><input id="adminTemporaryPassword" type="password" autocomplete="new-password" minlength="8" required placeholder="อย่างน้อย 8 ตัวอักษร"><button class="password-toggle" type="button" data-password-toggle="adminTemporaryPassword" aria-label="แสดงรหัสผ่าน" aria-controls="adminTemporaryPassword"></button></span></label><label>ยืนยันรหัสชั่วคราว<span class="password-field"><input id="adminTemporaryPasswordConfirm" type="password" autocomplete="new-password" minlength="8" required placeholder="พิมพ์อีกครั้ง"><button class="password-toggle" type="button" data-password-toggle="adminTemporaryPasswordConfirm" aria-label="แสดงรหัสผ่าน" aria-controls="adminTemporaryPasswordConfirm"></button></span></label><div class="auth-security-note"><strong>หลังรีเซ็ต</strong><span>แจ้งรหัสชั่วคราวให้เจ้าหน้าที่โดยตรง ระบบจะบังคับให้ตั้งรหัสใหม่เมื่อเข้าสู่ระบบครั้งถัดไป</span></div><div class="form-actions"><button class="secondary" type="button" data-modal-close>ยกเลิก</button><button class="primary" type="submit">ตั้ง / รีเซ็ตรหัส</button></div></form></section>`);
+  initPasswordToggles($('#modalBody'));
+  $('#adminDirectPasswordResetForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    const password = $('#adminTemporaryPassword').value;
+    const confirmation = $('#adminTemporaryPasswordConfirm').value;
+    if (password.length < 8) return toast('รหัสชั่วคราวต้องมีอย่างน้อย 8 ตัวอักษร', true);
+    if (password !== confirmation) return toast('รหัสผ่านทั้งสองช่องไม่ตรงกัน', true);
+    const button = event.submitter || $('#adminDirectPasswordResetForm button[type="submit"]');
     button.disabled = true;
-    button.textContent = 'กำลังส่ง...';
+    button.textContent = 'กำลังรีเซ็ต...';
     try {
-      const {error} = await sb.auth.resetPasswordForEmail(email, {redirectTo:passwordResetRedirectUrl()});
+      const {data, error} = await sb.functions.invoke('admin-reset-password', {body:{email,password}});
       if (error) throw error;
-      const {error:auditError} = await sb.rpc('fn_log_password_reset_request', {p_target_email:email, p_source:'ADMIN'});
+      if (!data?.ok) throw new Error(data?.error || 'รีเซ็ตรหัสผ่านไม่สำเร็จ');
       closeModal();
-      if (auditError) {
-        console.warn('Password reset audit log failed', auditError);
-        toast(`ส่งลิงก์ไปที่ ${email} แล้ว แต่บันทึก Audit Log ไม่สำเร็จ`, true);
-      } else {
-        toast(`ส่งลิงก์ไปที่ ${email} แล้ว แจ้งให้ตรวจ Inbox/Spam และไม่ต้องกดซ้ำ`);
-      }
+      toast(`รีเซ็ตรหัสของ ${displayName || email} แล้ว`);
     } catch (error) {
       button.disabled = false;
-      button.textContent = 'ยืนยันส่งลิงก์';
-      if (isPasswordResetRateLimitError(error)) {
-        showPasswordResetRateLimitMessage({email, admin:true});
-      } else {
-        toast(passwordResetErrorMessage(error), true);
-      }
+      button.textContent = 'ตั้ง / รีเซ็ตรหัส';
+      toast(errMsg(error), true);
     }
   });
+  requestAnimationFrame(() => $('#adminTemporaryPassword')?.focus({preventScroll:true}));
+}
+
+async function enforceTemporaryPasswordChange() {
+  if (!session?.user?.user_metadata?.must_change_password) return false;
+  openModal(`<section class="password-recovery-form"><div class="auth-modal-head"><span>${icon('settings')}</span><div><p class="eyebrow">ความปลอดภัย</p><h3>กรุณาตั้งรหัสผ่านใหม่</h3><p>คุณกำลังใช้รหัสชั่วคราวที่ Admin ตั้งให้ กรุณาเปลี่ยนเป็นรหัสส่วนตัวก่อนใช้งาน</p></div></div><form id="forcedPasswordChangeForm" class="form-grid"><label>รหัสผ่านใหม่<span class="password-field"><input id="forcedNewPassword" type="password" autocomplete="new-password" minlength="8" required><button class="password-toggle" type="button" data-password-toggle="forcedNewPassword" aria-label="แสดงรหัสผ่าน" aria-controls="forcedNewPassword"></button></span></label><label>ยืนยันรหัสผ่านใหม่<span class="password-field"><input id="forcedNewPasswordConfirm" type="password" autocomplete="new-password" minlength="8" required><button class="password-toggle" type="button" data-password-toggle="forcedNewPasswordConfirm" aria-label="แสดงรหัสผ่าน" aria-controls="forcedNewPasswordConfirm"></button></span></label><div class="auth-security-note"><strong>รหัสผ่านส่วนตัว</strong><span>Admin จะไม่เห็นรหัสผ่านใหม่ของคุณ</span></div><button class="primary large" type="submit">บันทึกรหัสผ่านใหม่</button></form></section>`);
+  $('#modal').classList.add('password-recovery-open');
+  initPasswordToggles($('#modalBody'));
+  $('#forcedPasswordChangeForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    const password=$('#forcedNewPassword').value;
+    const confirmation=$('#forcedNewPasswordConfirm').value;
+    if (password.length < 8) return toast('รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร',true);
+    if (password !== confirmation) return toast('รหัสผ่านทั้งสองช่องไม่ตรงกัน',true);
+    const button=event.submitter;
+    button.disabled=true; button.textContent='กำลังบันทึก...';
+    const metadata={...(session.user.user_metadata || {})};
+    delete metadata.must_change_password;
+    const {data,error}=await sb.auth.updateUser({password,data:metadata});
+    if(error){button.disabled=false;button.textContent='บันทึกรหัสผ่านใหม่';return toast(errMsg(error),true);}
+    session.user=data.user || session.user;
+    closeModal();
+    toast('ตั้งรหัสผ่านใหม่แล้ว');
+  });
+  return true;
 }
 
 async function loadProfile() {
@@ -973,6 +995,7 @@ async function enterApp() {
     session = data.session;
     if (!session) return showLogin();
     await loadProfile();
+    await enforceTemporaryPasswordChange();
     actingMode = isAdminAccount() ? (localStorage.getItem(`cnmi-inventory-mode:${profile.email}`) || 'staff') : 'staff';
     loginView.classList.add('hidden');
     appView.classList.remove('hidden');
@@ -4497,8 +4520,8 @@ async function renderAdmin() {
     <section class="card admin-workload-card"><div class="section-title compact"><div><h3>ภาระงานผู้ดูแล</h3><p class="muted small">นับจากวัสดุที่เป็นผู้ดูแลหลักและผู้ช่วยดูแล</p></div></div><div class="admin-workload-grid">${(s || []).map(person=>{const primary=(m||[]).filter(x=>normalizedEmail(x.responsible_email)===normalizedEmail(person.email)).length;const assistant=(m||[]).filter(x=>normalizedEmail(x.assistant_responsible_email)===normalizedEmail(person.email)).length;return `<div class="admin-workload-person"><strong>${esc(person.display_name)}</strong><span>หลัก ${primary}</span><span>ผู้ช่วย ${assistant}</span><em>รวม ${primary+assistant}</em></div>`;}).join('')}</div></section>
   </section>
   <section data-admin-panel="users" class="admin-panel ${adminTab==='users'?'':'hidden'}">
-    <div class="section-title"><div><h3>ผู้ใช้งาน</h3><p class="muted small">กำหนดสิทธิ์บัญชี สถานะ และส่งลิงก์รีเซ็ตรหัสผ่านเมื่อยืนยันตัวเจ้าหน้าที่แล้ว</p></div></div>
-    <div class="table-wrap"><table class="data-table"><thead><tr><th>ชื่อ</th><th>อีเมล</th><th>สถานะ</th><th>สิทธิ์บัญชี</th><th>รหัสผ่าน</th></tr></thead><tbody>${(s || []).map(x => `<tr><td>${esc(x.display_name)}</td><td>${esc(x.email)}</td><td>${x.active === false ? '<span class="badge warn">ปิดใช้งาน</span>' : '<span class="badge ok">Active</span>'}</td><td><select data-role-email="${esc(x.email)}" ${x.active === false ? 'disabled' : ''}><option value="staff" ${x.role === 'staff' ? 'selected' : ''}>เจ้าหน้าที่</option><option value="admin" ${x.role === 'admin' ? 'selected' : ''}>Admin (สลับได้ 2 โหมด)</option></select></td><td><button type="button" class="mini admin-reset-button" data-password-reset-email="${esc(x.email)}" data-password-reset-name="${esc(x.display_name)}" ${x.active === false ? 'disabled' : ''}>ส่งลิงก์รีเซ็ต</button></td></tr>`).join('')}</tbody></table></div>
+    <div class="section-title"><div><h3>ผู้ใช้งาน</h3><p class="muted small">กำหนดสิทธิ์บัญชี สถานะ และตั้งรหัสชั่วคราวให้เจ้าหน้าที่</p></div></div>
+    <div class="table-wrap"><table class="data-table"><thead><tr><th>ชื่อ</th><th>อีเมล</th><th>สถานะ</th><th>สิทธิ์บัญชี</th><th>รหัสผ่าน</th></tr></thead><tbody>${(s || []).map(x => `<tr><td>${esc(x.display_name)}</td><td>${esc(x.email)}</td><td>${x.active === false ? '<span class="badge warn">ปิดใช้งาน</span>' : '<span class="badge ok">Active</span>'}</td><td><select data-role-email="${esc(x.email)}" ${x.active === false ? 'disabled' : ''}><option value="staff" ${x.role === 'staff' ? 'selected' : ''}>เจ้าหน้าที่</option><option value="admin" ${x.role === 'admin' ? 'selected' : ''}>Admin (สลับได้ 2 โหมด)</option></select></td><td><button type="button" class="mini admin-reset-button" data-password-reset-email="${esc(x.email)}" data-password-reset-name="${esc(x.display_name)}" ${x.active === false ? 'disabled' : ''}>ตั้ง / รีเซ็ตรหัส</button></td></tr>`).join('')}</tbody></table></div>
   </section>
   <section data-admin-panel="materials" class="admin-panel ${adminTab==='materials'?'':'hidden'}">
     <div class="section-title admin-owner-head"><div><h3>วัสดุและผู้ดูแล</h3><p class="muted small">เพิ่มวัสดุใหม่ กำหนด Minimum เกณฑ์ EXP ผู้ดูแลหลัก ผู้ช่วย และอายุหลังเปิด</p></div><div class="admin-material-actions"><div class="search-box">${icon('search')}<input id="adminMaterialSearch" placeholder="ค้นหารหัส ชื่อ หรือผู้ดูแล"></div><button type="button" class="primary" id="adminAddMaterial">${icon('plus')} เพิ่มวัสดุ</button></div></div>
