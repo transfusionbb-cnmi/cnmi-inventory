@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.85';
+const APP_VERSION = '1.4.86';
 const WEEKLY_CUTOVER_DATE = '2026-07-24';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const DEFAULT_EXPIRY_ALERT_DAYS = 30;
@@ -2438,6 +2438,7 @@ async function launchOpenLabelPrint(l, {
   period = 'CUSTOM',
   issueTransactionId = '',
   materialCode = '',
+  manualMaterialName = '',
   lotNo = '',
   source = 'ISSUE_HISTORY',
   copies = 1,
@@ -2474,10 +2475,11 @@ async function launchOpenLabelPrint(l, {
     printWindow.location.replace(labelUrl.toString());
     (async () => {
       try {
-        const result = await sb.rpc('fn_log_open_label_print_v4', {
+        const result = await sb.rpc('fn_log_open_label_print_v5', {
           p_issue_transaction_id:issueTransactionId || null,
           p_lot_id:l.lot_id || null,
           p_material_code:code || null,
+          p_manual_material_name:String(manualMaterialName || '').trim() || null,
           p_lot_no:lot === '-' ? null : lot,
           p_opened_at:openedDate.toISOString(),
           p_use_until_at:useUntilDate.toISOString(),
@@ -2491,7 +2493,24 @@ async function launchOpenLabelPrint(l, {
         if (result.error) throw result.error;
       } catch (_) {
         try {
-          const result = await sb.rpc('fn_log_open_label_print_v3', {
+          const result = await sb.rpc('fn_log_open_label_print_v4', {
+            p_issue_transaction_id:issueTransactionId || null,
+            p_lot_id:l.lot_id || null,
+            p_material_code:code || null,
+            p_lot_no:lot === '-' ? null : lot,
+            p_opened_at:openedDate.toISOString(),
+            p_use_until_at:useUntilDate.toISOString(),
+            p_manufacturer_expiry:manufacturerExpiry || null,
+            p_open_period:periodCode,
+            p_opened_by:operator,
+            p_source:source,
+            p_copy_count:copyCount,
+            p_label_items:normalizedItems.length ? normalizedItems : null
+          });
+          if (result.error) throw result.error;
+        } catch (_) {
+          try {
+            const result = await sb.rpc('fn_log_open_label_print_v3', {
           p_issue_transaction_id:issueTransactionId || null,
           p_lot_id:l.lot_id || null,
           p_material_code:code || null,
@@ -2524,6 +2543,7 @@ async function launchOpenLabelPrint(l, {
           }
         }
       }
+        }
       }
     })();
     return true;
@@ -2782,9 +2802,11 @@ async function renderOpenLabelCreate() {
   const materials = await loadMaterials();
   const openedDefault = dateTimeLocalValue(new Date());
   const customDefault = dateTimeLocalValue(new Date(Date.now()+24*60*60*1000));
-  page.innerHTML = `<div class="page-head"><div><p class="eyebrow">Manual label generator</p><h2>สร้างสติ๊กเกอร์วันเปิดใช้</h2><p class="muted small">ใช้เมื่อต้องการสร้างสติ๊กเกอร์เอง ระบบคำนวณวันใช้ได้ถึงและล็อกไม่ให้เกิน EXP ผู้ผลิต</p></div><button class="mini secondary" data-route="open-labels">${icon('history')} กลับไปรายการนำออก</button></div>
+  page.innerHTML = `<div class="page-head"><div><p class="eyebrow">Manual label generator</p><h2>สร้างสติ๊กเกอร์วันเปิดใช้</h2><p class="muted small">เลือกวัสดุจากระบบ หรือกรณีไม่มีชื่อในระบบให้พิมพ์ชื่อบนสติ๊กเกอร์เองได้</p></div><button class="mini secondary" data-route="open-labels">${icon('history')} กลับไปรายการนำออก</button></div>
   <section class="card open-label-generator-card"><div class="open-label-generator-head">${icon('print')}<div><h3>ข้อมูลบนสติ๊กเกอร์</h3><p>ขนาด 25 × 20 mm ตามแบบ FM-CNPL-034 Rev.00</p></div></div><form id="openLabelGeneratorForm" class="form-grid open-label-generator-form">
+    <label class="confirm-check open-label-manual-toggle"><input id="openLabelManualMaterial" type="checkbox"><span><strong>ไม่มีชื่อวัสดุในระบบ</strong><small>ใช้เมื่อต้องการพิมพ์สติ๊กเกอร์วันเปิดใช้ให้วัสดุที่ยังไม่มีใน Master โดยไม่ตัดสต๊อก</small></span></label>
     ${materialComboboxMarkup({id:'openLabelMaterial',label:'วัสดุ',placeholder:'พิมพ์ชื่อวัสดุ เช่น น้ำเกลือ',materials})}
+    <label id="openLabelManualNameWrap" class="open-label-manual-name hidden">ชื่อวัสดุบนสติ๊กเกอร์<input id="openLabelManualName" maxlength="120" autocomplete="off" placeholder="พิมพ์ชื่อวัสดุที่ต้องการให้แสดงบนสติ๊กเกอร์"></label>
     <div id="openLabelComponentPrintWrap" class="open-label-component-print hidden"><div><strong>ขวด/ชื่อย่อยใน 1 กล่อง</strong><small id="openLabelComponentSummary"></small></div><div id="openLabelComponentPreview" class="open-label-component-preview"></div><label>จำนวนกล่องที่เปิด<input id="openLabelSetCount" type="number" min="1" max="20" step="1" value="1" inputmode="numeric"></label><p>พิมพ์รวม <strong id="openLabelComponentTotalPrint">0 ดวง</strong></p></div>
     <label>Lot<input id="openLabelLot" maxlength="60" autocomplete="off" placeholder="พิมพ์ Lot ที่อยู่บนขวด" required></label>
     <label>วันหมดอายุจากผู้ผลิต<input id="openLabelManufacturerExpiry" type="date" required></label>
@@ -2794,13 +2816,14 @@ async function renderOpenLabelCreate() {
     <div class="open-label-calculation"><small>ระบบคำนวณให้ใช้ได้ถึง</small><strong id="openLabelCalculatedUntil">-</strong><span id="openLabelCalculatedWarning" class="hidden"></span></div>
     <label>ผู้เปิดใช้<input value="${esc(profile?.display_name || profile?.email || '')}" readonly></label>
     <label id="openLabelCopiesWrap">จำนวนดวง<input id="openLabelCopies" type="number" min="1" max="20" step="1" value="1" inputmode="numeric" required></label>
-    <div class="open-label-generator-note">${icon('info')}<span>ระบบจะไม่ตัดสต๊อกเพิ่ม เมนูนี้สร้างและบันทึกประวัติการพิมพ์เท่านั้น</span></div>
+    <div class="open-label-generator-note">${icon('info')}<span id="openLabelGeneratorNoteText">ระบบจะไม่ตัดสต๊อกเพิ่ม เมนูนี้สร้างและบันทึกประวัติการพิมพ์เท่านั้น</span></div>
     <button class="primary wide-action" type="submit">${icon('print')} ยืนยันและพิมพ์สติ๊กเกอร์</button>
   </form></section>`;
   let selectedComponents=[];
-  const updateComponentPrint=()=>{ const wrap=$('#openLabelComponentPrintWrap'); const copiesWrap=$('#openLabelCopiesWrap'); if(!wrap)return; const has=selectedComponents.length>0; wrap.classList.toggle('hidden',!has); copiesWrap?.classList.toggle('hidden',has); if(has){ const sets=Math.max(1,Math.min(20,Math.round(Number($('#openLabelSetCount')?.value)||1))); $('#openLabelComponentSummary').textContent=`${selectedComponents.length} รายการ · ${openLabelComponentTotal(selectedComponents)} ดวง/กล่อง`; $('#openLabelComponentPreview').innerHTML=openLabelComponentPreview(selectedComponents); $('#openLabelComponentTotalPrint').textContent=`${openLabelComponentTotal(selectedComponents)*sets} ดวง`; } };
+  const updateComponentPrint=()=>{ const wrap=$('#openLabelComponentPrintWrap'); const copiesWrap=$('#openLabelCopiesWrap'); if(!wrap)return; const manualMode=Boolean($('#openLabelManualMaterial')?.checked); const has=!manualMode&&selectedComponents.length>0; wrap.classList.toggle('hidden',!has); copiesWrap?.classList.toggle('hidden',has); if(has){ const sets=Math.max(1,Math.min(20,Math.round(Number($('#openLabelSetCount')?.value)||1))); $('#openLabelComponentSummary').textContent=`${selectedComponents.length} รายการ · ${openLabelComponentTotal(selectedComponents)} ดวง/กล่อง`; $('#openLabelComponentPreview').innerHTML=openLabelComponentPreview(selectedComponents); $('#openLabelComponentTotalPrint').textContent=`${openLabelComponentTotal(selectedComponents)*sets} ดวง`; } };
   $('#openLabelSetCount')?.addEventListener('input',updateComponentPrint);
   const combo = setupMaterialCombobox('openLabelMaterial',materials,{maxResults:20,onChange:async(code) => {
+    if ($('#openLabelManualMaterial')?.checked) return;
     const material = materials.find(x => x.code === code);
     if (material) $('#openLabelPeriod').value = material.open_label_default_period || 'CUSTOM';
     selectedComponents = material ? await loadOpenLabelComponents(material.code) : [];
@@ -2826,19 +2849,43 @@ async function renderOpenLabelCreate() {
       : manufacturerMode ? 'เลือกใช้ถึง EXP ผู้ผลิต ระบบกำหนดวันใช้ได้ถึงตามวันหมดอายุของ Lot นี้' : '';
     return result;
   };
+  const applyManualMode = () => {
+    const manualMode = Boolean($('#openLabelManualMaterial')?.checked);
+    const materialLabel = $('#openLabelMaterialCombo')?.closest('.material-combo-label');
+    materialLabel?.classList.toggle('hidden',manualMode);
+    $('#openLabelManualNameWrap')?.classList.toggle('hidden',!manualMode);
+    if (manualMode) {
+      combo.clear(false);
+      selectedComponents=[];
+      $('#openLabelPeriod').value='CUSTOM';
+      $('#openLabelGeneratorNoteText').textContent='โหมดไม่มีชื่อวัสดุในระบบ: พิมพ์สติ๊กเกอร์และเก็บประวัติการพิมพ์เท่านั้น ไม่สร้างวัสดุใหม่และไม่ตัดสต๊อก';
+      requestAnimationFrame(()=>$('#openLabelManualName')?.focus());
+    } else {
+      $('#openLabelManualName').value='';
+      $('#openLabelGeneratorNoteText').textContent='ระบบจะไม่ตัดสต๊อกเพิ่ม เมนูนี้สร้างและบันทึกประวัติการพิมพ์เท่านั้น';
+    }
+    updateComponentPrint();
+    calculate();
+  };
+  $('#openLabelManualMaterial')?.addEventListener('change',applyManualMode);
   ['openLabelManufacturerExpiry','openLabelOpenedAt','openLabelPeriod','openLabelCustomUseUntil'].forEach(id => $(`#${id}`)?.addEventListener('input',calculate));
-  calculate();
+  applyManualMode();
   $('#openLabelGeneratorForm')?.addEventListener('submit', async e => {
     e.preventDefault();
+    const manualMode = Boolean($('#openLabelManualMaterial')?.checked);
+    const manualName = $('#openLabelManualName')?.value.trim() || '';
     const materialCode = $('#openLabelMaterial').value;
-    const material = materials.find(x => x.code === materialCode);
+    const material = manualMode ? null : materials.find(x => x.code === materialCode);
     const lot = $('#openLabelLot').value.trim();
     const manufacturerExpiry = $('#openLabelManufacturerExpiry').value;
     const result = calculate();
-    const sets = selectedComponents.length ? Math.max(1,Math.min(20,Math.round(Number($('#openLabelSetCount')?.value)||1))) : 1;
-    const copies = selectedComponents.length ? openLabelComponentTotal(selectedComponents)*sets : normalizedLabelCopies($('#openLabelCopies').value || 1);
-    const labelItems = openLabelExpandedItems(material,selectedComponents,sets,copies);
-    if (!material) return toast('กรุณาเลือกวัสดุจากรายการ', true);
+    const activeComponents = manualMode ? [] : selectedComponents;
+    const sets = activeComponents.length ? Math.max(1,Math.min(20,Math.round(Number($('#openLabelSetCount')?.value)||1))) : 1;
+    const copies = activeComponents.length ? openLabelComponentTotal(activeComponents)*sets : normalizedLabelCopies($('#openLabelCopies').value || 1);
+    const labelMaterial = manualMode ? {material_code:'',material_name:manualName,label_name:manualName} : material;
+    const labelItems = activeComponents.length ? openLabelExpandedItems(material,activeComponents,sets,copies) : [];
+    if (manualMode && !manualName) return toast('กรุณาพิมพ์ชื่อวัสดุบนสติ๊กเกอร์', true);
+    if (!manualMode && !material) return toast('กรุณาเลือกวัสดุจากรายการ', true);
     if (!lot) return toast('กรุณาระบุ Lot', true);
     if (!manufacturerExpiry) return toast('กรุณาระบุวันหมดอายุจากผู้ผลิต', true);
     if (result.error) return toast(result.error, true);
@@ -2847,9 +2894,9 @@ async function renderOpenLabelCreate() {
     const button = e.submitter;
     button.disabled = true;
     const ok = await launchOpenLabelPrint({
-      material_code:material.code,
-      material_name:material.name,
-      label_name:material.label_name,
+      material_code:labelMaterial?.material_code || '',
+      material_name:labelMaterial?.material_name || manualName,
+      label_name:labelMaterial?.label_name || manualName,
       lot_no:lot,
       expiry_date:manufacturerExpiry
     }, {
@@ -2859,11 +2906,12 @@ async function renderOpenLabelCreate() {
       useUntilAt:result.useUntil,
       manufacturerExpiry,
       period:result.period,
-      materialCode:material.code,
+      materialCode:material?.code || '',
+      manualMaterialName:manualMode ? manualName : '',
       lotNo:lot,
-      source:'MANUAL_GENERATOR',
+      source:manualMode ? 'MANUAL_FREE_TEXT' : 'MANUAL_GENERATOR',
       copies,
-      labelItems:selectedComponents.length ? labelItems : []
+      labelItems
     });
     button.disabled = false;
     if (ok) toast('กำลังเปิดหน้าพิมพ์สติ๊กเกอร์วันเปิดใช้');
@@ -5176,7 +5224,7 @@ async function renderReagentGenerator() {
 }
 
 function renderHelp() {
-  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>สร้างบัญชีครั้งแรก</h3><ol class="help-steps"><li>กรอกเฉพาะชื่อหน้า @mahidol.ac.th ระบบจะเติมโดเมนให้อัตโนมัติ และใช้ได้เฉพาะบัญชีที่ Admin อนุญาตไว้</li><li>ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว</li><li>กด “สร้างบัญชีครั้งแรก” แล้วกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</li></ol></div><div class="card help-card"><h3>ลืมรหัสผ่าน</h3><ol class="help-steps"><li>หน้าเข้าสู่ระบบกด “ลืมรหัสผ่าน” แล้วกรอกเฉพาะชื่อหน้า @mahidol.ac.th</li><li>เปิดลิงก์จากอีเมลและตั้งรหัสผ่านใหม่ด้วยตนเอง</li><li>Admin สามารถกด “ส่งลิงก์รีเซ็ต” จากเมนูผู้ใช้งานได้ แต่จะไม่เห็นหรือกำหนดรหัสผ่านแทนเจ้าหน้าที่</li><li>หากระบบแจ้งว่าส่งอีเมลครบโควตา ให้หยุดกดซ้ำ รอประมาณ 1 ชั่วโมงแล้วลองใหม่ และตรวจทั้ง Inbox กับ Spam</li></ol></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>พิมพ์ชื่อวัสดุบางส่วนแล้วเลือกจากรายการ</li><li>ตรวจชื่อผู้นำเข้าปัจจุบัน ใส่ Lot วันหมดอายุ และจำนวน แล้วบันทึก</li></ol></div><div class="card help-card"><h3>อยู่หน้าเดิมหลังทำรายการ</h3><p>หลังบันทึก แก้ไข ตรวจ หรือรีเฟรชข้อมูล ระบบจะคงอยู่เมนูเดิม แท็บเดิม ตัวกรองเดิม ช่วงวันที่ และตำแหน่งหน้าจอเดิม จนกว่าผู้ใช้งานจะกดเปลี่ยนเมนูหรือแท็บเอง</p></div><div class="card help-card"><h3>นำออก</h3><ol class="help-steps"><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าและวิธีนำออก แล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>หลังบันทึก ระบบคงอยู่ที่หน้า “นำออก” เพื่อสแกนหรือตัดสต๊อกรายการถัดไปได้ทันที ไม่เด้งไปหน้าเมนู</li><li>วัสดุที่ตั้งให้ใช้สติ๊กเกอร์วันเปิด จะไปอยู่ในเมนู “พิมพ์วันเปิดใช้” ให้เลือกพิมพ์เมื่อเปิดใช้จริง โดยรายการล่าสุดอยู่บนสุด</li></ol></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแล</h3><p>แสดงเฉพาะวัสดุที่คุณเป็นผู้ดูแลหลัก โดยมีแท็บภาพรวม ต้องเบิก และตั้งค่าการเตือน ผู้ดูแลหลักเป็นผู้รับผิดชอบวางแผนเบิกและกำหนด Minimum/เกณฑ์แจ้งเตือน</p></div><div class="card help-card"><h3>สต๊อกที่ฉันช่วยดูแล</h3><p>แสดงแยกจากงานหลัก ใช้ติดตามยอดและช่วยเตือนผู้ดูแลหลัก มีแท็บภาพรวมงานช่วยดูแลและช่วยเตือนต้องเบิก โดยไม่มีแท็บตั้งค่าการเตือน</p></div><div class="card help-card"><h3>ตรวจวันศุกร์</h3><p>กด “เปิดหน้าต่างตรวจ Lot” เพื่อกรอกจำนวนจริง หากยอดไม่ตรงให้เลือกเหตุผลและระบุรายละเอียด ผู้ช่วยดูแลตรวจได้จากแท็บ “ฉันช่วยดูแล” แต่ไม่ถูกนับเป็นงานหลักที่รอตรวจ</p></div><div class="card help-card"><h3>สแกนตรวจ Lot</h3><p>เปิดกล้องหรือพิมพ์รหัส QR เพื่อดูยอด Lot ยอดรวม ผู้ดูแล ขั้นต่ำ และยืนยันตรวจหรือปรับยอดได้ทันที</p></div><div class="card help-card"><h3>สถานะผู้ตรวจ</h3><p>เปิดเมนู “สถานะผู้ตรวจ” แล้วกำหนดช่วงวันที่ เพื่อดูว่าแต่ละวันศุกร์ใครตรวจครบหรือยังไม่ครบ</p></div><div class="card help-card"><h3>สติ๊กเกอร์เดิม</h3><p>สติ๊กเกอร์รหัสเดิมยังสแกนได้ ไม่ต้องเปลี่ยนใหม่ทั้งหมด</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบไม่ตัดยอดเอง เปิดตรวจวันศุกร์และกด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์ถัดไป</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมดูได้ในหน้าประวัติและรายงาน</p></div><div class="card help-card"><h3>ประวัติการทำรายการ</h3><p>กรองประวัติตามวันที่ เดือน ปี ช่วงวันที่ ประเภทกิจกรรม และผู้ทำรายการได้ โดยรายการพิมพ์จะแยกให้เห็นว่าเป็น QR Sticker, สติ๊กเกอร์วันเปิดใช้ หรือบาร์โค้ดน้ำยาเข้าเครื่อง พร้อมจำนวนดวง รูปแบบฉลาก และผู้ดำเนินการ</p></div><div class="card help-card"><h3>พิมพ์ QR Sticker ภายหลัง</h3><p>หลังรับเข้าผ่านโทรศัพท์ ให้เปิดเมนู “พิมพ์ QR Sticker” บนคอมพิวเตอร์ที่ต่อเครื่องพิมพ์ รายการรับเข้าจะอยู่ในคิวอัตโนมัติ เลือกจำนวนดวงแล้วกดพิมพ์</p></div><div class="card help-card"><h3>พิมพ์วันเปิดใช้</h3><p>เปิดเมนู “พิมพ์วันเปิดใช้” เลือกรายการนำออก แล้วระบุวัน–เวลาเปิดและอายุหลังเปิด โดยเลือกใช้ถึง EXP ผู้ผลิต, 24 ชั่วโมง, 7 วัน, 28 วัน, 1 เดือน, 3 เดือน, 6 เดือน หรือกำหนดเองได้ ระบบคำนวณวันใช้ได้ถึงให้อัตโนมัติและไม่ให้เกิน EXP ผู้ผลิต</p></div><div class="card help-card"><h3>สร้างสติ๊กเกอร์วันเปิดเอง</h3><p>เลือกวัสดุ กรอก Lot และ EXP ผู้ผลิต ระบุวัน–เวลาเปิดและอายุหลังเปิด ระบบคำนวณวันใช้ได้ถึงและสร้างสติ๊กเกอร์โดยไม่ตัดยอดสต๊อกเพิ่ม</p></div><div class="card help-card"><h3>พิมพ์น้ำยาเข้าเครื่อง</h3><p>Staff เลือกชุดน้ำยาที่ Admin เตรียมไว้ ระบุผู้เปิดใช้ วันเวลาเปิด และวันเวลาหมดอายุ จากนั้นกดพิมพ์ โดยไม่สามารถแก้ชื่อหรือ Barcode ของชุดได้</p></div><div class="card help-card"><h3>จัดการชุดน้ำยาเข้าเครื่อง</h3><p>Admin สร้างชุดน้ำยา เพิ่มรายการทีละรายการ กำหนด Barcode จำนวนดวง และเลือกรูปแบบเต็มดวงหรือเว้นขวา 10 mm ได้ รวมทั้งกดปุ่ม “แก้ไข” เพื่อปรับรายละเอียดชุดเดิม หรือคัดลอกเป็นชุดใหม่เมื่อมีการเปลี่ยนชุดน้ำยา</p></div><div class="card help-card"><h3>ตัวชี้วัด</h3><p>Admin เปิดเมนู “ตัวชี้วัด” เลือกช่วงวันที่ ระบบคำนวณ 12 ตัวชี้วัดจากผู้ใช้ วัสดุ Transaction การตรวจวันศุกร์ สติ๊กเกอร์ และ Audit Log อัตโนมัติ ส่วนเหตุการณ์ใช้เกินวันหลังเปิดหรือข้อร้องเรียนฉลาก ให้กด “บันทึกเหตุการณ์” ในหน้าเดียวกัน และส่งออก CSV ได้</p></div><div class="card help-card"><h3>ตั้งค่าผู้ดูแลระบบ</h3><p>หน้า Admin แยกเป็น 3 เมนูย่อย ได้แก่ ภาพรวม ผู้ใช้งาน และวัสดุและผู้ดูแล โดย Admin เพิ่มวัสดุใหม่พร้อมรหัส ชื่อ หน่วย Minimum เกณฑ์ EXP ผู้ดูแลหลัก ผู้ช่วย และอายุหลังเปิดเริ่มต้นได้</p></div><div class="card help-card"><h3>เครื่องพิมพ์สติ๊กเกอร์</h3><p>ฉลากจริง 25 × 20 mm ระบบใช้รูปแบบสติ๊กเกอร์มาตรฐานเดียวกันทุกเครื่อง พร้อม QR ขนาดใหญ่และขอบขาวมาตรฐาน ในหน้าพิมพ์ Chrome ให้เลือกเครื่องพิมพ์และตั้งกระดาษตามเครื่องที่ใช้งาน ใช้ Scale 100% หรือ Actual size ปิด Header/Footer และใช้ Margin None</p></div></div>`;
+  page.innerHTML = `<div class="page-head"><div><h2>คู่มือย่อ</h2><p class="muted small">CNMI Inventory v${APP_VERSION}</p></div></div><section class="card help-install-card"><div class="help-install-copy"><span class="install-panel-icon">${icon('smartphone')}</span><div><h3>ติดตั้ง CNMI Inventory บนโทรศัพท์</h3><p data-install-status>เลือก Android หรือ iPhone/iPad</p></div></div><div class="install-actions help-install-actions"><button class="install-platform-btn android" type="button" data-install-platform="android">${icon('download')}<span><b>ติดตั้ง Android</b><small data-install-label>ผ่าน Chrome</small></span></button><button class="install-platform-btn ios" type="button" data-install-platform="ios">${icon('share')}<span><b>ติดตั้ง iOS</b><small data-install-label>เปิดคู่มือ Safari</small></span></button></div></section><div class="grid help-grid"><div class="card help-card"><h3>สร้างบัญชีครั้งแรก</h3><ol class="help-steps"><li>กรอกเฉพาะชื่อหน้า @mahidol.ac.th ระบบจะเติมโดเมนให้อัตโนมัติ และใช้ได้เฉพาะบัญชีที่ Admin อนุญาตไว้</li><li>ตั้งรหัสผ่านสำหรับแอปอย่างน้อย 6 ตัว</li><li>กด “สร้างบัญชีครั้งแรก” แล้วกด “เข้าสู่ระบบ” ด้วยข้อมูลเดิม</li></ol></div><div class="card help-card"><h3>ลืมรหัสผ่าน</h3><ol class="help-steps"><li>หน้าเข้าสู่ระบบกด “ลืมรหัสผ่าน” แล้วกรอกเฉพาะชื่อหน้า @mahidol.ac.th</li><li>เปิดลิงก์จากอีเมลและตั้งรหัสผ่านใหม่ด้วยตนเอง</li><li>Admin สามารถกด “ส่งลิงก์รีเซ็ต” จากเมนูผู้ใช้งานได้ แต่จะไม่เห็นหรือกำหนดรหัสผ่านแทนเจ้าหน้าที่</li><li>หากระบบแจ้งว่าส่งอีเมลครบโควตา ให้หยุดกดซ้ำ รอประมาณ 1 ชั่วโมงแล้วลองใหม่ และตรวจทั้ง Inbox กับ Spam</li></ol></div><div class="card help-card"><h3>รับเข้าและพิมพ์ QR</h3><ol class="help-steps"><li>เปิดเมนู นำเข้า</li><li>พิมพ์ชื่อวัสดุบางส่วนแล้วเลือกจากรายการ</li><li>ตรวจชื่อผู้นำเข้าปัจจุบัน ใส่ Lot วันหมดอายุ และจำนวน แล้วบันทึก</li></ol></div><div class="card help-card"><h3>อยู่หน้าเดิมหลังทำรายการ</h3><p>หลังบันทึก แก้ไข ตรวจ หรือรีเฟรชข้อมูล ระบบจะคงอยู่เมนูเดิม แท็บเดิม ตัวกรองเดิม ช่วงวันที่ และตำแหน่งหน้าจอเดิม จนกว่าผู้ใช้งานจะกดเปลี่ยนเมนูหรือแท็บเอง</p></div><div class="card help-card"><h3>นำออก</h3><ol class="help-steps"><li>สแกน QR Sticker หรือพิมพ์รหัส Lot</li><li>ตรวจชื่อสินค้าและวิธีนำออก แล้วกด “ยืนยันนำออก 1 หน่วย”</li><li>หลังบันทึก ระบบคงอยู่ที่หน้า “นำออก” เพื่อสแกนหรือตัดสต๊อกรายการถัดไปได้ทันที ไม่เด้งไปหน้าเมนู</li><li>วัสดุที่ตั้งให้ใช้สติ๊กเกอร์วันเปิด จะไปอยู่ในเมนู “พิมพ์วันเปิดใช้” ให้เลือกพิมพ์เมื่อเปิดใช้จริง โดยรายการล่าสุดอยู่บนสุด</li></ol></div><div class="card help-card"><h3>สต๊อกที่ฉันดูแล</h3><p>แสดงเฉพาะวัสดุที่คุณเป็นผู้ดูแลหลัก โดยมีแท็บภาพรวม ต้องเบิก และตั้งค่าการเตือน ผู้ดูแลหลักเป็นผู้รับผิดชอบวางแผนเบิกและกำหนด Minimum/เกณฑ์แจ้งเตือน</p></div><div class="card help-card"><h3>สต๊อกที่ฉันช่วยดูแล</h3><p>แสดงแยกจากงานหลัก ใช้ติดตามยอดและช่วยเตือนผู้ดูแลหลัก มีแท็บภาพรวมงานช่วยดูแลและช่วยเตือนต้องเบิก โดยไม่มีแท็บตั้งค่าการเตือน</p></div><div class="card help-card"><h3>ตรวจวันศุกร์</h3><p>กด “เปิดหน้าต่างตรวจ Lot” เพื่อกรอกจำนวนจริง หากยอดไม่ตรงให้เลือกเหตุผลและระบุรายละเอียด ผู้ช่วยดูแลตรวจได้จากแท็บ “ฉันช่วยดูแล” แต่ไม่ถูกนับเป็นงานหลักที่รอตรวจ</p></div><div class="card help-card"><h3>สแกนตรวจ Lot</h3><p>เปิดกล้องหรือพิมพ์รหัส QR เพื่อดูยอด Lot ยอดรวม ผู้ดูแล ขั้นต่ำ และยืนยันตรวจหรือปรับยอดได้ทันที</p></div><div class="card help-card"><h3>สถานะผู้ตรวจ</h3><p>เปิดเมนู “สถานะผู้ตรวจ” แล้วกำหนดช่วงวันที่ เพื่อดูว่าแต่ละวันศุกร์ใครตรวจครบหรือยังไม่ครบ</p></div><div class="card help-card"><h3>สติ๊กเกอร์เดิม</h3><p>สติ๊กเกอร์รหัสเดิมยังสแกนได้ ไม่ต้องเปลี่ยนใหม่ทั้งหมด</p></div><div class="card help-card"><h3>ของหมดอายุ</h3><p>ระบบไม่ตัดยอดเอง เปิดตรวจวันศุกร์และกด “ยืนยันนำออก” หลังตรวจว่าเอาออกจากพื้นที่จริงแล้ว จากนั้น Lot จะถูกปิดและไม่แสดงในสัปดาห์ถัดไป</p></div><div class="card help-card"><h3>ข้อมูลเดิม In / Out</h3><p>ประวัติจาก Excel เดิมดูได้ในหน้าประวัติและรายงาน</p></div><div class="card help-card"><h3>ประวัติการทำรายการ</h3><p>กรองประวัติตามวันที่ เดือน ปี ช่วงวันที่ ประเภทกิจกรรม และผู้ทำรายการได้ โดยรายการพิมพ์จะแยกให้เห็นว่าเป็น QR Sticker, สติ๊กเกอร์วันเปิดใช้ หรือบาร์โค้ดน้ำยาเข้าเครื่อง พร้อมจำนวนดวง รูปแบบฉลาก และผู้ดำเนินการ</p></div><div class="card help-card"><h3>พิมพ์ QR Sticker ภายหลัง</h3><p>หลังรับเข้าผ่านโทรศัพท์ ให้เปิดเมนู “พิมพ์ QR Sticker” บนคอมพิวเตอร์ที่ต่อเครื่องพิมพ์ รายการรับเข้าจะอยู่ในคิวอัตโนมัติ เลือกจำนวนดวงแล้วกดพิมพ์</p></div><div class="card help-card"><h3>พิมพ์วันเปิดใช้</h3><p>เปิดเมนู “พิมพ์วันเปิดใช้” เลือกรายการนำออก แล้วระบุวัน–เวลาเปิดและอายุหลังเปิด โดยเลือกใช้ถึง EXP ผู้ผลิต, 24 ชั่วโมง, 7 วัน, 28 วัน, 1 เดือน, 3 เดือน, 6 เดือน หรือกำหนดเองได้ ระบบคำนวณวันใช้ได้ถึงให้อัตโนมัติและไม่ให้เกิน EXP ผู้ผลิต</p></div><div class="card help-card"><h3>สร้างสติ๊กเกอร์วันเปิดเอง</h3><p>เลือกวัสดุจากระบบ หรือเลือก “ไม่มีชื่อวัสดุในระบบ” เพื่อพิมพ์ชื่อเอง จากนั้นกรอก Lot และ EXP ผู้ผลิต ระบุวัน–เวลาเปิดและอายุหลังเปิด ระบบคำนวณวันใช้ได้ถึงและสร้างสติ๊กเกอร์โดยไม่ตัดยอดสต๊อกเพิ่ม</p></div><div class="card help-card"><h3>พิมพ์น้ำยาเข้าเครื่อง</h3><p>Staff เลือกชุดน้ำยาที่ Admin เตรียมไว้ ระบุผู้เปิดใช้ วันเวลาเปิด และวันเวลาหมดอายุ จากนั้นกดพิมพ์ โดยไม่สามารถแก้ชื่อหรือ Barcode ของชุดได้</p></div><div class="card help-card"><h3>จัดการชุดน้ำยาเข้าเครื่อง</h3><p>Admin สร้างชุดน้ำยา เพิ่มรายการทีละรายการ กำหนด Barcode จำนวนดวง และเลือกรูปแบบเต็มดวงหรือเว้นขวา 10 mm ได้ รวมทั้งกดปุ่ม “แก้ไข” เพื่อปรับรายละเอียดชุดเดิม หรือคัดลอกเป็นชุดใหม่เมื่อมีการเปลี่ยนชุดน้ำยา</p></div><div class="card help-card"><h3>ตัวชี้วัด</h3><p>Admin เปิดเมนู “ตัวชี้วัด” เลือกช่วงวันที่ ระบบคำนวณ 12 ตัวชี้วัดจากผู้ใช้ วัสดุ Transaction การตรวจวันศุกร์ สติ๊กเกอร์ และ Audit Log อัตโนมัติ ส่วนเหตุการณ์ใช้เกินวันหลังเปิดหรือข้อร้องเรียนฉลาก ให้กด “บันทึกเหตุการณ์” ในหน้าเดียวกัน และส่งออก CSV ได้</p></div><div class="card help-card"><h3>ตั้งค่าผู้ดูแลระบบ</h3><p>หน้า Admin แยกเป็น 3 เมนูย่อย ได้แก่ ภาพรวม ผู้ใช้งาน และวัสดุและผู้ดูแล โดย Admin เพิ่มวัสดุใหม่พร้อมรหัส ชื่อ หน่วย Minimum เกณฑ์ EXP ผู้ดูแลหลัก ผู้ช่วย และอายุหลังเปิดเริ่มต้นได้</p></div><div class="card help-card"><h3>เครื่องพิมพ์สติ๊กเกอร์</h3><p>ฉลากจริง 25 × 20 mm ระบบใช้รูปแบบสติ๊กเกอร์มาตรฐานเดียวกันทุกเครื่อง พร้อม QR ขนาดใหญ่และขอบขาวมาตรฐาน ในหน้าพิมพ์ Chrome ให้เลือกเครื่องพิมพ์และตั้งกระดาษตามเครื่องที่ใช้งาน ใช้ Scale 100% หรือ Actual size ปิด Header/Footer และใช้ Margin None</p></div></div>`;
   refreshInstallUI();
 }
 

@@ -672,7 +672,11 @@ input,select,textarea,button{min-width:0}
 .open-label-generator-head>.icon{width:34px;height:34px;padding:8px;border-radius:12px;background:#eaf7f4;color:var(--brand-strong)}
 .open-label-generator-head h3,.open-label-generator-head p{margin:0}
 .open-label-generator-form{grid-template-columns:repeat(2,minmax(0,1fr))}
-.open-label-generator-form .material-combo-label,.open-label-generator-form .open-label-generator-note,.open-label-generator-form .wide-action{grid-column:1/-1}
+.open-label-generator-form .material-combo-label,.open-label-generator-form .open-label-manual-toggle,.open-label-generator-form .open-label-manual-name,.open-label-generator-form .open-label-generator-note,.open-label-generator-form .wide-action{grid-column:1/-1}
+.open-label-manual-toggle{border-color:#cfe5e0;background:#f5fbfa}
+.open-label-manual-toggle span{display:grid;gap:3px}
+.open-label-manual-toggle small{color:var(--muted);font-size:.78rem;line-height:1.45}
+.open-label-manual-name{display:grid;gap:7px;font-weight:800}
 .open-label-generator-note{display:flex;gap:10px;align-items:flex-start;padding:13px 14px;border-radius:14px;background:#f1f7f6;color:#526c67;font-size:.9rem;line-height:1.5}
 .open-label-generator-note .icon{width:20px;height:20px;flex:0 0 auto;color:var(--brand-strong)}
 @media(max-width:900px){
@@ -687,7 +691,7 @@ input,select,textarea,button{min-width:0}
   .open-label-history-grid>*{width:100%}
   .open-label-issue-title{display:grid}
   .open-label-issue-title .label-print-status{text-align:left;justify-items:start}
-  .open-label-generator-form .material-combo-label,.open-label-generator-form .open-label-generator-note,.open-label-generator-form .wide-action{grid-column:auto}
+  .open-label-generator-form .material-combo-label,.open-label-generator-form .open-label-manual-toggle,.open-label-generator-form .open-label-manual-name,.open-label-generator-form .open-label-generator-note,.open-label-generator-form .wide-action{grid-column:auto}
 }
 
 /* v1.4.37 — show every issued material in opened-label queue */
