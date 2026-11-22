@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.86';
+const APP_VERSION = '1.4.87';
 const WEEKLY_CUTOVER_DATE = '2026-07-24';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const DEFAULT_EXPIRY_ALERT_DAYS = 30;
@@ -37,8 +37,11 @@ let authLogoutTimer = null;
 let desktopIdleLogoutTimer = null;
 let desktopLastUserActivityAt = 0;
 let desktopIdleActivityBound = false;
+let desktopExplicitLoginPending = false;
+let desktopIdleLogoutInProgress = false;
 const DESKTOP_IDLE_LOGOUT_MS = 15 * 60 * 1000;
 const DESKTOP_IDLE_ACTIVITY_THROTTLE_MS = 1000;
+const DESKTOP_IDLE_STORAGE_PREFIX = 'cnmi-inventory-desktop-activity:';
 let enteringApp = false;
 let passwordRecoveryMode = new URLSearchParams(location.search).get('password_reset') === '1' || /(?:^|[&#])type=recovery(?:&|$)/i.test(location.hash);
 let passwordRecoverySession = null;
@@ -64,11 +67,33 @@ const isAdminMode = () => isAdminAccount() && actingMode === 'admin';
 const isMahidolEmail = email => /^[^@\s]+@mahidol\.ac\.th$/i.test(String(email || '').trim());
 const isPhoneDevice = () => {
   if (typeof navigator === 'undefined') return false;
-  if (typeof navigator.userAgentData?.mobile === 'boolean') return navigator.userAgentData.mobile;
   const ua = String(navigator.userAgent || '');
-  return /iPhone|iPod|Android.*Mobile|Windows Phone|IEMobile|Opera Mini|Mobile/i.test(ua);
+  // Treat tablets/PWAs as handheld devices too; do not time out personal mobile devices.
+  if (/iPhone|iPad|iPod|Android|Windows Phone|IEMobile|Opera Mini|Mobile/i.test(ua)) return true;
+  if (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) return true;
+  return navigator.userAgentData?.mobile === true;
 };
 const shouldUseDesktopIdleLogout = () => !isPhoneDevice();
+const desktopIdleStorageKey = () => session?.user?.id ? `${DESKTOP_IDLE_STORAGE_PREFIX}${session.user.id}` : '';
+
+function readDesktopLastActivity() {
+  const key = desktopIdleStorageKey();
+  if (!key) return desktopLastUserActivityAt;
+  try {
+    const saved = Number(localStorage.getItem(key));
+    if (Number.isFinite(saved) && saved > 0 && saved <= Date.now()) {
+      return Math.max(desktopLastUserActivityAt, saved);
+    }
+  } catch (_) { /* Storage may be blocked; keep the in-memory timer. */ }
+  return desktopLastUserActivityAt;
+}
+
+function saveDesktopLastActivity(now = Date.now()) {
+  desktopLastUserActivityAt = now;
+  const key = desktopIdleStorageKey();
+  if (!key) return;
+  try { localStorage.setItem(key, String(now)); } catch (_) {}
+}
 
 function clearDesktopIdleLogoutTimer() {
   if (desktopIdleLogoutTimer) clearTimeout(desktopIdleLogoutTimer);
@@ -76,9 +101,15 @@ function clearDesktopIdleLogoutTimer() {
 }
 
 async function desktopIdleLogoutNow() {
-  if (!shouldUseDesktopIdleLogout() || !session) return;
+  if (!shouldUseDesktopIdleLogout() || !session || desktopIdleLogoutInProgress) return;
+  // Another open CNMI tab may have been active while this tab's timer was paused.
+  desktopLastUserActivityAt = readDesktopLastActivity();
+  if (Date.now() - desktopLastUserActivityAt < DESKTOP_IDLE_LOGOUT_MS) {
+    scheduleDesktopIdleLogout();
+    return;
+  }
+  desktopIdleLogoutInProgress = true;
   clearDesktopIdleLogoutTimer();
-  try { if (sb) await sb.auth.signOut(); } catch (_) {}
   session = null;
   profile = null;
   stockCache = []; scanLotsCache=[]; scanLotsLoadedAt=0;
@@ -89,11 +120,22 @@ async function desktopIdleLogoutNow() {
   showLogin();
   if ($('#loginPassword')) $('#loginPassword').value = '';
   toast('ออกจากระบบอัตโนมัติ เนื่องจากไม่มีการใช้งานบนคอมพิวเตอร์ 15 นาที');
+  try {
+    if (sb) {
+      const {error} = await sb.auth.signOut();
+      if (error) await sb.auth.signOut({scope:'local'});
+    }
+  } catch (_) {
+    try { if (sb) await sb.auth.signOut({scope:'local'}); } catch (_) {}
+  } finally {
+    desktopIdleLogoutInProgress = false;
+  }
 }
 
 function scheduleDesktopIdleLogout() {
   clearDesktopIdleLogoutTimer();
-  if (!shouldUseDesktopIdleLogout() || !session || appView.classList.contains('hidden')) return;
+  if (!shouldUseDesktopIdleLogout() || !session || desktopIdleLogoutInProgress || appView.classList.contains('hidden')) return;
+  desktopLastUserActivityAt = readDesktopLastActivity();
   const elapsed = Date.now() - desktopLastUserActivityAt;
   const remaining = DESKTOP_IDLE_LOGOUT_MS - elapsed;
   if (remaining <= 0) {
@@ -104,17 +146,21 @@ function scheduleDesktopIdleLogout() {
 }
 
 function noteDesktopUserActivity() {
-  if (!shouldUseDesktopIdleLogout() || !session || appView.classList.contains('hidden')) return;
+  if (!shouldUseDesktopIdleLogout() || !session || desktopIdleLogoutInProgress || appView.classList.contains('hidden')) return;
   const now = Date.now();
-  if (now - desktopLastUserActivityAt < DESKTOP_IDLE_ACTIVITY_THROTTLE_MS) return;
-  desktopLastUserActivityAt = now;
+  const elapsed = now - readDesktopLastActivity();
+  if (elapsed >= DESKTOP_IDLE_LOGOUT_MS) return desktopIdleLogoutNow();
+  if (elapsed < DESKTOP_IDLE_ACTIVITY_THROTTLE_MS) return;
+  saveDesktopLastActivity(now);
   scheduleDesktopIdleLogout();
 }
 
 function startDesktopIdleLogout() {
   clearDesktopIdleLogoutTimer();
   if (!shouldUseDesktopIdleLogout()) return;
-  desktopLastUserActivityAt = Date.now();
+  // Explicit login starts a new 15-minute window. Reloading/restoring a tab does not.
+  desktopLastUserActivityAt = desktopExplicitLoginPending ? 0 : readDesktopLastActivity();
+  if (desktopExplicitLoginPending || !desktopLastUserActivityAt) saveDesktopLastActivity();
   if (!desktopIdleActivityBound) {
     desktopIdleActivityBound = true;
     ['pointerdown','pointermove','keydown','wheel','touchstart'].forEach(eventName => {
@@ -123,8 +169,10 @@ function startDesktopIdleLogout() {
     window.addEventListener('scroll', noteDesktopUserActivity, {passive:true, capture:true});
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState !== 'visible' || !session || !shouldUseDesktopIdleLogout()) return;
-      if (Date.now() - desktopLastUserActivityAt >= DESKTOP_IDLE_LOGOUT_MS) desktopIdleLogoutNow();
-      else scheduleDesktopIdleLogout();
+      scheduleDesktopIdleLogout();
+    });
+    window.addEventListener('storage', event => {
+      if (event.key === desktopIdleStorageKey()) scheduleDesktopIdleLogout();
     });
   }
   scheduleDesktopIdleLogout();
@@ -863,10 +911,15 @@ async function login(e) {
   if (!isMahidolEmail(email)) return toast('กรอกเฉพาะชื่อหน้า @mahidol.ac.th เช่น parichat', true);
   const btn = e.submitter;
   btn.disabled = true;
-  const {error} = await sb.auth.signInWithPassword({email, password});
-  btn.disabled = false;
-  if (error) return toast(errMsg(error), true);
-  await enterApp();
+  desktopExplicitLoginPending = true;
+  try {
+    const {error} = await sb.auth.signInWithPassword({email, password});
+    if (error) return toast(errMsg(error), true);
+    await enterApp();
+  } finally {
+    desktopExplicitLoginPending = false;
+    btn.disabled = false;
+  }
 }
 
 async function register() {
@@ -1072,6 +1125,7 @@ async function enterApp() {
     loginView.classList.add('hidden');
     appView.classList.remove('hidden');
     startDesktopIdleLogout();
+    if (desktopIdleLogoutInProgress) return;
     updateRoleUI();
     const hashRoute = location.hash.replace(/^#/, '');
     const allowed = ['home','stock','my-stock','usage','urgent','move','labels','open-labels','open-label-create','reagent-print','reagent-set-admin','reagent-generator','weekly','scan-stock','weekly-status','activity','reports','indicators','help','admin'];
@@ -1093,6 +1147,7 @@ async function enterApp() {
 
 function showLogin() {
   clearDesktopIdleLogoutTimer();
+  desktopLastUserActivityAt = 0;
   stopScanner();
   appView.classList.add('hidden');
   loginView.classList.remove('hidden');
