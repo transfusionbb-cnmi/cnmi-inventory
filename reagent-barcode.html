@@ -10,7 +10,7 @@
 html,body{margin:0!important;padding:0!important;width:var(--paper-w);min-width:var(--paper-w);background:#eef2f3;font-family:Tahoma,"Leelawadee UI","Noto Sans Thai",Arial,sans-serif;color:#000;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 body{line-height:0}
 #printPages{display:block;width:var(--paper-w);margin:0!important;padding:0!important;line-height:0;font-size:0}
-.label-page{position:relative;display:block;vertical-align:top;width:var(--paper-w);height:var(--label-h);margin:0!important;padding:0!important;background:#fff;overflow:hidden;break-inside:avoid;page-break-inside:avoid}
+.label-page{position:relative;display:block;vertical-align:top;width:var(--paper-w);height:var(--label-h);margin:0!important;padding:0!important;background:#fff;overflow:hidden;break-inside:avoid;page-break-inside:avoid;}
 .label-vector{position:absolute;left:0;top:0;display:block;width:var(--paper-w);height:var(--label-h);margin:0;padding:0;background:#fff;overflow:hidden;text-rendering:geometricPrecision}
 .screen-status{position:fixed;left:54mm;top:6mm;width:420px;padding:14px 16px;border-radius:12px;background:#fff;color:#087b6f;box-shadow:0 8px 28px rgba(0,0,0,.16);font-size:13px;font-weight:700;line-height:1.45}
 .screen-status small{display:block;margin-top:4px;color:#667a76;font-weight:500}
@@ -18,7 +18,7 @@ body{line-height:0}
 @media print{
   html,body{width:var(--paper-w)!important;min-width:var(--paper-w)!important;height:auto!important;min-height:0!important;margin:0!important;padding:0!important;overflow:visible!important;background:#fff!important;line-height:0!important}
   #printPages{display:block!important;width:var(--paper-w)!important;margin:0!important;padding:0!important;line-height:0!important;font-size:0!important}
-  .label-page,.label-vector{display:block!important;width:var(--paper-w)!important;height:var(--label-h)!important;margin:0!important;padding:0!important;transform:none!important}
+  .label-page,.label-vector{display:block!important;width:var(--paper-w)!important;height:var(--label-h)!important;margin:0!important;padding:0!important}
   .screen-status{display:none!important}
 }
 </style>
@@ -132,41 +132,33 @@ function encodeCode128(text){
 }
 
 function addBarcode(svg,text,x,y){
-  // Preserve the Code 128 Auto sequence used by the instrument's original label.
-  // Place every bar boundary on an integer 203-dpi printer-dot grid. Building a
-  // single SVG path avoids browser compositing of many independently snapped rects.
+  // v1.4.87: continuous vector path, 2-dot modules at nominal 203 dpi.
+  // Preserve Code 128 Auto (Code C then B) to match the existing instrument labels.
   const codes=encodeCode128(text);
   const quietModules=10;
-  const moduleDots=2;
-  const printerDpi=203;
-  const moduleUnits=moduleDots*25.4*10/printerDpi; // 2 exact 203-dpi dots per module; 10 SVG units/mm
-  const barHeight=95; // 9.5 mm
-  let cursorModules=quietModules;
-  const barPaths=[];
-  const pos=value=>Number(value.toFixed(6));
+  const moduleUnits=2*25.4*10/203;
+  const barHeight=95;
+  const totalModules=codes.reduce((sum,code)=>sum+CODE128_PATTERNS[code].split('').reduce((n,d)=>n+Number(d),0),quietModules*2);
+  const widthUnits=totalModules*moduleUnits;
+  const group=svgNode('g',{transform:`translate(${x} ${y})`,'shape-rendering':'crispEdges'});
+  group.appendChild(svgNode('rect',{x:0,y:0,width:widthUnits,height:barHeight,fill:'#fff'}));
+  let cursor=quietModules*moduleUnits;
+  const paths=[];
   codes.forEach(code=>{
     const pattern=CODE128_PATTERNS[code];
-    for(let i=0;i<pattern.length;i+=1){
-      const widthModules=Number(pattern[i]);
+    for(let i=0;i<pattern.length;i++){
+      const w=Number(pattern[i])*moduleUnits;
       if(i%2===0){
-        const left=pos(cursorModules*moduleUnits);
-        const right=pos((cursorModules+widthModules)*moduleUnits);
-        barPaths.push(`M${left} 0H${right}V${barHeight}H${left}Z`);
+        const left=Number(cursor.toFixed(6));
+        const right=Number((cursor+w).toFixed(6));
+        paths.push(`M${left} 0H${right}V95H${left}Z`);
       }
-      cursorModules+=widthModules;
+      cursor+=w;
     }
   });
-  const widthUnits=(cursorModules+quietModules)*moduleUnits;
-  const printerDotUnits=25.4*10/printerDpi;
-  const alignedX=pos(Math.round(x/printerDotUnits)*printerDotUnits);
-  const group=svgNode('g',{
-    transform:`translate(${alignedX} ${y})`,
-    'shape-rendering':'crispEdges'
-  });
-  group.appendChild(svgNode('rect',{x:0,y:0,width:widthUnits,height:barHeight,fill:'#fff'}));
-  group.appendChild(svgNode('path',{d:barPaths.join(''),fill:'#000'}));
+  group.appendChild(svgNode('path',{d:paths.join(''),fill:'#000'}));
   svg.appendChild(group);
-  return {x,width:widthUnits,height:barHeight,moduleDots};
+  return {x,width:widthUnits,height:barHeight};
 }
 function makeLabel(row,payload){
   const page=document.createElement('div'); page.className='label-page';

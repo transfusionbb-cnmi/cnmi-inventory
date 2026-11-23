@@ -970,3 +970,17 @@ input,select,textarea,button{min-width:0}
 /* v1.4.84 — admin direct temporary password reset */
 .admin-password-reset .admin-reset-user{margin:12px 0 16px}
 .admin-password-reset .form-actions{margin-top:4px}
+
+/* v1.4.88 Calibrator printing - isolated from stock flows */
+.cal-panel{margin-bottom:14px}.cal-panel h3{margin:0 0 7px}.cal-panel p{line-height:1.6}
+.cal-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:14px 0}
+.cal-choice{display:flex;flex-direction:column;align-items:stretch;gap:7px;padding:13px;border:1px solid var(--line);border-radius:15px;background:var(--brand-pale);font-weight:500;min-width:0}
+.cal-choice .cal-top{display:flex;align-items:center;gap:8px;font-size:1.28rem}.cal-choice .cal-top input{width:22px;height:22px;margin:0;accent-color:var(--brand)}
+.cal-choice small{color:var(--muted);word-break:break-all}.cal-choice b{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
+.cal-choice.cal-unavailable{opacity:.5}.cal-controls{display:grid;gap:12px;align-items:end;margin:14px 0}
+.cal-summary{background:#f0f6f4;border-radius:12px;padding:13px;font-size:.86rem;line-height:1.6;overflow-wrap:anywhere}
+.cal-managers{margin-top:14px;display:grid;gap:9px}.cal-managers>div{border-bottom:1px solid var(--line);padding:8px 0}
+.cal-managers small{color:var(--muted)}
+@media(min-width:620px){.cal-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.cal-controls{grid-template-columns:minmax(170px,240px) 1fr}}
+
+.cal-requires-verification{color:#9a4b00!important;font-weight:700}

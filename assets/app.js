@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = '1.4.87';
+const APP_VERSION = '1.4.88';
 const WEEKLY_CUTOVER_DATE = '2026-07-24';
 const EXPIRY_REVIEW_START = '2026-07-01';
 const DEFAULT_EXPIRY_ALERT_DAYS = 30;
@@ -39,9 +39,9 @@ let desktopLastUserActivityAt = 0;
 let desktopIdleActivityBound = false;
 let desktopExplicitLoginPending = false;
 let desktopIdleLogoutInProgress = false;
+const DESKTOP_IDLE_STORAGE_PREFIX = 'cnmi-inventory-desktop-activity:';
 const DESKTOP_IDLE_LOGOUT_MS = 15 * 60 * 1000;
 const DESKTOP_IDLE_ACTIVITY_THROTTLE_MS = 1000;
-const DESKTOP_IDLE_STORAGE_PREFIX = 'cnmi-inventory-desktop-activity:';
 let enteringApp = false;
 let passwordRecoveryMode = new URLSearchParams(location.search).get('password_reset') === '1' || /(?:^|[&#])type=recovery(?:&|$)/i.test(location.hash);
 let passwordRecoverySession = null;
@@ -67,49 +67,42 @@ const isAdminMode = () => isAdminAccount() && actingMode === 'admin';
 const isMahidolEmail = email => /^[^@\s]+@mahidol\.ac\.th$/i.test(String(email || '').trim());
 const isPhoneDevice = () => {
   if (typeof navigator === 'undefined') return false;
+  if (typeof navigator.userAgentData?.mobile === 'boolean') return navigator.userAgentData.mobile;
   const ua = String(navigator.userAgent || '');
-  // Treat tablets/PWAs as handheld devices too; do not time out personal mobile devices.
-  if (/iPhone|iPad|iPod|Android|Windows Phone|IEMobile|Opera Mini|Mobile/i.test(ua)) return true;
-  if (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) return true;
-  return navigator.userAgentData?.mobile === true;
+  return /iPhone|iPod|Android.*Mobile|Windows Phone|IEMobile|Opera Mini|Mobile/i.test(ua);
 };
 const shouldUseDesktopIdleLogout = () => !isPhoneDevice();
-const desktopIdleStorageKey = () => session?.user?.id ? `${DESKTOP_IDLE_STORAGE_PREFIX}${session.user.id}` : '';
-
-function readDesktopLastActivity() {
-  const key = desktopIdleStorageKey();
-  if (!key) return desktopLastUserActivityAt;
-  try {
-    const saved = Number(localStorage.getItem(key));
-    if (Number.isFinite(saved) && saved > 0 && saved <= Date.now()) {
-      return Math.max(desktopLastUserActivityAt, saved);
-    }
-  } catch (_) { /* Storage may be blocked; keep the in-memory timer. */ }
-  return desktopLastUserActivityAt;
+const desktopActivityKey = () => session?.user?.id ? `${DESKTOP_IDLE_STORAGE_PREFIX}${session.user.id}` : '';
+function desktopStoredActivity() {
+  const key=desktopActivityKey();
+  if(!key)return 0;
+  try{
+    const value=Number(localStorage.getItem(key)||0);
+    return Number.isFinite(value)&&value>0&&value<=Date.now() ? value : 0;
+  }catch(_){return 0;}
 }
-
-function saveDesktopLastActivity(now = Date.now()) {
-  desktopLastUserActivityAt = now;
-  const key = desktopIdleStorageKey();
-  if (!key) return;
-  try { localStorage.setItem(key, String(now)); } catch (_) {}
+function desktopWriteActivity(value){
+  const key=desktopActivityKey();
+  if(!key)return;
+  try{localStorage.setItem(key,String(value));}catch(_){}
 }
-
 function clearDesktopIdleLogoutTimer() {
   if (desktopIdleLogoutTimer) clearTimeout(desktopIdleLogoutTimer);
   desktopIdleLogoutTimer = null;
 }
-
 async function desktopIdleLogoutNow() {
   if (!shouldUseDesktopIdleLogout() || !session || desktopIdleLogoutInProgress) return;
-  // Another open CNMI tab may have been active while this tab's timer was paused.
-  desktopLastUserActivityAt = readDesktopLastActivity();
-  if (Date.now() - desktopLastUserActivityAt < DESKTOP_IDLE_LOGOUT_MS) {
+  const last=Math.max(desktopLastUserActivityAt,desktopStoredActivity());
+  if(last && Date.now()-last < DESKTOP_IDLE_LOGOUT_MS) {
+    desktopLastUserActivityAt=last;
     scheduleDesktopIdleLogout();
     return;
   }
-  desktopIdleLogoutInProgress = true;
+  desktopIdleLogoutInProgress=true;
   clearDesktopIdleLogoutTimer();
+  let signOutPending = null;
+  try { if (sb) signOutPending = Promise.resolve(sb.auth.signOut()); } catch (_) {}
+  // Lock the UI immediately, before async Supabase network/auth cleanup completes.
   session = null;
   profile = null;
   stockCache = []; scanLotsCache=[]; scanLotsLoadedAt=0;
@@ -119,60 +112,56 @@ async function desktopIdleLogoutNow() {
   usageMaterialCode = '';
   showLogin();
   if ($('#loginPassword')) $('#loginPassword').value = '';
+  try { if(signOutPending) await signOutPending; } catch (_) {}
+  desktopIdleLogoutInProgress=false;
   toast('ออกจากระบบอัตโนมัติ เนื่องจากไม่มีการใช้งานบนคอมพิวเตอร์ 15 นาที');
-  try {
-    if (sb) {
-      const {error} = await sb.auth.signOut();
-      if (error) await sb.auth.signOut({scope:'local'});
-    }
-  } catch (_) {
-    try { if (sb) await sb.auth.signOut({scope:'local'}); } catch (_) {}
-  } finally {
-    desktopIdleLogoutInProgress = false;
-  }
 }
-
 function scheduleDesktopIdleLogout() {
   clearDesktopIdleLogoutTimer();
-  if (!shouldUseDesktopIdleLogout() || !session || desktopIdleLogoutInProgress || appView.classList.contains('hidden')) return;
-  desktopLastUserActivityAt = readDesktopLastActivity();
-  const elapsed = Date.now() - desktopLastUserActivityAt;
-  const remaining = DESKTOP_IDLE_LOGOUT_MS - elapsed;
-  if (remaining <= 0) {
-    desktopIdleLogoutNow();
-    return;
-  }
-  desktopIdleLogoutTimer = setTimeout(desktopIdleLogoutNow, remaining);
+  if (!shouldUseDesktopIdleLogout() || !session || appView.classList.contains('hidden')) return;
+  const last=Math.max(desktopLastUserActivityAt,desktopStoredActivity());
+  if(last) desktopLastUserActivityAt=last;
+  const remaining = DESKTOP_IDLE_LOGOUT_MS - (Date.now()-desktopLastUserActivityAt);
+  if (remaining<=0) { desktopIdleLogoutNow(); return; }
+  desktopIdleLogoutTimer=setTimeout(desktopIdleLogoutNow,remaining);
 }
-
 function noteDesktopUserActivity() {
-  if (!shouldUseDesktopIdleLogout() || !session || desktopIdleLogoutInProgress || appView.classList.contains('hidden')) return;
-  const now = Date.now();
-  const elapsed = now - readDesktopLastActivity();
-  if (elapsed >= DESKTOP_IDLE_LOGOUT_MS) return desktopIdleLogoutNow();
-  if (elapsed < DESKTOP_IDLE_ACTIVITY_THROTTLE_MS) return;
-  saveDesktopLastActivity(now);
+  if (!shouldUseDesktopIdleLogout() || !session || appView.classList.contains('hidden')) return;
+  const now=Date.now();
+  const last=Math.max(desktopLastUserActivityAt,desktopStoredActivity());
+  if(last && now-last>=DESKTOP_IDLE_LOGOUT_MS){desktopIdleLogoutNow();return;}
+  if(now-last<DESKTOP_IDLE_ACTIVITY_THROTTLE_MS)return;
+  desktopLastUserActivityAt=now;
+  desktopWriteActivity(now);
   scheduleDesktopIdleLogout();
 }
-
 function startDesktopIdleLogout() {
   clearDesktopIdleLogoutTimer();
-  if (!shouldUseDesktopIdleLogout()) return;
-  // Explicit login starts a new 15-minute window. Reloading/restoring a tab does not.
-  desktopLastUserActivityAt = desktopExplicitLoginPending ? 0 : readDesktopLastActivity();
-  if (desktopExplicitLoginPending || !desktopLastUserActivityAt) saveDesktopLastActivity();
-  if (!desktopIdleActivityBound) {
-    desktopIdleActivityBound = true;
-    ['pointerdown','pointermove','keydown','wheel','touchstart'].forEach(eventName => {
-      window.addEventListener(eventName, noteDesktopUserActivity, {passive:true});
+  if(!shouldUseDesktopIdleLogout())return;
+  const now=Date.now();
+  const last=desktopStoredActivity();
+  if(desktopExplicitLoginPending){
+    desktopLastUserActivityAt=now;
+    desktopWriteActivity(now);
+    desktopExplicitLoginPending=false;
+  }else{
+    desktopLastUserActivityAt=last||now;
+    if(!last)desktopWriteActivity(now);
+    if(last && now-last>=DESKTOP_IDLE_LOGOUT_MS){desktopIdleLogoutNow();return;}
+  }
+  if(!desktopIdleActivityBound){
+    desktopIdleActivityBound=true;
+    ['pointerdown','pointermove','keydown','wheel','touchstart'].forEach(name=>{
+      window.addEventListener(name,noteDesktopUserActivity,{passive:true});
     });
-    window.addEventListener('scroll', noteDesktopUserActivity, {passive:true, capture:true});
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState !== 'visible' || !session || !shouldUseDesktopIdleLogout()) return;
-      scheduleDesktopIdleLogout();
+    window.addEventListener('scroll',noteDesktopUserActivity,{passive:true,capture:true});
+    window.addEventListener('storage',event=>{
+      if(event.key===desktopActivityKey())scheduleDesktopIdleLogout();
     });
-    window.addEventListener('storage', event => {
-      if (event.key === desktopIdleStorageKey()) scheduleDesktopIdleLogout();
+    document.addEventListener('visibilitychange',()=>{
+      if(document.visibilityState!=='visible'||!session||!shouldUseDesktopIdleLogout())return;
+      if(Date.now()-Math.max(desktopLastUserActivityAt,desktopStoredActivity())>=DESKTOP_IDLE_LOGOUT_MS)desktopIdleLogoutNow();
+      else scheduleDesktopIdleLogout();
     });
   }
   scheduleDesktopIdleLogout();
@@ -639,7 +628,7 @@ function openMobileMenu() {
   openModal(`<div class="mobile-menu-sheet">
     <div class="mobile-menu-head"><span class="owner-avatar">${esc((profile?.display_name || '?').trim().charAt(0))}</span><div><h3>เมนูทั้งหมด</h3><p>${esc(profile?.display_name || '')}</p></div></div>
     <div class="mobile-menu-section"><h4>สต๊อก</h4><div class="mobile-menu-grid compact"><button type="button" data-route="stock">${icon('box')}<span><strong>ค้นหาสต๊อก</strong></span></button><button type="button" data-route="my-stock">${icon('user')}<span><strong>สต๊อกที่ฉันดูแล</strong></span></button><button type="button" data-route="assisted-stock">${icon('user')}<span><strong>สต๊อกที่ช่วยดูแล</strong></span></button><button type="button" data-route="urgent">${icon('alert')}<span><strong>ต้องเบิกด่วน</strong></span></button></div></div>
-    <div class="mobile-menu-section"><h4>ตรวจและพิมพ์</h4><div class="mobile-menu-grid compact"><button type="button" data-route="weekly">${icon('check')}<span><strong>ตรวจวันศุกร์</strong></span></button><button type="button" data-route="scan-stock">${icon('camera')}<span><strong>สแกนตรวจ Lot</strong></span></button><button type="button" data-route="weekly-status">${icon('user')}<span><strong>สถานะผู้ตรวจ</strong></span></button><button type="button" data-route="labels">${icon('print')}<span><strong>พิมพ์ QR Sticker</strong></span></button><button type="button" data-route="open-labels">${icon('print')}<span><strong>พิมพ์วันเปิดใช้</strong></span></button><button type="button" data-route="open-label-create">${icon('plus')}<span><strong>สร้างสติ๊กเกอร์วันเปิด</strong></span></button><button type="button" data-route="reagent-print">${icon('print')}<span><strong>พิมพ์น้ำยาเข้าเครื่อง</strong></span></button></div></div>
+    <div class="mobile-menu-section"><h4>ตรวจและพิมพ์</h4><div class="mobile-menu-grid compact"><button type="button" data-route="weekly">${icon('check')}<span><strong>ตรวจวันศุกร์</strong></span></button><button type="button" data-route="scan-stock">${icon('camera')}<span><strong>สแกนตรวจ Lot</strong></span></button><button type="button" data-route="weekly-status">${icon('user')}<span><strong>สถานะผู้ตรวจ</strong></span></button><button type="button" data-route="labels">${icon('print')}<span><strong>พิมพ์ QR Sticker</strong></span></button><button type="button" data-route="open-labels">${icon('print')}<span><strong>พิมพ์วันเปิดใช้</strong></span></button><button type="button" data-route="open-label-create">${icon('plus')}<span><strong>สร้างสติ๊กเกอร์วันเปิด</strong></span></button><button type="button" data-route="reagent-print">${icon('print')}<span><strong>พิมพ์น้ำยาเข้าเครื่อง</strong></span></button><button type="button" data-route="calibrator-print">${icon('print')}<span><strong>Barcode Calibrator C0–C3</strong></span></button></div></div>
     <div class="mobile-menu-section"><h4>ประวัติและรายงาน</h4><div class="mobile-menu-grid compact"><button type="button" data-route="activity">${icon('history')}<span><strong>ประวัติทั้งหมด</strong></span></button><button type="button" data-route="reports" data-report-tab="receive">${icon('history')}<span><strong>ประวัตินำเข้า</strong></span></button><button type="button" data-route="reports" data-report-tab="issue">${icon('history')}<span><strong>ประวัตินำออก</strong></span></button><button type="button" data-route="usage">${icon('chart')}<span><strong>วิเคราะห์การใช้</strong></span></button><button type="button" data-route="reports">${icon('download')}<span><strong>รายงาน & ส่งออก</strong></span></button></div></div>
     ${adminSection}
     <div class="mobile-menu-section"><h4>ช่วยเหลือ</h4><div class="mobile-menu-grid compact"><button type="button" data-route="help">${icon('help')}<span><strong>คู่มือ</strong></span></button><button type="button" data-open-install>${icon('smartphone')}<span><strong>ติดตั้งแอป</strong></span></button></div></div>
@@ -912,14 +901,11 @@ async function login(e) {
   const btn = e.submitter;
   btn.disabled = true;
   desktopExplicitLoginPending = true;
-  try {
-    const {error} = await sb.auth.signInWithPassword({email, password});
-    if (error) return toast(errMsg(error), true);
-    await enterApp();
-  } finally {
-    desktopExplicitLoginPending = false;
-    btn.disabled = false;
-  }
+  const {error} = await sb.auth.signInWithPassword({email, password});
+  if (error) desktopExplicitLoginPending = false;
+  btn.disabled = false;
+  if (error) return toast(errMsg(error), true);
+  await enterApp();
 }
 
 async function register() {
@@ -1125,10 +1111,9 @@ async function enterApp() {
     loginView.classList.add('hidden');
     appView.classList.remove('hidden');
     startDesktopIdleLogout();
-    if (desktopIdleLogoutInProgress) return;
     updateRoleUI();
     const hashRoute = location.hash.replace(/^#/, '');
-    const allowed = ['home','stock','my-stock','usage','urgent','move','labels','open-labels','open-label-create','reagent-print','reagent-set-admin','reagent-generator','weekly','scan-stock','weekly-status','activity','reports','indicators','help','admin'];
+    const allowed = ['home','stock','my-stock','usage','urgent','move','labels','open-labels','open-label-create','reagent-print','reagent-set-admin','reagent-generator','calibrator-print','weekly','scan-stock','weekly-status','activity','reports','indicators','help','admin'];
     const initialRoute = allowed.includes(hashRoute) ? hashRoute : 'home';
     await navigate(initialRoute);
     if (pendingIssueCode) setTimeout(openPendingIssue, 250);
@@ -1147,7 +1132,6 @@ async function enterApp() {
 
 function showLogin() {
   clearDesktopIdleLogoutTimer();
-  desktopLastUserActivityAt = 0;
   stopScanner();
   appView.classList.add('hidden');
   loginView.classList.remove('hidden');
@@ -1482,6 +1466,7 @@ async function navigate(r, options = {}) {
     else if (r === 'open-labels') await renderOpenLabels();
     else if (r === 'open-label-create') await renderOpenLabelCreate();
     else if (r === 'reagent-print') await renderReagentPrint();
+    else if (r === 'calibrator-print') await renderCalibratorPrint();
     else if (r === 'reagent-set-admin') await renderReagentSetAdmin();
     else if (r === 'reagent-generator') await renderReagentGenerator();
     else if (r === 'weekly') await renderWeekly();
@@ -5271,6 +5256,158 @@ async function renderReagentSetAdmin() {
   await reloadSets();
   if(draft.setName || draft.rows.some(x=>x.name||x.barcode)){
     // เก็บร่างเดิมไว้ แต่ไม่เปิดรบกวนหน้าโดยอัตโนมัติ
+  }
+}
+
+// v1.4.88 Calibrator-only barcode printing; isolated from stock receipts/issues.
+const CAL_TYPES = ['C0','C1','C2','C3'];
+const calSequence = n => String(Number(n)||0).padStart(5,'0');
+const calDataError = e => {
+  const message=String(e?.message||e||'');
+  // RPC missing from the PostgREST schema cache is the signature of an uninstalled migration.
+  // Never hide a real SQL error (duplicate code / permission / invalid Lot) behind that advice.
+  if(e?.code==='PGRST202'||/could not find the function.*fn_calibrator_|schema cache.*fn_calibrator_/i.test(message))
+    return 'ยังไม่ได้ติดตั้ง SQL ของ Calibrator ใน Supabase กรุณาให้ Admin เปิด README_UPDATE_v1_4_88_TH.md แล้วติดตั้ง SQL ก่อน';
+  return errMsg(e);
+};
+
+function openCalibratorPrintPage(labels, popup, isReprint = false) {
+  if(!popup || !Array.isArray(labels) || !labels.length) return false;
+  const clean=labels.map(row=>({
+    cal_type:String(row.cal_type||''),lot_no:String(row.lot_no||''),
+    sequence_no:Number(row.sequence_no), barcode_value:String(row.barcode_value||'')
+  }));
+  if(clean.some(x=>!CAL_TYPES.includes(x.cal_type)||!/^[0-9]{21}$/.test(x.barcode_value)||!Number.isInteger(x.sequence_no)))
+    throw new Error('ข้อมูลบาร์โค้ดไม่ครบ 21 หลัก กรุณาตรวจ Lot และรหัสตั้งต้น');
+  const batchKey=`cnmi-calibrator:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+  // Same-origin temporary print payload, never used for number allocation or authorization.
+  localStorage.setItem(batchKey,JSON.stringify({labels:clean,isReprint,preparedAt:new Date().toISOString()}));
+  const url=new URL('calibrator-barcode.html',location.href);
+  url.search=new URLSearchParams({batch:batchKey,auto:'1'}).toString();
+  popup.location.replace(url.toString());
+  return true;
+}
+
+async function renderCalibratorPrint(){
+  const {data,error}=await sb.rpc('fn_calibrator_dashboard');
+  if(error)throw new Error(calDataError(error));
+  const state=data||{};
+  const lots=Array.isArray(state.current)?state.current:[];
+  const history=Array.isArray(state.history)?state.history:[];
+  const managers=Array.isArray(state.managers)?state.managers:[];
+  const staff=Array.isArray(state.staff)?state.staff:[];
+  const map=new Map(lots.map(l=>[l.cal_type,l]));
+  const rows=CAL_TYPES.map(type=>({type,lot:map.get(type)}));
+  page.innerHTML=`<div class="page-head"><div><p class="eyebrow">แยกจากระบบ Stock</p><h2>${icon('print')} พิมพ์ Barcode Calibrator</h2><p class="muted small">เลข 5 หลักนับแยก C0–C3 ตาม Lot · ระบบจำเลขรันใน Supabase · เลขที่ออกแล้วไม่ถูกนำกลับมาใช้ซ้ำ</p></div></div>
+  <section class="card cal-panel">
+    <h3>1. เลือก Calibrator ที่ต้องการพิมพ์</h3>
+    <p class="muted small">ติ๊กเฉพาะตัวที่ต้องการ แต่ละตัวใช้เลขถัดไปของตัวเอง (ไม่มีการตัด Stock) · <b>Lot จากภาพตัวอย่างต้องให้ผู้มีสิทธิ์ตรวจยืนยันครั้งแรกก่อนพิมพ์</b></p>
+    <div class="cal-grid" id="calPicker">${rows.map(({type,lot})=>`<label class="cal-choice ${!lot||!lot.is_verified?'cal-unavailable':''}"><span class="cal-top"><input type="checkbox" data-cal-choice="${type}" ${lot?.is_verified?'checked':'disabled'}><strong>${type}</strong></span><small>Lot ${esc(lot?.lot_no||'ยังไม่ตั้งค่า')}</small><span>ล่าสุด <b>${lot?calSequence(lot.last_issued):'-'}</b></span><span>ถัดไป <b>${lot?calSequence(Number(lot.last_issued)+1):'-'}</b></span>${!lot?.is_verified?'<small class="cal-requires-verification">ต้องยืนยันรหัสและเลขก่อนพิมพ์</small>':''}<small class="cal-base">${esc(lot?.barcode_prefix||'')}</small></label>`).join('')}</div>
+    <div class="cal-controls"><label>จำนวนชุด (1–20)<input id="calPrintCount" type="number" min="1" max="20" step="1" value="1" inputmode="numeric"></label><div class="cal-summary" id="calSummary" aria-live="polite"></div></div>
+    <div class="actions"><button class="primary" id="calPrintNew">${icon('print')} ออกเลขใหม่และพิมพ์</button><button type="button" class="secondary" id="calRefresh">${icon('refresh')} อัปเดตเลขล่าสุด</button></div>
+    <p class="field-hint">หมายเหตุ: กดออกเลขใหม่แล้ว Supabase จะจองเลขทันที แม้ยกเลิกหน้าพิมพ์ หากพิมพ์เสียให้ใช้ “พิมพ์ซ้ำ” จากประวัติ ไม่สร้างเลขใหม่</p>
+  </section>
+  <section class="card cal-panel"><h3>2. ประวัติและพิมพ์ซ้ำ</h3><p class="muted small">แสดง 40 รายการล่าสุด ทุก Lot · การพิมพ์ซ้ำไม่เพิ่มเลข</p>
+  <div class="table-wrap"><table class="data-table"><thead><tr><th>Cal</th><th>Lot</th><th>เลขท้าย</th><th>รหัสเต็ม</th><th>สร้างเลขโดย / เวลา</th><th>ดำเนินการ</th></tr></thead><tbody>${history.length?history.map(h=>`<tr><td><b>${esc(h.cal_type)}</b></td><td>${esc(h.lot_no)}</td><td><strong>${calSequence(h.sequence_no)}</strong></td><td><code>${esc(h.barcode_value)}</code></td><td>${esc(h.reserved_by_name||'-')}<br><small>${dt(h.reserved_at)}</small></td><td><button type="button" class="mini" data-cal-reprint="${esc(h.id)}">พิมพ์ซ้ำ</button></td></tr>`).join(''):'<tr><td colspan="6">ยังไม่มีประวัติการออกเลขใหม่</td></tr>'}</tbody></table></div></section>
+  ${state.can_manage?`<section class="card cal-panel"><h3>3. ตั้ง Lot / รหัสตั้งต้น / เลขล่าสุด</h3><p class="muted small">สำหรับผู้ดูแลน้ำยา ผู้ช่วย และ Admin เท่านั้น · ก่อนพิมพ์ครั้งแรกต้องตรวจรหัสตั้งต้น 16 หลักของทุกตัวจากฉลากจริง และยืนยันเลขล่าสุดแยกกัน · เมื่อเปลี่ยน Lot ให้เริ่มเลขใช้ล่าสุด 00000 (เพื่อออก 00001)</p>
+    <form id="calLotForm" class="form-grid"><label>เลือก Calibrator<select id="calEditType">${CAL_TYPES.map(t=>`<option value="${t}">${t}</option>`).join('')}</select></label>
+    <div class="form-grid two"><label>Lot ปัจจุบัน / Lot ใหม่<input id="calEditLot" required maxlength="40" autocomplete="off"></label>
+    <label>รหัสตั้งต้น (ตัวเลข 16 หลัก)<input id="calEditPrefix" required maxlength="16" minlength="16" inputmode="numeric" pattern="[0-9]{16}" autocomplete="off"></label></div>
+    <label>เลขที่ใช้ไปล่าสุด (0–99999)<input id="calEditLast" type="number" required min="0" max="99999" value="0"></label>
+    <p class="field-hint">เช่น ใช้ 00005 ไปแล้วให้กรอก 5 → ระบบจะพิมพ์ 00006 · Lot ใหม่ที่ยังไม่ใช้เลขใดให้กรอก 0 → ระบบจะพิมพ์ 00001</p>
+    <div class="actions"><button class="primary" type="submit">${icon('check')} ยืนยันบันทึกค่า Lot</button></div></form></section>`:''}
+  ${state.is_admin?`<section class="card cal-panel"><h3>4. กำหนดผู้ดูแล Calibrator</h3><p class="muted small">Admin กำหนดผู้ดูแลหลักหรือผู้ช่วยโดยเฉพาะ ไม่อิงสิทธิ์ Stock</p>
+    <form id="calManagerForm" class="form-grid two"><label>เลือกชื่อเจ้าหน้าที่<select id="calManagerUser" required><option value="">เลือกเจ้าหน้าที่</option>${staff.map(p=>`<option value="${esc(p.id)}">${esc(p.name)} · ${esc(p.email)}</option>`).join('')}</select></label>
+    <label>สิทธิ์สำหรับตั้ง Lot<select id="calManagerRole"><option value="primary">ผู้ดูแลน้ำยา (หลัก)</option><option value="assistant">ผู้ช่วยดูแลน้ำยา</option><option value="">ถอนสิทธิ์ Calibrator</option></select></label><button class="primary" type="submit">บันทึกสิทธิ์</button></form>
+    <div class="cal-managers">${managers.length?managers.map(m=>`<div>${esc(m.name)} <small>${esc(m.email)}</small> <span class="badge">${m.assignment==='primary'?'ผู้ดูแลหลัก':'ผู้ช่วย'}</span></div>`).join(''):'<p class="muted small">ยังไม่กำหนดผู้ดูแล/ผู้ช่วย (Admin แก้ได้อยู่แล้ว)</p>'}</div></section>`:''}`;
+
+  const selection=()=>CAL_TYPES.filter(t=>$(`[data-cal-choice="${t}"]`)?.checked);
+  const refreshSummary=()=>{
+    const selected=selection(),n=Number($('#calPrintCount')?.value);
+    const valid=Number.isInteger(n)&&n>=1&&n<=20;
+    $('#calPrintNew').disabled=!selected.length||!valid||selected.some(t=>Number(map.get(t)?.last_issued||0)+n>99999);
+    $('#calSummary').innerHTML=`<strong>${selected.length*(valid?n:0)} ดวง</strong><br>${selected.map(t=>`${esc(t)} ${calSequence(Number(map.get(t).last_issued)+1)}${valid&&n>1?'–'+calSequence(Number(map.get(t).last_issued)+n):''}`).join(' · ')||'ยังไม่ได้เลือก'}`;
+  };
+  $$('[data-cal-choice]').forEach(x=>x.addEventListener('change',refreshSummary));
+  $('#calPrintCount').addEventListener('input',refreshSummary);refreshSummary();
+  $('#calRefresh').addEventListener('click',()=>renderCalibratorPrint().catch(e=>toast(calDataError(e),true)));
+
+  $('#calPrintNew').addEventListener('click',async()=>{
+    const types=selection(),count=Number($('#calPrintCount').value);
+    if(!types.length||!Number.isInteger(count)||count<1||count>20)return toast('เลือก Calibrator และจำนวนชุด 1–20 ก่อน',true);
+    const details=types.map(t=>{
+      const l=map.get(t);
+      if(!l)return `${t}: ยังไม่มี Lot`;
+      const first=Number(l.last_issued)+1, end=Number(l.last_issued)+count;
+      return `${t} · Lot ${l.lot_no} · ${calSequence(first)}${count>1?' ถึง '+calSequence(end):''}`;
+    }).join('\n');
+    if(!confirm(`ขั้นตอนที่ 1/2: ตรวจเลขก่อนออกพิมพ์\n\n${details}\n\nจำนวน ${count} ชุด รวม ${types.length*count} ดวง\n\nกด OK เพื่อยืนยันออกเลขใหม่ใน Supabase\nเลขจะถูกจองทันที แม้ยกเลิกการพิมพ์ หากพิมพ์เสียให้เลือก “พิมพ์ซ้ำ”`))return;
+    const popup=preparePrintPopup('กำลังเตรียมบาร์โค้ด Calibrator',`${types.length*count} ดวง · 50 × 28 mm`);
+    if(!popup)return toast('กรุณาอนุญาต Pop-up ของเว็บไซต์ก่อนออกเลขใหม่',true);
+    const button=$('#calPrintNew');button.disabled=true;
+    let allocated=false;
+    try{
+      const {data:created,error:issue}=await sb.rpc('fn_calibrator_allocate',{p_types:types,p_count:count});
+      if(issue)throw issue;
+      allocated=true;
+      if(!openCalibratorPrintPage(created?.labels,popup))throw new Error('ไม่สามารถเปิดหน้าพิมพ์');
+      toast(`ขั้นตอนที่ 2/2: จองเลข ${created.labels.length} ดวงแล้ว · ตรวจฉลากและกดพิมพ์ · หากพิมพ์เสียให้พิมพ์ซ้ำจากประวัติ`);
+      try{await renderCalibratorPrint();}catch(refreshError){console.warn('Calibrator dashboard refresh:',refreshError);}
+    }catch(e){
+      try{popup.close();}catch(_){}
+      toast((allocated?'เลขถูกจองใน Supabase แล้ว กรุณาเปิดประวัติเพื่อพิมพ์ซ้ำเลขเดิม: ':'')+calDataError(e),true);
+      if(allocated)renderCalibratorPrint().catch(()=>{});
+      button.disabled=false;
+    }
+  });
+
+  $$('[data-cal-reprint]').forEach(button=>button.addEventListener('click',async()=>{
+    if(!confirm('พิมพ์ซ้ำรหัสเดิม (ไม่เพิ่มเลขรัน) ใช่หรือไม่?'))return;
+    const popup=preparePrintPopup('พิมพ์ซ้ำ Calibrator','ใช้เลขเดิม ไม่เพิ่มเลขรัน');
+    if(!popup)return toast('เบราว์เซอร์บล็อก Pop-up',true);
+    button.disabled=true;
+    try{
+      const {data:result,error:failed}=await sb.rpc('fn_calibrator_reprint',{p_label_ids:[button.dataset.calReprint]});
+      if(failed)throw failed;
+      openCalibratorPrintPage(result?.labels,popup,true);
+      toast('เปิดพิมพ์ซ้ำเลขเดิมแล้ว');
+    }catch(e){try{popup.close();}catch(_){} toast(calDataError(e),true);}
+    finally{button.disabled=false;}
+  }));
+
+  if(state.can_manage){
+    const fill=()=>{
+      const record=map.get($('#calEditType').value);
+      $('#calEditLot').value=record?.lot_no||'';
+      $('#calEditPrefix').value=record?.barcode_prefix||'';
+      $('#calEditLast').value=record?.last_issued??0;
+    };
+    $('#calEditType').addEventListener('change',fill);fill();
+    $('#calLotForm').addEventListener('submit',async event=>{
+      event.preventDefault();
+      const calType=$('#calEditType').value, lot=$('#calEditLot').value.trim(),prefix=$('#calEditPrefix').value.trim(),last=Number($('#calEditLast').value);
+      if(!/^[0-9A-Za-z._-]{1,40}$/.test(lot)||!/^[0-9]{16}$/.test(prefix)||!Number.isInteger(last)||last<0||last>99999)
+        return toast('ตรวจ Lot รหัส 16 หลัก และเลขล่าสุดให้ถูกต้อง',true);
+      const old=map.get(calType);
+      if(!confirm(`ยืนยันตั้ง ${calType}\nLot: ${lot}\nรหัสตั้งต้น: ${prefix}\nเลขใช้ล่าสุด: ${calSequence(last)}\nเลขต่อไป: ${calSequence(last+1)}\n\nการเปลี่ยน Lot ไม่กระทบ Stock`))return;
+      const btn=$('#calLotForm [type="submit"]');btn.disabled=true;
+      try{
+        const {error:saveError}=await sb.rpc('fn_calibrator_set_lot',{p_type:calType,p_lot_no:lot,p_barcode_prefix:prefix,p_last_used:last});
+        if(saveError)throw saveError;
+        toast('บันทึก Lot และเลขล่าสุดใน Supabase แล้ว');await renderCalibratorPrint();
+      }catch(e){toast(calDataError(e),true);btn.disabled=false;}
+    });
+  }
+  if(state.is_admin){
+    $('#calManagerForm').addEventListener('submit',async event=>{
+      event.preventDefault();const id=$('#calManagerUser').value,assignment=$('#calManagerRole').value;
+      if(!id)return toast('กรุณาเลือกชื่อเจ้าหน้าที่',true);
+      if(!confirm(`${assignment?'กำหนด':'ถอน'}สิทธิ์เจ้าหน้าที่ที่เลือกใช่หรือไม่?`))return;
+      const button=$('#calManagerForm [type="submit"]');button.disabled=true;
+      try{const {error:grantError}=await sb.rpc('fn_calibrator_set_manager',{p_user_id:id,p_assignment:assignment});
+        if(grantError)throw grantError;toast('บันทึกสิทธิ์ Calibrator แล้ว');await renderCalibratorPrint();
+      }catch(e){toast(calDataError(e),true);button.disabled=false;}
+    });
   }
 }
 

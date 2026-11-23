@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>พิมพ์ Barcode Calibrator C0–C3 · 50 × 28 mm</title>
+<style>
+*{box-sizing:border-box}
+:root{--w:50mm;--h:28mm}
+html,body{margin:0;padding:0;width:var(--w);min-width:var(--w);background:#fff;color:#000;font-family:Arial,Tahoma,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+#printPages{display:block;width:var(--w);font-size:0;line-height:0}
+.label-page,.label-svg{display:block;position:relative;width:var(--w);height:var(--h);margin:0;padding:0;background:#fff;break-inside:avoid;page-break-inside:avoid}
+.label-svg{position:absolute;left:0;top:0;shape-rendering:geometricPrecision;overflow:hidden}
+.status{position:fixed;left:54mm;top:8mm;width:360px;max-width:calc(100vw - 55mm);padding:12px;background:#edf8f5;border:1px solid #aad6c9;color:#215b51;border-radius:9px;line-height:1.5;font-size:14px}
+@page{size:50mm 28mm;margin:0}
+@media print{html,body,#printPages{width:var(--w)!important;margin:0!important;padding:0!important;background:#fff!important}.status{display:none!important}}
+</style>
+</head>
+<body>
+<div id="printPages"></div><div class="status" id="status">กำลังเตรียมบาร์โค้ด Calibrator…</div>
+<script>
+'use strict';
+const params=new URLSearchParams(location.search),batchKey=params.get('batch')||'';
+const svgNS='http://www.w3.org/2000/svg';
+const patternsSentinel = 1;
+const CODE128_PATTERNS=[
+'212222','222122','222221','121223','121322','131222','122213','122312','132212','221213','221312','231212','112232','122132','122231','113222','123122','123221','223211','221132','221231','213212','223112','312131','311222','321122','321221','312212','322112','322211','212123','212321','232121','111323','131123','131321','112313','132113','132311','211313','231113','231311','112133','112331','132131','113123','113321','133121','313121','211331','231131','213113','213311','213131','311123','311321','331121','312113','312311','332111','314111','221411','431111','111224','111422','121124','121421','141122','141221','112214','112412','122114','122411','142112','142211','241211','221114','413111','241112','134111','111242','121142','121241','114212','124112','124211','411212','421112','421211','212141','214121','412121','111143','111341','131141','114113','114311','411113','411311','113141','114131','311141','411131','211412','211214','211232','2331112'
+];
+
+function encodeCode128(text){
+  const value=String(text??'');
+  if(!value)throw new Error('ไม่มีข้อมูลบาร์โค้ด');
+  const codeB=ch=>{
+    const code=ch.charCodeAt(0)-32;
+    if(code<0||code>94)throw new Error('Barcode รองรับอักขระมาตรฐานทั่วไปเท่านั้น');
+    return code;
+  };
+  const digitRunLength=start=>{
+    let n=0;
+    while(start+n<value.length && /\d/.test(value[start+n])) n+=1;
+    return n;
+  };
+
+  let i=0;
+  const initialDigits=digitRunLength(0);
+  // BarTender-style Auto: when a value starts with at least 4 digits,
+  // pair digits from the LEFT in Code C. If one digit remains, switch to Code B.
+  let currentSet=(initialDigits>=4 || (/^\d+$/.test(value) && initialDigits>=2)) ? 'C' : 'B';
+  const codes=[currentSet==='C' ? 105 : 104];
+
+  while(i<value.length){
+    if(currentSet==='C'){
+      const run=digitRunLength(i);
+      if(run>=2){
+        codes.push(Number(value.slice(i,i+2)));
+        i+=2;
+        continue;
+      }
+      codes.push(100); // switch C -> B
+      currentSet='B';
+      continue;
+    }
+
+    const run=digitRunLength(i);
+    const reachesEnd=(i+run===value.length);
+    // In the middle, Code C is worthwhile for 6+ digits; at the end, 4+ digits.
+    if(run>=6 || (run>=4 && reachesEnd)){
+      codes.push(99); // switch B -> C
+      currentSet='C';
+      continue;
+    }
+
+    codes.push(codeB(value[i]));
+    i+=1;
+  }
+
+  let checksum=codes[0];
+  for(let j=1;j<codes.length;j+=1)checksum+=codes[j]*j;
+  checksum%=103;
+  codes.push(checksum,106);
+  return codes;
+}
+
+
+function svgNode(tag,attrs={}){const n=document.createElementNS(svgNS,tag);Object.entries(attrs).forEach(([k,v])=>n.setAttribute(k,String(v)));return n;}
+function addText(svg,value,x,y,size=13,weight=600,anchor='start'){
+  const node=svgNode('text',{x,y,fill:'#000','font-family':'Arial, Tahoma, sans-serif','font-size':size,'font-weight':weight,'text-anchor':anchor});
+  node.textContent=String(value);svg.appendChild(node);return node;
+}
+function makeLabel(row){
+  const type=String(row.cal_type||''),lot=String(row.lot_no||''),barcode=String(row.barcode_value||'');
+  if(!/^C[0-3]$/.test(type)||!/^[0-9]{21}$/.test(barcode))throw new Error('รหัส Calibrator ต้องมี 21 หลัก');
+  const codes=encodeCode128(barcode);
+  const moduleUnit=2; // 2 dots per Code 128 module on a nominal 203-dpi/8-dot-mm printer.
+  const quietModules=10;
+  const symbolModules=codes.reduce((acc,c)=>acc+CODE128_PATTERNS[c].split('').reduce((s,n)=>s+Number(n),0),0);
+  const totalWidth=(symbolModules+quietModules*2)*moduleUnit;
+  if(totalWidth>400)throw new Error('บาร์โค้ดกว้างเกินหน้ากระดาษ 50mm');
+  const left=(400-totalWidth)/2;
+  const element=document.createElement('section');element.className='label-page';
+  const svg=svgNode('svg',{class:'label-svg',viewBox:'0 0 400 224',preserveAspectRatio:'none','aria-label':type+' '+barcode});
+  svg.appendChild(svgNode('rect',{x:0,y:0,width:400,height:224,fill:'#fff'}));
+  addText(svg,type,17,31,29,800);
+  addText(svg,'เลข '+String(row.sequence_no).padStart(5,'0'),383,29,21,700,'end');
+  addText(svg,barcode,200,57,17,700,'middle');
+  // Integer pixel positions eliminate fractional bar-to-gap rounding on a 203 dpi label.
+  const bars=svgNode('g',{'shape-rendering':'crispEdges'});
+  let x=left+quietModules*moduleUnit;
+  for(const code of codes){const parts=CODE128_PATTERNS[code];for(let i=0;i<parts.length;i++){
+    const w=Number(parts[i])*moduleUnit;
+    if(i%2===0)bars.appendChild(svgNode('rect',{x,y:66,width:w,height:114,fill:'#000'}));
+    x+=w;
+  }}
+  svg.appendChild(bars);
+  addText(svg,'Lot '+lot,17,204,14,600);
+  addText(svg,'CALIBRATOR '+type,383,204,13,600,'end');
+  const printTime=new Date();
+  const stamp=`${String(printTime.getDate()).padStart(2,'0')}-${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][printTime.getMonth()]}-${printTime.getFullYear()} ${String(printTime.getHours()).padStart(2,'0')}:${String(printTime.getMinutes()).padStart(2,'0')}`;
+  addText(svg,stamp,200,220,11,500,'middle');
+  element.appendChild(svg);return element;
+}
+function getPayload(){
+  if(!batchKey)throw new Error('ไม่พบชุดพิมพ์');
+  const raw=localStorage.getItem(batchKey);
+  if(!raw)throw new Error('ไม่พบข้อมูลพิมพ์ชั่วคราว กรุณากลับไปกดพิมพ์ซ้ำจากประวัติ');
+  try{return JSON.parse(raw);}finally{localStorage.removeItem(batchKey);}
+}
+async function prepare(){
+  const payload=getPayload();
+  if(!Array.isArray(payload.labels)||!payload.labels.length||payload.labels.length>80)throw new Error('จำนวนฉลากไม่ถูกต้อง');
+  const pages=document.getElementById('printPages');
+  payload.labels.forEach(row=>pages.appendChild(makeLabel(row)));
+  await new Promise(ok=>requestAnimationFrame(()=>requestAnimationFrame(ok)));
+  return payload;
+}
+async function run(){
+  const status=document.getElementById('status');
+  try{
+    const payload=await prepare();
+    status.textContent=`${payload.isReprint?'พิมพ์ซ้ำ':'ออกเลขใหม่'} ${payload.labels.length} ดวง · ตั้งกระดาษ 50 × 28 mm, Scale 100%, Margin None, ปิด Header/Footer`;
+    if(params.get('auto')==='1'){await new Promise(ok=>setTimeout(ok,180));window.focus();window.print();}
+  }catch(e){status.textContent='ไม่สามารถเตรียมบาร์โค้ด: '+(e.message||e);console.error(e);}
+}
+window.addEventListener('load',run,{once:true});
+window.addEventListener('afterprint',()=>setTimeout(()=>window.close(),200));
+</script>
+</body>
+</html>
